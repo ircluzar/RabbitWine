@@ -6,6 +6,8 @@ Welcome to **Rabbit Wine**!
 This is a web app for working with sticker packs: you can browse, customize, and export stickers.  
 The interface is designed to be straightforward and easy to use.
 
+You can host the app on your own or use our free hosted version at [rabbit.wine]("http://rabbit.wine")
+
 ---
 
 ## Features
