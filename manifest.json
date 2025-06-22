@@ -1,0 +1,16 @@
+{
+  "name": "Rabbit Wine",
+  "short_name": "Rabbit Wine",
+  "description": "A tool for browsing and customizing stickers",
+  "start_url": "/rabbitwine/",
+  "display": "standalone",
+  "background_color": "#1a1626",
+  "theme_color": "#1a1626",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,368 @@
+:root {
+            --bg-primary: #1a1626;
+            --bg-secondary: #2a2438;
+            --bg-accent: #3a3448;
+            --text-primary: #e6e6e6;
+            --text-accent: #b8b8b8;
+            --border-color: #4a4458;
+            --button-active: #5a5468;
+            --button-hover: #4a4458;
+            --error-color: #ff6b6b;
+            --success-color: #28a745;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            grid-template-rows: auto 1fr;
+            grid-template-areas: 
+                "packs packs"
+                "config stickers";
+            gap: 20px;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .pack-panel {
+            grid-area: packs;
+        }
+
+        .config-panel {
+            grid-area: config;
+        }
+
+        .sticker-panel {
+            grid-area: stickers;
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .panel h2 {
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .pack-selection {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+		.pack-button {
+			padding: 12px 20px;
+			background: var(--bg-accent);
+			border: 1px solid var(--border-color);
+			border-radius: 8px;
+			color: var(--text-primary);
+			cursor: pointer;
+			font-size: 16px;
+			font-weight: 500;
+			transition: all 0.2s ease;
+			text-transform: capitalize;
+			min-width: 80px;
+			flex: 0 0 auto;
+			max-width: none;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+        .pack-button:hover {
+            background: var(--button-hover);
+        }
+
+        .pack-button.active {
+            background: var(--button-active);
+            border-color: var(--text-accent);
+        }
+
+        .pack-button.add-pack {
+            background: #28a745;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            padding: 12px 16px;
+            flex: 0 0 auto;
+            min-width: 50px;
+            max-width: 50px;
+        }
+
+        .pack-button.remove-pack {
+            background: #dc3545;
+            color: white;
+            font-weight: bold;
+            padding: 12px 16px;
+            margin-left: 10px;
+            flex: 0 0 auto;
+            min-width: 50px;
+            max-width: 50px;
+        }
+
+        .pack-button.add-pack:hover {
+            background: #218838;
+        }
+
+        .pack-button.remove-pack:hover {
+            background: #c82333;
+        }
+
+        .pack-input {
+            display: none;
+            margin-top: 10px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .pack-input input {
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            flex: 1;
+            font-size: 16px;
+        }
+
+        .pack-input button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 16px;
+            font-weight: 500;
+            min-width: 80px;
+        }
+
+        .pack-input .confirm {
+            background: #28a745;
+            color: white;
+        }
+
+        .pack-input .cancel {
+            background: var(--bg-accent);
+            color: var(--text-primary);
+        }
+
+        .config-group {
+            margin-bottom: 20px;
+        }
+
+        .config-group label {
+            display: block;
+            margin-bottom: 12px;
+            color: var(--text-accent);
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        .toggle-button {
+            padding: 12px 20px;
+            background: var(--bg-accent);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 16px;
+            font-weight: 500;
+            min-width: 80px;
+            width: 100%;
+        }
+
+        .toggle-button:hover {
+            background: var(--button-hover);
+        }
+
+        .toggle-button.active {
+            background: var(--button-active);
+            border-color: var(--text-accent);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .button-group .toggle-button {
+            flex: 1;
+        }
+
+        select {
+            padding: 12px 16px;
+            background: var(--bg-accent);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+
+        .preview-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .preview-container {
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 15px 0;
+            min-height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: transform 0.2s ease;
+        }
+
+        .preview-image:hover {
+            transform: scale(1.05);
+        }
+
+        .copy-hint {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-accent);
+            margin-top: 10px;
+        }
+
+        .loading, .error {
+            color: var(--text-accent);
+            font-style: italic;
+            font-size: 16px;
+        }
+
+        .error {
+            color: var(--error-color);
+        }
+
+        .sticker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 10px;
+            max-height: 70vh;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .sticker-item {
+            aspect-ratio: 1;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sticker-item:hover {
+            background: var(--bg-accent);
+        }
+
+        .sticker-item.selected {
+            border-color: var(--text-accent);
+            background: var(--button-active);
+        }
+
+        .sticker-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        .sticker-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sticker-grid::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+            border-radius: 4px;
+        }
+
+        .sticker-grid::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .sticker-grid::-webkit-scrollbar-thumb:hover {
+            background: var(--text-accent);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-areas: 
+                    "packs"
+                    "stickers"
+                    "config";
+                padding: 15px;
+                gap: 15px;
+            }
+
+            .pack-selection {
+                justify-content: center;
+            }
+
+            .panel {
+                padding: 15px;
+            }
+
+            .sticker-grid {
+                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+                max-height: 50vh;
+            }
+
+            .pack-button {
+                min-width: 60px;
+                max-width: 120px;
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+
+            .toggle-button {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+
+            .button-group {
+                gap: 8px;
+            }
+        }
