@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rabbit Wine Sticker Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+
+        .editor-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .btn {
+            padding: 10px 16px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn.primary { background: var(--button-active); }
+        .btn.selected { background: var(--button-active); border-color: var(--success-color); }
+        .btn:hover { background: var(--button-hover); }
+        .btn:disabled { 
+            opacity: 0.5; 
+            cursor: not-allowed; 
+            background: var(--button-bg);
+        }
+
+        .tools { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        .tool-section { display: flex; flex-direction: column; gap: 12px; }
+        .tool-section h3 { margin: 0; color: var(--text-accent); font-size: 16px; }
+
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 8px;
+        }
+
+        .palette-color, .palette-add {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .palette-color.selected {
+            border: 3px solid var(--success-color);
+            box-shadow: 0 0 0 2px var(--success-color);
+        }
+
+        .palette-add {
+            background: var(--button-active);
+            color: var(--text-primary);
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .select-box {
+            padding: 8px 12px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 100px;
+        }
+
+        .select-box:focus {
+            outline: none;
+            border-color: var(--success-color);
+        }
+
+        .select-box option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: none;
+        }
+
+        .canvas-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .canvas-container {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            overflow: auto;
+            max-height: 60vh;
+        }
+
+        #canvas {
+            image-rendering: pixelated;
+            background: rgb(204,188,252);
+            border-radius: 4px;
+            cursor: crosshair;
+            display: block;
+        }
+
+        .footer {
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .hint {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-accent);
+        }
+
+        .undo-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .music-controls {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .music-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            min-width: 24px;
+        }
+
+        .music-btn:hover {
+            background: var(--button-hover);
+        }
+
+        .music-btn.active {
+            background: var(--button-active);
+        }
+
+        @media (max-width: 768px) {
+            .editor-container { margin: 10px auto; padding: 0 12px; }
+            .panel { padding: 16px; }
+            .tools { gap: 16px; }
+            .controls { grid-template-columns: 1fr; }
+            .palette-grid { grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+            .palette-color, .palette-add { width: 36px; height: 36px; }
+            #canvas { touch-action: none; }
+            .footer { flex-direction: column; gap: 8px; }
+        }
+
+        @media (min-width: 1024px) {
+            .tools { grid-template-columns: 1fr 1fr; }
+            .controls { grid-template-columns: 1fr 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <audio id="bgMusic" loop preload="auto">
+        <source src="editor.mp3" type="audio/mpeg">
+        <source src="editor.ogg" type="audio/ogg">
+    </audio>
+
+    <div class="editor-container">
+        <div class="panel">
+            <div class="tools">
+                <div class="tool-section">
+                    <h3>Color Palette</h3>
+                    <div class="palette-grid" id="palette"></div>
+                </div>
+
+                <div class="tool-section">
+                    <div class="controls">
+                        <div class="control-group">
+                            <h3>Brush Size</h3>
+                            <select class="select-box" id="brushSelect">
+                                <option value="1">1px</option>
+                                <option value="2">2px</option>
+                                <option value="3">3px</option>
+                                <option value="4">4px</option>
+                                <option value="5">5px</option>
+                                <option value="8">8px</option>
+                                <option value="16">16px</option>
+                                <option value="32">32px</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <h3>Zoom Level</h3>
+                            <select class="select-box" id="zoomSelect">
+                                <option value="1">1x</option>
+                                <option value="2" selected>2x</option>
+                                <option value="3">3x</option>
+                                <option value="4">4x</option>
+                                <option value="6">6x</option>
+                                <option value="8">8x</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <h3>Actions</h3>
+                            <div class="undo-controls">
+                                <button class="btn" id="undoBtn" disabled>Undo</button>
+                                <span class="hint" id="undoHint">Ctrl+Z</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel canvas-panel">
+            <div class="canvas-container">
+                <canvas id="canvas" width="256" height="240"></canvas>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="footer">
+                <button class="btn primary" id="download">Download PNG</button>
+                <button class="btn" id="clipboard">Copy to Clipboard</button>
+                <div class="music-controls">
+                    <button class="music-btn" id="musicMute">🔇</button>
+                    <button class="music-btn active" id="musicLow">🔉</button>
+                    <button class="music-btn" id="musicHigh">🔊</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const W = 256, H = 240, MAX_COLORS = 16;
+        const TRANSPARENT_COLOR = [204, 188, 252];
+        
+        let palette = [[0,0,0], [255,255,255], TRANSPARENT_COLOR];
+        let selectedColor = 0, brushSize = 1, zoom = 2, drawing = false;
+        let pixelData = Array.from({length: H}, () => Array(W).fill(2)); // Start with transparent color
+        let lastPaintPos = null;
+        
+        // Undo system
+        let undoStack = [];
+        let maxUndoSteps = 50;
+        
+        // Music system
+        let musicState = 'low'; // 'mute', 'low', 'high'
+        
+        const canvas = $('#canvas')[0];
+        const ctx = canvas.getContext('2d');
+        const bgMusic = $('#bgMusic')[0];
+
+        const rgbToHex = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, '0')).join('');
+        const hexToRgb = hex => {
+            hex = hex.replace('#','');
+            if (hex.length === 3) hex = hex.split('').map(x=>x+x).join('');
+            return [0,1,2].map(i=>parseInt(hex.substr(i*2,2),16));
+        };
+
+        const showHint = msg => {
+            const $hint = $('#hint');
+            const orig = $hint.text();
+            $hint.text(msg).css('color', '#28a745');
+            setTimeout(() => $hint.text(orig).css('color', 'var(--text-accent)'), 2000);
+        };
+
+        const updateMusicControls = () => {
+            $('.music-btn').removeClass('active');
+            $('#music' + musicState.charAt(0).toUpperCase() + musicState.slice(1)).addClass('active');
+        };
+
+        const setMusicState = (state) => {
+            musicState = state;
+            updateMusicControls();
+            
+            switch(state) {
+                case 'mute':
+                    bgMusic.pause();
+                    bgMusic.currentTime = 0;
+                    break;
+                case 'low':
+                    bgMusic.volume = 0.5;
+                    if (bgMusic.paused) {
+                        bgMusic.currentTime = 0;
+                        bgMusic.play().catch(() => {});
+                    }
+                    break;
+                case 'high':
+                    bgMusic.volume = 1.0;
+                    if (bgMusic.paused) {
+                        bgMusic.currentTime = 0;
+                        bgMusic.play().catch(() => {});
+                    }
+                    break;
+            }
+        };
+
+        const saveToUndoStack = () => {
+            // Deep copy the current pixel data
+            const snapshot = pixelData.map(row => [...row]);
+            undoStack.push(snapshot);
+            
+            // Limit undo stack size
+            if (undoStack.length > maxUndoSteps) {
+                undoStack.shift();
+            }
+            
+            updateUndoButton();
+        };
+
+        const undo = () => {
+            if (undoStack.length > 0) {
+                pixelData = undoStack.pop();
+                redrawCanvas();
+                updateUndoButton();
+            }
+        };
+
+        const updateUndoButton = () => {
+            const $undoBtn = $('#undoBtn');
+            if (undoStack.length > 0) {
+                $undoBtn.prop('disabled', false);
+            } else {
+                $undoBtn.prop('disabled', true);
+            }
+        };
+
+        const updatePalette = () => {
+            let html = '';
+            palette.forEach((rgb, i) => {
+                const selected = selectedColor === i ? ' selected' : '';
+                html += `<div class="palette-color${selected}" style="background:${rgbToHex(rgb)}" data-idx="${i}"></div>`;
+            });
+            if (palette.length < MAX_COLORS) {
+                html += '<div class="palette-add">+</div>';
+            }
+            $('#palette').html(html);
+        };
+
+        const drawPixel = (x, y, colorIdx) => {
+            if (x >= 0 && y >= 0 && x < W && y < H) {
+                pixelData[y][x] = colorIdx;
+            }
+        };
+
+        const redrawCanvas = () => {
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    ctx.fillStyle = rgbToHex(palette[pixelData[y][x]]);
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+        };
+
+        const resizeCanvas = () => {
+            $('#canvas').css({width: W * zoom, height: H * zoom});
+        };
+
+        const getCanvasPos = e => {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return [
+                Math.floor((clientX - rect.left) / zoom),
+                Math.floor((clientY - rect.top) / zoom)
+            ];
+        };
+
+        // Bresenham's line algorithm for smooth drawing
+        const drawLine = (x0, y0, x1, y1) => {
+            const dx = Math.abs(x1 - x0);
+            const dy = Math.abs(y1 - y0);
+            const sx = x0 < x1 ? 1 : -1;
+            const sy = y0 < y1 ? 1 : -1;
+            let err = dx - dy;
+
+            let x = x0, y = y0;
+            
+            while (true) {
+                paintBrush(x, y);
+                
+                if (x === x1 && y === y1) break;
+                
+                const e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y += sy;
+                }
+            }
+        };
+
+        const paintBrush = (x, y) => {
+            const half = Math.floor(brushSize/2);
+            for (let dy = -half; dy < brushSize-half; dy++) {
+                for (let dx = -half; dx < brushSize-half; dx++) {
+                    drawPixel(x+dx, y+dy, selectedColor);
+                }
+            }
+        };
+
+        const paint = (x, y) => {
+            if (lastPaintPos) {
+                drawLine(lastPaintPos[0], lastPaintPos[1], x, y);
+            } else {
+                paintBrush(x, y);
+            }
+            lastPaintPos = [x, y];
+            redrawCanvas();
+        };
+
+        const exportImage = () => {
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = W;
+            exportCanvas.height = H;
+            const ectx = exportCanvas.getContext('2d');
+            const imgData = ectx.createImageData(W, H);
+            
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    const [r,g,b] = palette[pixelData[y][x]];
+                    const i = (y*W + x)*4;
+                    imgData.data[i] = r;
+                    imgData.data[i+1] = g;
+                    imgData.data[i+2] = b;
+                    // Make transparent color actually transparent
+                    imgData.data[i+3] = (r === TRANSPARENT_COLOR[0] && g === TRANSPARENT_COLOR[1] && b === TRANSPARENT_COLOR[2]) ? 0 : 255;
+                }
+            }
+            ectx.putImageData(imgData, 0, 0);
+            return exportCanvas;
+        };
+
+        // Event handlers
+        $(document).on('click', '.palette-color', function() {
+            selectedColor = parseInt($(this).data('idx'));
+            updatePalette();
+        });
+
+        $(document).on('contextmenu touchstart', '.palette-color', function(e) {
+            e.preventDefault();
+            const idx = parseInt($(this).data('idx'));
+            if (idx > 2) {
+                setTimeout(() => {
+                    if (confirm('Remove this color?')) {
+                        palette.splice(idx, 1);
+                        if (selectedColor >= palette.length) selectedColor = palette.length-1;
+                        updatePalette();
+                    }
+                }, 500);
+            }
+        });
+
+        $(document).on('click', '.palette-add', function() {
+            if (palette.length < MAX_COLORS) {
+                const color = prompt("Enter color hex (e.g. #ff8800):", "#888888");
+                if (color) {
+                    try {
+                        palette.push(hexToRgb(color));
+                        selectedColor = palette.length-1;
+                        updatePalette();
+                    } catch (e) {
+                        showHint('Invalid color format!');
+                    }
+                }
+            }
+        });
+
+        $('#brushSelect').on('change', function() {
+            brushSize = parseInt($(this).val());
+        });
+
+        $('#zoomSelect').on('change', function() {
+            zoom = parseInt($(this).val());
+            resizeCanvas();
+        });
+
+        $('#undoBtn').on('click', function() {
+            undo();
+        });
+
+        // Music controls
+        $('#musicMute').on('click', function() {
+            setMusicState('mute');
+        });
+
+        $('#musicLow').on('click', function() {
+            setMusicState('low');
+        });
+
+        $('#musicHigh').on('click', function() {
+            setMusicState('high');
+        });
+
+        // Keyboard shortcuts
+        $(document).on('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            }
+        });
+
+        // Canvas events with improved drawing
+        $('#canvas').on('mousedown touchstart', function(e) {
+            e.preventDefault();
+            drawing = true;
+            
+            // Save state before starting to draw
+            saveToUndoStack();
+            
+            const [x, y] = getCanvasPos(e.originalEvent);
+            lastPaintPos = null; // Reset for new stroke
+            paint(x, y);
+        });
+
+        $('#canvas').on('mousemove touchmove', function(e) {
+            e.preventDefault();
+            if (!drawing) return;
+            const [x, y] = getCanvasPos(e.originalEvent);
+            paint(x, y);
+        });
+
+        $(document).on('mouseup touchend mouseleave', () => {
+            drawing = false;
+            lastPaintPos = null;
+        });
+
+        $('#download').click(() => {
+            const url = exportImage().toDataURL('image/png');
+            $('<a>').attr({href: url, download: 'sticker.png'})[0].click();
+            showHint('Downloaded!');
+        });
+
+        $('#clipboard').click(async () => {
+            exportImage().toBlob(async blob => {
+                try {
+                    if (navigator.clipboard?.write) {
+                        await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+                        showHint('Copied to clipboard!');
+                    } else {
+                        showHint('Clipboard not supported on this device.');
+                    }
+                } catch (e) {
+                    showHint('Failed to copy to clipboard.');
+                }
+            }, 'image/png');
+        });
+
+        // Initialize
+        $(() => {
+            updatePalette();
+            resizeCanvas();
+            redrawCanvas();
+            updateUndoButton();
+            
+            // Save initial state
+            saveToUndoStack();
+            
+            // Initialize music
+            setMusicState('low');
+            
+            // Handle user interaction requirement for autoplay
+            $(document).one('click touchstart', function() {
+                if (musicState !== 'mute') {
+                    bgMusic.play().catch(() => {});
+                }
+            });
+        });
+    </script>
+</body>
+</html>
