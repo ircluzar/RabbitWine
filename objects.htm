@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rabbit Wine</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <style>
+        :root {
+            --primary-bg: #1a1626;
+            --secondary-bg: #2d2438;
+            --tertiary-bg: #3a2f4a;
+            --accent-purple: #6b46c1;
+            --accent-pink: #ec4899;
+            --accent-light: #ccbcfc;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-accent: #ccbcfc;
+            --border: #4a4a4a;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            min-height: 100vh;
+        }
+
+        .panel {
+            background: var(--secondary-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+        }
+
+        .stats-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .credit-display {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .credit-amount {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .credit-label {
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.9);
+            margin-top: 5px;
+        }
+
+        .object-level {
+            font-size: 1.2em;
+            color: var(--accent-light);
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .upgrade-button {
+            width: 100%;
+            padding: 15px;
+            background: var(--accent-purple);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .upgrade-button:hover {
+            background: var(--accent-pink);
+            transform: translateY(-2px);
+        }
+
+        .upgrade-button:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .mute-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--accent-purple);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            font-size: 1.2em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(107, 70, 193, 0.3);
+        }
+
+        .mute-button:hover {
+            background: var(--accent-pink);
+            transform: scale(1.1);
+        }
+
+        .mute-button.muted {
+            background: var(--error);
+        }
+
+        .objects-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--text-accent);
+        }
+
+        .discard-button {
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .discard-button:hover {
+            background: #dc2626;
+            transform: scale(1.05);
+        }
+
+        .objects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .object-slot {
+            aspect-ratio: 1;
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            background: var(--tertiary-bg);
+        }
+
+        .object-slot:hover {
+            border-color: var(--accent-purple);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(107, 70, 193, 0.3);
+        }
+
+        .object-slot.empty {
+            border-style: dashed;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .object-slot.filled {
+            border-style: solid;
+            border-color: var(--accent-purple);
+            background: var(--secondary-bg);
+        }
+
+        .object-slot.cooldown {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .object-slot.pulsing {
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .object-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .object-stats {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+            padding: 10px;
+            font-size: 0.8em;
+            color: white;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 2;
+        }
+
+        .object-slot:hover .object-stats {
+            transform: translateY(0);
+        }
+
+		@media (hover: none) and (pointer: coarse) {
+			.object-slot .object-stats {
+				transform: translateY(0);
+			}
+		}
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+
+        .stat-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            color: var(--text-accent);
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .cooldown-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: var(--accent-purple);
+            transition: width 0.1s ease;
+            z-index: 3;
+        }
+
+        .cooldown-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            z-index: 4;
+        }
+
+        .feedback {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .feedback.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(10px);
+        }
+
+        .feedback.success {
+            background: var(--success);
+        }
+
+        .feedback.warning {
+            background: var(--warning);
+        }
+
+        .feedback.error {
+            background: var(--error);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                gap: 15px;
+                padding: 15px;
+            }
+
+            .objects-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 15px;
+            }
+
+            .credit-amount {
+                font-size: 2em;
+            }
+
+            .mute-button {
+                width: 40px;
+                height: 40px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="mute-button" id="muteButton" title="Toggle Music">🔊</button>
+    
+    <div class="container">
+        <div class="stats-panel panel">
+            <div class="credit-display">
+                <div class="credit-amount" id="creditAmount">0</div>
+                <div class="credit-label">Credits</div>
+                <div class="object-level" id="objectLevel">Level 1</div>
+            </div>
+            <button class="upgrade-button" id="upgradeButton" style="display: none;">
+                Upgrade - 300 Credits
+            </button>
+        </div>
+        
+        <div class="objects-panel panel">
+            <div class="section-header">
+                <div class="section-title">Object</div>
+                <button class="discard-button" id="discardButton" style="display: none;">
+                    Discard Object
+                </button>
+            </div>
+            <div class="objects-grid" id="objectsGrid">
+                <!-- Object slots will be generated here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <script>
+        $(document).ready(function() {
+            const CACHE_KEY = 'rabbitobjects_save';
+            const MAX_OBJECTS = 4047;
+            
+            let state = {
+                credits: 0,
+                objects: [{
+                    id: 'master',
+                    isEmpty: true,
+                    imageNumber: null,
+                    level: 1,
+                    baseCost: 300,
+                    costScaling: 1.5,
+                    tickValue: null,
+                    breakProbability: null,
+                    shatterBonus: null,
+                    music: null,
+                    breakSfx: null,
+                    cooldown: null,
+                    lastTicked: null,
+                    currentMusic: null
+                }],
+                isMuted: false
+            };
+            
+            let currentMusicAudio = null;
+            let cooldownIntervals = new Map();
+            
+            function saveGame() {
+                try {
+                    localStorage.setItem(CACHE_KEY, JSON.stringify(state));
+                } catch(e) {
+                    console.error('Failed to save game:', e);
+                }
+            }
+            
+            function loadGame() {
+                try {
+                    const saved = localStorage.getItem(CACHE_KEY);
+                    if (saved) {
+                        return JSON.parse(saved);
+                    }
+                    return null;
+                } catch(e) {
+                    console.error('Failed to load game:', e);
+                    return null;
+                }
+            }
+            
+            function playMusic(musicNumber) {
+                if (state.isMuted) return;
+                
+                if (currentMusicAudio) {
+                    currentMusicAudio.pause();
+                    currentMusicAudio = null;
+                }
+                
+                const audio = new Audio(`corridor/${musicNumber}.mp3`);
+                audio.volume = 0.15;
+                audio.loop = true;
+                audio.play().catch(e => console.log('Music play failed:', e));
+                currentMusicAudio = audio;
+            }
+            
+            function playBreakSfx(sfxNumber) {
+                if (state.isMuted) return;
+                
+                const audio = new Audio(`break/${sfxNumber}.wav`);
+                audio.volume = 0.25;
+                audio.play().catch(e => console.log('SFX play failed:', e));
+            }
+			
+			function playTickSfx(sfxNumber) {
+                if (state.isMuted) return;
+                
+                const audio = new Audio(`tick/${sfxNumber}.mp3`);
+                audio.volume = 0.2;
+                audio.play().catch(e => console.log('SFX play failed:', e));
+            }
+            
+            function stopMusic() {
+                if (currentMusicAudio) {
+                    currentMusicAudio.pause();
+                    currentMusicAudio = null;
+                }
+            }
+            
+            function toggleMute() {
+                state.isMuted = !state.isMuted;
+                const $muteButton = $('#muteButton');
+                
+                if (state.isMuted) {
+                    stopMusic();
+                    $muteButton.text('🔇').addClass('muted');
+                } else {
+                    $muteButton.text('🔊').removeClass('muted');
+                    const obj = state.objects[0];
+                    if (!obj.isEmpty && obj.currentMusic) {
+                        playMusic(obj.music);
+                    }
+                }
+                
+                saveGame();
+            }
+            
+            function generateRandomObject() {
+                return {
+                    imageNumber: Math.floor(Math.random() * MAX_OBJECTS),
+                    level: 1,
+                    baseCost: 300,
+                    costScaling: 1.3 + Math.random() * 0.69, // 1.3-1.8
+                    tickValue: Math.floor(Math.random() * 11) + 4,
+                    breakProbability: Math.floor(Math.random() * 35) + 16,
+                    shatterBonus: Math.floor(Math.random() * 420) + 69,
+                    music: Math.floor(Math.random() * 39) + 1,
+                    breakSfx: Math.floor(Math.random() * 18) + 1,
+                    cooldown: Math.floor(Math.random() * 20) + 1,
+                    lastTicked: null,
+                    currentMusic: false
+                };
+            }
+            
+            function getUpgradeCost(obj) {
+                return Math.floor(obj.baseCost * Math.pow(obj.costScaling, obj.level - 1));
+            }
+            
+            function upgradeObject() {
+                const obj = state.objects[0];
+                if (obj.isEmpty) return;
+                
+                const cost = getUpgradeCost(obj);
+                if (state.credits < cost) return;
+                
+                state.credits -= cost;
+                obj.level++;
+                
+                // Random upgrade type
+                const upgradeType = Math.floor(Math.random() * 4);
+                switch(upgradeType) {
+                    case 0: // Increase tick value by 10% (min 2)
+                        obj.tickValue = Math.max(2, Math.floor(obj.tickValue * 2.69)) + 25;
+                        showFeedback('Tick value increased!', 'success');
+                        break;
+                    case 1: // Decrease break chance by 4% (min 5%)
+                        obj.breakProbability = Math.max(5, obj.breakProbability - 4);
+                        showFeedback('Break chance reduced!', 'success');
+                        break;
+                    case 2: // Increase shatter bonus by 25%
+                        obj.shatterBonus = Math.floor(obj.shatterBonus * 2.69);
+                        showFeedback('Shatter bonus increased!', 'success');
+                        break;
+                    case 3: // Decrease cooldown by 1s (min 2s)
+                        obj.cooldown = Math.max(2, obj.cooldown - 2);
+                        showFeedback('Cooldown reduced!', 'success');
+                        break;
+                }
+                
+                saveGame();
+                updateUI();
+            }
+            
+            function discardObject() {
+                const obj = state.objects[0];
+                if (obj.isEmpty) return;
+                
+                if (obj.currentMusic) {
+                    stopMusic();
+                }
+                
+                if (cooldownIntervals.has(0)) {
+                    clearInterval(cooldownIntervals.get(0));
+                    cooldownIntervals.delete(0);
+                }
+				
+				playBreakSfx(obj.breakSfx);
+                
+                obj.isEmpty = true;
+                obj.imageNumber = null;
+                obj.level = 1;
+                obj.baseCost = 300;
+                obj.costScaling = 1.5;
+                obj.tickValue = null;
+                obj.breakProbability = null;
+                obj.shatterBonus = null;
+                obj.music = null;
+                obj.breakSfx = null;
+                obj.cooldown = null;
+                obj.lastTicked = null;
+                obj.currentMusic = false;
+                
+                saveGame();
+                updateUI();
+                showFeedback('Object discarded!', 'warning');
+            }
+            
+            function isOnCooldown(objectIndex) {
+                const obj = state.objects[objectIndex];
+                if (!obj.lastTicked) return false;
+                
+                const now = Date.now();
+                const cooldownMs = obj.cooldown * 1000;
+                return (now - obj.lastTicked) < cooldownMs;
+            }
+            
+            function getCooldownRemaining(objectIndex) {
+                const obj = state.objects[objectIndex];
+                if (!obj.lastTicked) return 0;
+                
+                const now = Date.now();
+                const cooldownMs = obj.cooldown * 1000;
+                const remaining = cooldownMs - (now - obj.lastTicked);
+                return Math.max(0, remaining);
+            }
+            
+            function startCooldownTimer(objectIndex) {
+                const obj = state.objects[objectIndex];
+                if (obj.isEmpty) return;
+                
+                if (cooldownIntervals.has(objectIndex)) {
+                    clearInterval(cooldownIntervals.get(objectIndex));
+                }
+                
+                const interval = setInterval(() => {
+                    if (isOnCooldown(objectIndex)) {
+                        updateCooldownDisplay(objectIndex);
+                    } else {
+                        clearInterval(interval);
+                        cooldownIntervals.delete(objectIndex);
+                        updateCooldownDisplay(objectIndex);
+                    }
+                }, 100);
+                
+                cooldownIntervals.set(objectIndex, interval);
+            }
+            
+            function updateCooldownDisplay(objectIndex) {
+                const $slot = $(`.object-slot[data-index="${objectIndex}"]`);
+                const remaining = getCooldownRemaining(objectIndex);
+                
+                if (remaining > 0) {
+                    const obj = state.objects[objectIndex];
+                    const progress = ((obj.cooldown * 1000 - remaining) / (obj.cooldown * 1000)) * 100;
+                    const remainingSeconds = Math.ceil(remaining / 1000);
+                    
+                    $slot.addClass('cooldown');
+                    $slot.find('.cooldown-bar').css('width', `${progress}%`);
+                    $slot.find('.cooldown-text').text(`${remainingSeconds}s`).show();
+                } else {
+                    $slot.removeClass('cooldown');
+                    $slot.find('.cooldown-bar').css('width', '0%');
+                    $slot.find('.cooldown-text').hide();
+                }
+            }
+            
+            function tickObject(objectIndex) {
+                const obj = state.objects[objectIndex];
+                if (obj.isEmpty || isOnCooldown(objectIndex)) return;
+                
+                state.credits += obj.tickValue;
+                showFeedback(`+${obj.tickValue} credits!`, 'success');
+                
+                obj.lastTicked = Date.now();
+                startCooldownTimer(objectIndex);
+                
+                const breakRoll = Math.random() * 100;
+                if (breakRoll < obj.breakProbability) {
+                    state.credits += obj.shatterBonus;
+                    showFeedback(`Object shattered! +${obj.shatterBonus} bonus!`, 'warning');
+                    
+                    playBreakSfx(obj.breakSfx);
+                    
+                    if (obj.currentMusic) {
+                        stopMusic();
+                    }
+                    
+                    if (cooldownIntervals.has(objectIndex)) {
+                        clearInterval(cooldownIntervals.get(objectIndex));
+                        cooldownIntervals.delete(objectIndex);
+                    }
+                    
+                    obj.isEmpty = true;
+                    obj.imageNumber = null;
+                    obj.level = 1;
+                    obj.baseCost = 300;
+                    obj.costScaling = 1.5;
+                    obj.tickValue = null;
+                    obj.breakProbability = null;
+                    obj.shatterBonus = null;
+                    obj.music = null;
+                    obj.breakSfx = null;
+                    obj.cooldown = null;
+                    obj.lastTicked = null;
+                    obj.currentMusic = false;
+                }
+				else
+				{
+					playTickSfx((obj.breakSfx % 3) + 1);
+				}
+                
+                saveGame();
+                updateUI();
+            }
+            
+            function fillEmptySlot(objectIndex) {
+                const obj = state.objects[objectIndex];
+                if (!obj.isEmpty) return;
+                
+                const newObject = generateRandomObject();
+                Object.assign(obj, newObject);
+                obj.isEmpty = false;
+                obj.currentMusic = true;
+				
+				if(obj.cooldown > 5)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.cooldown > 15)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.cooldown > 25)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.cooldown > 35)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.cooldown > 45)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.breakProbability > 20)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.breakProbability > 30)
+					obj.tickValue = obj.tickValue * 2;
+					
+				if(obj.breakProbability > 40)
+					obj.tickValue = obj.tickValue * 2;
+                
+                stopMusic();
+                playMusic(obj.music);
+                
+                saveGame();
+                updateUI();
+                showFeedback('New object', 'success');
+            }
+            
+            function showFeedback(message, type = 'success') {
+                const $feedback = $('#feedback');
+                $feedback.removeClass('success warning error').addClass(type);
+                $feedback.text(message).addClass('show');
+                
+                setTimeout(() => {
+                    $feedback.removeClass('show');
+                }, 3000);
+            }
+            
+            function updateUI() {
+                $('#creditAmount').text(state.credits.toLocaleString());
+                
+                const obj = state.objects[0];
+                const $upgradeButton = $('#upgradeButton');
+                const $discardButton = $('#discardButton');
+                const $objectLevel = $('#objectLevel');
+                
+                if (obj.isEmpty) {
+                    $upgradeButton.hide();
+                    $discardButton.hide();
+                    $objectLevel.text('Level 1');
+                } else {
+                    $upgradeButton.show();
+                    $discardButton.show();
+                    $objectLevel.text(`Level ${obj.level}`);
+                    
+                    const cost = getUpgradeCost(obj);
+                    $upgradeButton.text(`Upgrade - ${cost.toLocaleString()} Credits`);
+                    $upgradeButton.prop('disabled', state.credits < cost);
+                }
+                
+                renderObjectSlots();
+            }
+            
+            function renderObjectSlots() {
+                const $grid = $('#objectsGrid');
+                $grid.empty();
+                
+                state.objects.forEach((obj, index) => {
+                    const $slot = $('<div>').addClass('object-slot').attr('data-index', index);
+                    
+                    if (obj.isEmpty) {
+                        $slot.addClass('empty');
+                        $slot.html('<div>Click for a new object</div>');
+                        $slot.on('click', () => fillEmptySlot(index));
+                    } else {
+                        $slot.addClass('filled');
+                        
+                        const $img = $('<img>').addClass('object-image')
+                            .attr('src', `objects/${obj.imageNumber}.png`)
+                            .attr('alt', `Object ${obj.imageNumber}`)
+                            .on('error', function() {
+                                $(this).attr('src', 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+Tm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4=');
+                            });
+                        
+                        const $stats = $('<div>').addClass('object-stats');
+                        $stats.html(`
+                            <div class="stat-row">
+                                <span class="stat-label">Level:</span>
+                                <span class="stat-value">${obj.level}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Tick:</span>
+                                <span class="stat-value">${obj.tickValue}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Break:</span>
+                                <span class="stat-value">${obj.breakProbability}%</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Shatter:</span>
+                                <span class="stat-value">${obj.shatterBonus}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Cooldown:</span>
+                                <span class="stat-value">${obj.cooldown}s</span>
+                            </div>
+                        `);
+                        
+                        const $cooldownBar = $('<div>').addClass('cooldown-bar');
+                        const $cooldownText = $('<div>').addClass('cooldown-text').hide();
+                        
+                        $slot.append($img, $stats, $cooldownBar, $cooldownText);
+                        $slot.on('click', () => {
+                            if (!isOnCooldown(index)) {
+                                $slot.addClass('pulsing');
+                                setTimeout(() => $slot.removeClass('pulsing'), 500);
+                                tickObject(index);
+                            }
+                        });
+                        
+                        updateCooldownDisplay(index);
+                        
+                        if (isOnCooldown(index)) {
+                            startCooldownTimer(index);
+                        }
+                    }
+                    
+                    $grid.append($slot);
+                });
+            }
+            
+            function init() {
+                const savedState = loadGame();
+                if (savedState) {
+                    state = savedState;
+                    
+                    // Restart music if there was an object playing it
+                    const obj = state.objects[0];
+                    if (!obj.isEmpty && obj.currentMusic && !state.isMuted) {
+                        playMusic(obj.music);
+                    }
+                }
+                
+                const $muteButton = $('#muteButton');
+                if (state.isMuted) {
+                    $muteButton.text('🔇').addClass('muted');
+                } else {
+                    $muteButton.text('🔊').removeClass('muted');
+                }
+                
+                $muteButton.on('click', toggleMute);
+                $('#upgradeButton').on('click', upgradeObject);
+                $('#discardButton').on('click', discardObject);
+                
+                updateUI();
+                
+                setInterval(saveGame, 5000);
+            }
+            
+            init();
+        });
+    </script>
+</body>
+</html>

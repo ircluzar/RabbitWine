@@ -227,7 +227,7 @@
                                 <option value="1">1px</option>
                                 <option value="2">2px</option>
                                 <option value="3">3px</option>
-                                <option value="4">4px</option>
+                                <option value="4" selected>4px</option>
                                 <option value="5">5px</option>
                                 <option value="8">8px</option>
                                 <option value="16">16px</option>
@@ -237,8 +237,8 @@
                         <div class="control-group">
                             <h3>Zoom Level</h3>
                             <select class="select-box" id="zoomSelect">
-                                <option value="1">1x</option>
-                                <option value="2" selected>2x</option>
+                                <option value="1" selected>1x</option>
+                                <option value="2">2x</option>
                                 <option value="3">3x</option>
                                 <option value="4">4x</option>
                                 <option value="6">6x</option>
@@ -281,7 +281,7 @@
         const TRANSPARENT_COLOR = [204, 188, 252];
         
         let palette = [[0,0,0], [255,255,255], TRANSPARENT_COLOR];
-        let selectedColor = 0, brushSize = 1, zoom = 2, drawing = false;
+        let selectedColor = 0, brushSize = 4, zoom = 1, drawing = false;
         let pixelData = Array.from({length: H}, () => Array(W).fill(2)); // Start with transparent color
         let lastPaintPos = null;
         

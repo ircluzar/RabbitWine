@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="shortcut icon" type="image/png" href="favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="apple-touch-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="apple-touch-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="apple-touch-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="apple-touch-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="apple-touch-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="57x57" href="apple-touch-icon-57x57.png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="android-chrome-512x512.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="144x144" href="android-chrome-144x144.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="android-chrome-96x96.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="android-chrome-48x48.png">
+    <meta name="msapplication-TileImage" content="mstile-144x144.png">
+    <meta name="msapplication-TileColor" content="#1a1626">
+    <meta name="msapplication-config" content="browserconfig.xml">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1626">
+    <meta name="msapplication-navbutton-color" content="#1a1626">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Violet's Stickers">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Violet's Stickers">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <title>Rabbit Wine</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="pack-panel panel">
+            <div class="pack-selection" id="packSelection"></div>
+            <div class="pack-input" id="packInput">
+                <input type="text" id="packNameInput" placeholder="Enter pack name..." />
+                <button class="confirm" id="confirmAdd">Add</button>
+                <button class="cancel" id="cancelAdd">Cancel</button>
+            </div>
+        </div>
+        
+        <div class="config-panel panel">
+            
+            <div class="config-group">
+                <label>Include Background:</label>
+                <button class="toggle-button flip-button" id="bgButton">OFF</button>
+            </div>
+            
+            <div class="config-group">
+                <label>Type:</label>
+                <div class="button-group" id="typeButtons"></div>
+            </div>
+            
+            <div class="config-group">
+                <label>Horizontal Flip:</label>
+                <button class="toggle-button flip-button" id="flipButton">OFF</button>
+            </div>
+            
+            <div class="preview-section">
+                <div class="config-group">
+                    <label for="sizeSelect">Sticker Size:</label>
+                    <select id="sizeSelect">
+                        <option value="0.25">25%</option>
+                        <option value="0.5" selected>50%</option>
+                        <option value="0.69">69%</option>
+                        <option value="0.75">75%</option>
+                        <option value="1">100%</option>
+                    </select>
+                </div>
+                
+                <div class="preview-container" id="previewContainer">
+                    <div class="loading">Loading sticker pack...</div>
+                </div>
+                
+                <div class="copy-hint">Click the preview to copy to clipboard</div>
+				<div><a href="edit.htm" style="text-decoration: none; color: white; font-weight: bold;">Try the editor</a></div>
+            </div>
+        </div>
+        
+        <div class="sticker-panel panel">
+            <div class="sticker-grid" id="stickerGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            const CACHE = 'violetStickerSettings';
+            
+            let state = {
+                selectedStickerId: 1, currentType: 'girl', isFlipped: false, 
+                includeBg: false, stickerSize: '0.5', currentPreviewCanvas: null,
+                currentPreviewImage: null, stickerPackConfig: null,
+                currentPack: 'violet', knownPacks: []
+            };
+            
+            const imageCache = {};
+            
+            const settings = {
+                save() {
+                    try {
+                        const saveState = {...state};
+                        delete saveState.currentPreviewCanvas;
+                        delete saveState.currentPreviewImage; 
+                        delete saveState.stickerPackConfig;
+                        localStorage?.setItem(CACHE, JSON.stringify(saveState));
+                    } catch(e) {}
+                },
+                
+                load() {
+                    try {
+                        const saved = localStorage?.getItem(CACHE);
+                        return saved ? JSON.parse(saved) : null;
+                    } catch(e) { return null; }
+                }
+            };
+            
+            const packManager = {
+                async validatePack(packName) {
+                    try {
+                        const res = await fetch(`${packName}/config.json`);
+                        if (res.ok) {
+                            const config = await res.json();
+                            return config;
+                        }
+                        return null;
+                    } catch {
+                        return null;
+                    }
+                },
+                
+                addPack(packName) {
+                    if (!state.knownPacks.includes(packName)) {
+                        state.knownPacks.push(packName);
+                        settings.save();
+                        this.updateUI();
+                    }
+                },
+                
+                removePack(packName) {
+                    if (packName === 'violet') return false;
+                    const index = state.knownPacks.indexOf(packName);
+                    if (index > -1) {
+                        state.knownPacks.splice(index, 1);
+                        if (state.currentPack === packName) {
+                            state.currentPack = 'violet';
+                            stickerPack.loadPack('violet');
+                        }
+                        settings.save();
+                        this.updateUI();
+                        return true;
+                    }
+                    return false;
+                },
+                
+                updateUI() {
+                    const $selection = $('#packSelection').empty();
+                    
+                    // Add violet pack (always first)
+                    const $violetBtn = $('<button>').addClass('pack-button')
+                        .toggleClass('active', state.currentPack === 'violet')
+                        .text('Violet')
+                        .on('click', () => this.selectPack('violet'));
+                    $selection.append($violetBtn);
+                    
+                    // Add known packs
+                    state.knownPacks.forEach(pack => {
+                        const $btn = $('<button>').addClass('pack-button')
+                            .toggleClass('active', state.currentPack === pack)
+                            .text(pack)
+                            .on('click', () => this.selectPack(pack));
+                        $selection.append($btn);
+                    });
+                    
+                    // Add control buttons
+                    const $addBtn = $('<button>').addClass('pack-button add-pack')
+                        .text('+')
+                        .on('click', () => this.showAddInput());
+                    $selection.append($addBtn);
+                    
+                    if (state.currentPack !== 'violet') {
+                        const $removeBtn = $('<button>').addClass('pack-button remove-pack')
+                            .html('🗑')
+                            .on('click', () => this.confirmRemove());
+                        $selection.append($removeBtn);
+                    }
+                },
+                
+                selectPack(packName) {
+                    if (state.currentPack !== packName) {
+                        state.currentPack = packName;
+                        settings.save();
+                        stickerPack.loadPack(packName);
+                        this.updateUI();
+                    }
+                },
+                
+                showAddInput() {
+                    $('#packInput').show();
+                    $('#packNameInput').focus();
+                },
+                
+                hideAddInput() {
+                    $('#packInput').hide();
+                    $('#packNameInput').val('');
+                },
+                
+                async confirmAdd() {
+                    const packName = $('#packNameInput').val().trim().toLowerCase();
+                    if (!packName) return;
+                    
+                    if (packName === 'violet' || state.knownPacks.includes(packName)) {
+                        alert('Pack already exists!');
+                        return;
+                    }
+                    
+                    const config = await this.validatePack(packName);
+                    if (config) {
+                        this.addPack(packName);
+                        this.selectPack(packName);
+                        this.hideAddInput();
+                    } else {
+                        alert('Invalid pack name! Config file not found.');
+                    }
+                },
+                
+                confirmRemove() {
+                    if (confirm(`Are you sure you want to remove the "${state.currentPack}" pack?`)) {
+                        this.removePack(state.currentPack);
+                    }
+                }
+            };
+            
+            const stickerPack = {
+                async loadPack(packName) {
+                    try {
+                        const res = await fetch(`${packName}/config.json`);
+                        const config = await res.json();
+                        state.stickerPackConfig = config;
+                        
+                        // Reset state for new pack
+                        if (!config.types.includes(state.currentType)) {
+                            state.currentType = config.types[0];
+                        }
+                        if (state.selectedStickerId > config.count) {
+                            state.selectedStickerId = 1;
+                        }
+                        
+                        ui.setupTypeButtons();
+                        ui.update();
+                        grid.load();
+                        preview.update();
+                        this.preloadImages();
+                        
+                    } catch(e) {
+                        // Fallback to violet if pack fails to load
+                        if (packName !== 'violet') {
+                            console.error(`Failed to load pack ${packName}, falling back to violet`);
+                            await this.loadPack('violet');
+                        } else {
+                            $('#previewContainer').html('<div class="error">Failed to load sticker pack</div>');
+                        }
+                    }
+                },
+                
+                getPath(id, type) {
+                    return `${state.currentPack}/sticker_${type}_${id}.png`;
+                },
+                
+                async preloadImages() {
+                    if (!state.stickerPackConfig) return;
+                    
+                    const promises = [];
+                    for (let i = 1; i <= state.stickerPackConfig.count; i++) {
+                        for (const type of state.stickerPackConfig.types) {
+                            const path = this.getPath(i, type);
+                            if (!imageCache[path]) {
+                                promises.push(new Promise(resolve => {
+                                    const img = new Image();
+                                    img.crossOrigin = 'anonymous';
+                                    img.onload = () => { imageCache[path] = img; resolve(); };
+                                    img.onerror = resolve;
+                                    img.src = path;
+                                }));
+                            }
+                        }
+                    }
+                    await Promise.all(promises);
+                }
+            };
+            
+            const ui = {
+                update() {
+                    $('#bgButton').toggleClass('active', state.includeBg).text(state.includeBg ? 'ON' : 'OFF');
+                    $('.toggle-button[data-type]').removeClass('active').filter(`[data-type="${state.currentType}"]`).addClass('active');
+                    $('#flipButton').toggleClass('active', state.isFlipped).text(state.isFlipped ? 'ON' : 'OFF');
+                    $('#sizeSelect').val(state.stickerSize);
+                },
+                
+                setupTypeButtons() {
+                    const $tb = $('#typeButtons').empty();
+                    state.stickerPackConfig?.types.forEach(type => {
+                        $tb.append($('<button>').addClass('toggle-button').attr('data-type', type)
+                           .text(type.charAt(0).toUpperCase() + type.slice(1)));
+                    });
+                }
+            };
+            
+            const grid = {
+                load() {
+                    const $grid = $('#stickerGrid').empty();
+                    for (let i = 1; i <= state.stickerPackConfig.count; i++) {
+                        const $item = $('<div>').addClass('sticker-item').toggleClass('selected', i === state.selectedStickerId);
+                        const $img = $('<img>').attr({src: stickerPack.getPath(i, state.currentType, state.includeBg), alt: `Sticker ${i}`})
+                                               .on('error', function() { $(this).css({opacity: '0.3', title: 'Not found'}); });
+                        $item.append($img).on('click', () => this.select(i));
+                        $grid.append($item);
+                    }
+                },
+                
+                select(id) {
+                    state.selectedStickerId = id;
+                    settings.save();
+                    $('.sticker-item').removeClass('selected').eq(id - 1).addClass('selected');
+                    preview.updateImmediate();
+                },
+                
+                updateImages() {
+                    $('.sticker-item img').each((i, img) => {
+                        const newSrc = stickerPack.getPath(i + 1, state.currentType, state.includeBg);
+                        if ($(img).attr('src') !== newSrc) $(img).attr('src', newSrc);
+                    });
+                }
+            };
+            
+            const preview = {
+                updateImmediate() {
+                    const path = stickerPack.getPath(state.selectedStickerId, state.currentType);
+                    const cached = imageCache[path];
+                    cached ? this.process(cached) : this.update();
+                },
+                
+                update() {
+                    const path = stickerPack.getPath(state.selectedStickerId, state.currentType);
+                    if (!state.currentPreviewCanvas) $('#previewContainer').html('<div class="loading">Loading preview...</div>');
+                    
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    $(img).on('load', () => { this.process(img); grid.updateImages(); })
+                          .on('error', () => $('#previewContainer').html('<div class="error">Failed to load</div>'));
+                    img.src = path;
+                },
+                
+                process(img) {
+                    const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), scale = parseFloat(state.stickerSize);
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.save();
+
+                    // Determine background color
+                    let bgColor = null;
+                    const config = state.stickerPackConfig;
+                    if (state.includeBg) {
+                        if (config?.background) {
+                            if (Array.isArray(config.background)) {
+                                // Multiple colors
+                                let colorIdx = 0;
+                                if (config.types && config.types.length > 0 && config.types.includes(state.currentType)) {
+                                    colorIdx = config.types.indexOf(state.currentType);
+                                }
+                                // Fallback logic
+                                if (config.background.length === 1) {
+                                    bgColor = config.background[0];
+                                } else if (config.background.length > colorIdx) {
+                                    bgColor = config.background[colorIdx];
+                                } else {
+                                    bgColor = config.background[0];
+                                }
+                            } else if (typeof config.background === "string") {
+                                // Single color as string
+                                bgColor = config.background;
+                            }
+                        }
+                        // Fallback to app default if not set
+                        if (!bgColor) {
+                            bgColor = '204,188,252';
+                        }
+                        ctx.fillStyle = `rgb(${bgColor})`;
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
+
+                    if (state.isFlipped) {
+                        ctx.scale(-1, 1);
+                        ctx.translate(-canvas.width, 0);
+                    }
+
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    ctx.restore();
+
+                    $(canvas).addClass('preview-image').on('click', this.copy);
+                    $('#previewContainer').empty().append(canvas);
+                    state.currentPreviewCanvas = canvas;
+                    state.currentPreviewImage = img;
+                },
+                
+                async copy() {
+                    if (!state.currentPreviewCanvas) return;
+                    
+                    try {
+                        if (navigator.clipboard?.write && window.ClipboardItem) {
+                            state.currentPreviewCanvas.toBlob(async blob => {
+                                if (blob) {
+                                    try {
+                                        await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+                                        preview.feedback('Copied to clipboard!');
+                                    } catch { preview.download(); }
+                                }
+                            }, 'image/png');
+                        } else if (navigator.clipboard?.writeText) {
+                            await navigator.clipboard.writeText(state.currentPreviewCanvas.toDataURL('image/png'));
+                            preview.feedback('Image data copied as text!');
+                        } else preview.download();
+                    } catch { preview.download(); }
+                },
+                
+                feedback(msg) {
+                    const $h = $('.copy-hint'), orig = $h.text();
+                    $h.text(msg).css('color', '#28a745');
+                    setTimeout(() => $h.text(orig).css('color', 'var(--text-accent)'), 2000);
+                },
+                
+                download() {
+                    if (!state.currentPreviewCanvas) return;
+                    const url = state.currentPreviewCanvas.toDataURL('image/png');
+                    const path = stickerPack.getPath(state.selectedStickerId, state.currentType, state.includeBg);
+                    const name = path.split('/').pop().replace('.png', '_processed.png');
+                    $('<a>').attr({download: name, href: url})[0].click();
+                    this.feedback('Downloaded!');
+                }
+            };
+            
+            // Event handlers
+            $('#bgButton').on('click', function() {
+                state.includeBg = !state.includeBg;
+                $(this).toggleClass('active', state.includeBg).text(state.includeBg ? 'ON' : 'OFF');
+                settings.save(); preview.updateImmediate();
+            });
+            
+            $(document).on('click', '.toggle-button[data-type]', function() {
+                state.currentType = $(this).data('type');
+                $('.toggle-button[data-type]').removeClass('active');
+                $(this).addClass('active');
+                settings.save(); grid.updateImages(); preview.updateImmediate();
+            });
+            
+            $('#flipButton').on('click', function() {
+                state.isFlipped = !state.isFlipped;
+                $(this).toggleClass('active', state.isFlipped).text(state.isFlipped ? 'ON' : 'OFF');
+                settings.save(); preview.updateImmediate();
+            });
+            
+            $('#sizeSelect').on('change', function() {
+                state.stickerSize = $(this).val();
+                settings.save(); preview.updateImmediate();
+            });
+            
+            // Pack management events
+            $('#confirmAdd').on('click', () => packManager.confirmAdd());
+            $('#cancelAdd').on('click', () => packManager.hideAddInput());
+            $('#packNameInput').on('keypress', function(e) {
+                if (e.which === 13) packManager.confirmAdd();
+                if (e.which === 27) packManager.hideAddInput();
+            });
+            
+            // Init
+            async function init() {
+                try {
+                    const saved = settings.load();
+                    if (saved) state = {...state, ...saved};
+                    
+                    packManager.updateUI();
+                    await stickerPack.loadPack(state.currentPack);
+                } catch(e) {
+                    $('#previewContainer').html('<div class="error">Failed to load sticker pack</div>');
+                }
+            }
+            
+            init();
+        });
+    </script>
+</body>
+</html>
