@@ -30,6 +30,35 @@
         </div>
     </div>
     <div class="feedback" id="feedback"></div>
+    <style>
+        .tier-transition {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tier-transition::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            opacity: 0;
+            z-index: 10;
+            pointer-events: none;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        .tier-transition.flashing::before {
+            opacity: 1;
+        }
+        
+        .tier-transition.revealing::before {
+            opacity: 0;
+            transition: opacity 2s ease-out;
+        }
+    </style>
     <script>
         $(document).ready(function() {
             const CACHE_KEY = 'rabbitobjects_save', MAX_OBJECTS = 4000;
@@ -37,7 +66,42 @@
             let currentMusicAudio = null, cooldownIntervals = new Map();
             
             function createEmptyObject() {
-                return { id: 'master', isEmpty: true, imageNumber: null, level: 1, baseCost: 300, costScaling: 1.5, tickValue: null, breakProbability: null, shatterBonus: null, music: null, breakSfx: null, cooldown: null, lastTicked: null, currentMusic: null, subtickCount: 0 };
+                return { 
+                    id: 'master', 
+                    isEmpty: true, 
+                    imageNumber: null, 
+                    level: 1, 
+                    baseCost: 300, 
+                    costScaling: 1.5, 
+                    tickValue: null, 
+                    breakProbability: null, 
+                    shatterBonus: null, 
+                    music: null, 
+                    breakSfx: null, 
+                    cooldown: null, 
+                    lastTicked: null, 
+                    currentMusic: null, 
+                    subtickCount: 0 
+                };
+            }
+            
+            function getObjectTier(level) {
+                if (level >= 50) return 'places';
+                if (level >= 20) return 'orbs';
+                return 'shapes';
+            }
+            
+            function getImagePath(obj) {
+                const tier = getObjectTier(obj.level);
+                let imageNum = obj.imageNumber;
+                
+                if (tier === 'orbs') {
+                    imageNum = Math.floor(obj.imageNumber / 4);
+                } else if (tier === 'places') {
+                    imageNum = Math.floor(obj.imageNumber / 40);
+                }
+                
+                return `${tier}/${imageNum}.png`;
             }
             
             function validateSave(saved) {
@@ -90,6 +154,33 @@
                 return type === 'upgrade' ? base : Math.floor(base * (type === 'refresh' ? 10 + obj.level : 15 + obj.level) / 100);
             }
             
+            function performTierTransition(obj, $slot) {
+                const $img = $slot.find('.object-image');
+                const newImagePath = getImagePath(obj);
+                
+                // Add transition class and trigger flash
+                $slot.addClass('tier-transition flashing');
+                
+                // Change music
+                obj.music = Math.floor(Math.random() * 39) + 1;
+                if (obj.currentMusic && !state.isMuted) {
+                    stopMusic();
+                    playMusic(obj.music);
+                }
+                
+                setTimeout(() => {
+                    // Load new image
+                    $img.attr('src', newImagePath);
+                    
+                    // Start reveal transition
+                    $slot.removeClass('flashing').addClass('revealing');
+                    
+                    setTimeout(() => {
+                        $slot.removeClass('tier-transition revealing');
+                    }, 2000);
+                }, 300);
+            }
+            
             function upgradeObject() {
                 const obj = state.objects[0];
                 if (obj.isEmpty) return;
@@ -97,14 +188,36 @@
                 if (state.credits < cost) return;
                 
                 playPopSfx();
-                state.credits -= cost; obj.level++;
+                state.credits -= cost;
+                
+                const previousTier = getObjectTier(obj.level);
+                obj.level++;
+                const newTier = getObjectTier(obj.level);
+                
                 const upgrades = [
                     () => { obj.tickValue = Math.max(2, Math.floor(obj.tickValue * 2.69)) + 25; return 'Tick value increased!'; },
                     () => { obj.breakProbability = Math.max(5, obj.breakProbability - 4); return 'Break chance reduced!'; },
                     () => { obj.shatterBonus = Math.floor(obj.shatterBonus * 2.69); return 'Shatter bonus increased!'; },
                     () => { obj.cooldown = Math.max(2, obj.cooldown - 2); return 'Cooldown reduced!'; }
                 ];
-                showFeedback(upgrades[Math.floor(Math.random() * 4)](), 'success');
+                
+                let feedbackMessage = upgrades[Math.floor(Math.random() * 4)]();
+                
+                // Check for tier transition
+                if (previousTier !== newTier) {
+                    const $slot = $(`.object-slot[data-index="0"]`);
+                    if ($slot.length) {
+                        performTierTransition(obj, $slot);
+                    }
+                    
+                    if (newTier === 'orbs') {
+                        feedbackMessage = 'Tier upgrade: Shape → Orb!';
+                    } else if (newTier === 'places') {
+                        feedbackMessage = 'Tier upgrade: Orb → Place!';
+                    }
+                }
+                
+                showFeedback(feedbackMessage, 'success');
                 saveGame(); updateUI();
             }
             
@@ -281,10 +394,15 @@
                     } else {
                         $slot.addClass('filled');
                         
-                        const $img = $('<img>').addClass('object-image').attr('src', `shapes/${obj.imageNumber}.png`).attr('alt', `Object ${obj.imageNumber}`)
+                        const imagePath = getImagePath(obj);
+                        const $img = $('<img>').addClass('object-image').attr('src', imagePath).attr('alt', `Object ${obj.imageNumber}`)
                             .on('error', function() { $(this).attr('src', 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+Tm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4='); });
                         
-                        let stats = `<div class="stat-row"><span class="stat-label">Level:</span><span class="stat-value">${obj.level}</span></div>
+                        const tier = getObjectTier(obj.level);
+                        const tierDisplay = tier.charAt(0).toUpperCase() + tier.slice(1, -1); // "Shape", "Orb", "Place"
+                        
+                        let stats = `<div class="stat-row"><span class="stat-label">Tier:</span><span class="stat-value">${tierDisplay}</span></div>
+                            <div class="stat-row"><span class="stat-label">Level:</span><span class="stat-value">${obj.level}</span></div>
                             <div class="stat-row"><span class="stat-label">Tick:</span><span class="stat-value">${obj.tickValue}</span></div>
                             <div class="stat-row"><span class="stat-label">Break:</span><span class="stat-value">${obj.breakProbability}%</span></div>
                             <div class="stat-row"><span class="stat-label">Shatter:</span><span class="stat-value">${obj.shatterBonus}</span></div>

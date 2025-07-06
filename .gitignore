@@ -1,8 +1,8 @@
 /bootleg
-/break
-/corridor
-/shapes
-/orbs
-/places
-/pop
-/tick
+/objects/break
+/objects/corridor
+/objects/shapes
+/objects/orbs
+/objects/places
+/objects/pop
+/objects/tick
