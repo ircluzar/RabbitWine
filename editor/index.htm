@@ -6,6 +6,121 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        .layer-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .layer-btn {
+            padding: 8px 16px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .layer-btn.active {
+            background: var(--button-active);
+            border-color: var(--success-color);
+        }
+        .layer-btn:hover {
+            background: var(--button-hover);
+        }
+        .brush-shape-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .brush-shape-btn {
+            padding: 6px 12px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        .brush-shape-btn.active {
+            background: var(--button-active);
+            border-color: var(--success-color);
+        }
+        .brush-shape-btn:hover {
+            background: var(--button-hover);
+        }
+        .color-picker-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            max-width: 320px;
+        }
+        .color-picker-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+        .preset-colors {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+        .preset-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .preset-color:hover {
+            border: 2px solid var(--success-color);
+        }
+        .hex-input {
+            width: 100%;
+            padding: 8px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .color-picker-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .background-color-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            display: inline-block;
+            margin-left: 8px;
+        }
+        .layer-info {
+            font-size: 12px;
+            color: var(--text-accent);
+            margin-top: 4px;
+        }
+    </style>
 </head>
 <body>
     <audio id="bgMusic" loop preload="auto">
@@ -16,6 +131,16 @@
     <div class="editor-container">
         <div class="panel">
             <div class="tools">
+                <div class="tool-section">
+                    <h3>Layers</h3>
+                    <div class="layer-controls">
+                        <button class="layer-btn" id="layerBg">Background</button>
+                        <button class="layer-btn active" id="layerMid">Midground</button>
+                        <button class="layer-btn" id="layerFg">Foreground</button>
+                        <div class="background-color-indicator" id="bgColorIndicator"></div>
+                    </div>
+                    <div class="layer-info" id="layerInfo">Currently editing: Midground</div>
+                </div>
                 <div class="tool-section">
                     <h3>Color Palette</h3>
                     <div class="palette-grid" id="pal"></div>
@@ -34,6 +159,13 @@
                                 <option value="16">16px</option>
                                 <option value="32">32px</option>
                             </select>
+                        </div>
+                        <div class="control-group">
+                            <h3>Brush Shape</h3>
+                            <div class="brush-shape-controls">
+                                <button class="brush-shape-btn active" id="brushSquare">Square</button>
+                                <button class="brush-shape-btn" id="brushRound">Round</button>
+                            </div>
                         </div>
                         <div class="control-group">
                             <h3>Zoom Level</h3>
@@ -66,11 +198,25 @@
             <div class="footer">
                 <button class="btn primary" id="dl">Download PNG</button>
                 <button class="btn" id="clip">Copy to Clipboard</button>
+                <button class="btn" id="clearBtn">Clear All</button>
                 <div class="music-controls">
                     <button class="music-btn" id="musicMute">🔇</button>
                     <button class="music-btn active" id="musicLow">🔉</button>
                     <button class="music-btn" id="musicHigh">🔊</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Color Picker Popup -->
+    <div class="color-picker-overlay" id="colorPickerOverlay" style="display: none;">
+        <div class="color-picker-popup">
+            <h3>Choose Color</h3>
+            <div class="preset-colors" id="presetColors"></div>
+            <input type="text" class="hex-input" id="hexInput" placeholder="#888888">
+            <div class="color-picker-buttons">
+                <button class="btn" id="cancelColorPicker">Cancel</button>
+                <button class="btn primary" id="confirmColorPicker">Add Color</button>
             </div>
         </div>
     </div>
@@ -81,7 +227,16 @@
         
         let pal = [[0,0,0], [255,255,255], TRANS];
         let selCol = 0, brushSz = 4, zm = 1, drawing = false;
-        let pxData = Array.from({length: H}, () => Array(W).fill(2));
+        let brushShape = 'square'; // 'square' or 'round'
+        let currentLayer = 'mid'; // 'bg', 'mid', 'fg'
+        let bgColor = [204, 188, 252]; // Background layer color
+        
+        // Layer data - each layer has its own pixel data
+        let layers = {
+            mid: Array.from({length: H}, () => Array(W).fill(2)), // Midground
+            fg: Array.from({length: H}, () => Array(W).fill(2))   // Foreground
+        };
+        
         let lastPos = null;
         let undoStack = [];
         let maxUndo = 50;
@@ -90,6 +245,12 @@
         const cvs = $('#cvs')[0];
         const ctx = cvs.getContext('2d');
         const bgMusic = $('#bgMusic')[0];
+
+        // Preset colors for the color picker
+        const presetColors = [
+            '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080',
+            '#FFC0CB', '#A52A2A', '#808080', '#000000', '#FFFFFF', '#008000', '#800000', '#000080'
+        ];
 
         const rgb2hex = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, '0')).join('');
         const hex2rgb = hex => {
@@ -137,7 +298,10 @@
         };
 
         const saveUndo = () => {
-            const snap = pxData.map(row => [...row]);
+            const snap = {
+                layer: currentLayer,
+                data: currentLayer === 'bg' ? [...bgColor] : layers[currentLayer].map(row => [...row])
+            };
             undoStack.push(snap);
             if (undoStack.length > maxUndo) undoStack.shift();
             updUndoBtn();
@@ -145,15 +309,41 @@
 
         const undo = () => {
             if (undoStack.length > 0) {
-                pxData = undoStack.pop();
+                const snap = undoStack.pop();
+                if (snap.layer === 'bg') {
+                    bgColor = snap.data;
+                } else {
+                    layers[snap.layer] = snap.data;
+                }
                 redraw();
                 updUndoBtn();
+                updBgColorIndicator();
             }
         };
 
         const updUndoBtn = () => {
             const $u = $('#undoBtn');
             $u.prop('disabled', undoStack.length === 0);
+        };
+
+        const updLayerButtons = () => {
+            $('.layer-btn').removeClass('active');
+            $('#layer' + currentLayer.charAt(0).toUpperCase() + currentLayer.slice(1)).addClass('active');
+            
+            const layerNames = { bg: 'Background', mid: 'Midground', fg: 'Foreground' };
+            const info = currentLayer === 'bg' ? 
+                'Background - Click a color to set solid background' : 
+                `Currently editing: ${layerNames[currentLayer]}`;
+            $('#layerInfo').text(info);
+        };
+
+        const updBgColorIndicator = () => {
+            $('#bgColorIndicator').css('background-color', rgb2hex(bgColor));
+        };
+
+        const updBrushShape = () => {
+            $('.brush-shape-btn').removeClass('active');
+            $('#brush' + brushShape.charAt(0).toUpperCase() + brushShape.slice(1)).addClass('active');
         };
 
         const updPal = () => {
@@ -168,17 +358,52 @@
             $('#pal').html(html);
         };
 
+        const showColorPicker = () => {
+            let html = '';
+            presetColors.forEach(color => {
+                html += `<div class="preset-color" style="background-color:${color}" data-color="${color}"></div>`;
+            });
+            $('#presetColors').html(html);
+            $('#hexInput').val('#888888');
+            $('#colorPickerOverlay').show();
+        };
+
+        const hideColorPicker = () => {
+            $('#colorPickerOverlay').hide();
+        };
+
         const drawPx = (x, y, colIdx) => {
-            if (x >= 0 && y >= 0 && x < W && y < H) {
-                pxData[y][x] = colIdx;
+            if (x >= 0 && y >= 0 && x < W && y < H && currentLayer !== 'bg') {
+                layers[currentLayer][y][x] = colIdx;
             }
         };
 
         const redraw = () => {
+            // Clear canvas
+            ctx.fillStyle = rgb2hex(bgColor);
+            ctx.fillRect(0, 0, W, H);
+            
+            // Draw midground layer
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                    ctx.fillStyle = rgb2hex(pal[pxData[y][x]]);
-                    ctx.fillRect(x, y, 1, 1);
+                    const colIdx = layers.mid[y][x];
+                    const color = pal[colIdx];
+                    if (color && !(color[0] === TRANS[0] && color[1] === TRANS[1] && color[2] === TRANS[2])) {
+                        ctx.fillStyle = rgb2hex(color);
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+            }
+            
+            // Draw foreground layer
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    const colIdx = layers.fg[y][x];
+                    const color = pal[colIdx];
+                    if (color && !(color[0] === TRANS[0] && color[1] === TRANS[1] && color[2] === TRANS[2])) {
+                        ctx.fillStyle = rgb2hex(color);
+                        ctx.fillRect(x, y, 1, 1);
+                    }
                 }
             }
         };
@@ -221,15 +446,32 @@
         };
 
         const paintBrush = (x, y) => {
+            if (currentLayer === 'bg') return;
+            
             const half = Math.floor(brushSz/2);
-            for (let dy = -half; dy < brushSz-half; dy++) {
-                for (let dx = -half; dx < brushSz-half; dx++) {
-                    drawPx(x+dx, y+dy, selCol);
+            
+            if (brushShape === 'square') {
+                for (let dy = -half; dy < brushSz-half; dy++) {
+                    for (let dx = -half; dx < brushSz-half; dx++) {
+                        drawPx(x+dx, y+dy, selCol);
+                    }
+                }
+            } else { // round brush
+                const radius = brushSz / 2;
+                for (let dy = -half; dy < brushSz-half; dy++) {
+                    for (let dx = -half; dx < brushSz-half; dx++) {
+                        const distance = Math.sqrt(dx*dx + dy*dy);
+                        if (distance <= radius) {
+                            drawPx(x+dx, y+dy, selCol);
+                        }
+                    }
                 }
             }
         };
 
         const paint = (x, y) => {
+            if (currentLayer === 'bg') return;
+            
             if (lastPos) {
                 drawLine(lastPos[0], lastPos[1], x, y);
             } else {
@@ -248,21 +490,59 @@
             
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                    const [r,g,b] = pal[pxData[y][x]];
                     const i = (y*W + x)*4;
+                    
+                    // Start with background color
+                    let [r, g, b] = bgColor;
+                    
+                    // Apply midground layer
+                    const midIdx = layers.mid[y][x];
+                    const midColor = pal[midIdx];
+                    if (midColor && !(midColor[0] === TRANS[0] && midColor[1] === TRANS[1] && midColor[2] === TRANS[2])) {
+                        [r, g, b] = midColor;
+                    }
+                    
+                    // Apply foreground layer
+                    const fgIdx = layers.fg[y][x];
+                    const fgColor = pal[fgIdx];
+                    if (fgColor && !(fgColor[0] === TRANS[0] && fgColor[1] === TRANS[1] && fgColor[2] === TRANS[2])) {
+                        [r, g, b] = fgColor;
+                    }
+                    
                     imgData.data[i] = r;
                     imgData.data[i+1] = g;
                     imgData.data[i+2] = b;
-                    imgData.data[i+3] = (r === TRANS[0] && g === TRANS[1] && b === TRANS[2]) ? 0 : 255;
+                    imgData.data[i+3] = 255; // Full opacity for exported image
                 }
             }
             ectx.putImageData(imgData, 0, 0);
             return expCvs;
         };
 
+        const clearAll = () => {
+            if (confirm('Are you sure you want to clear all layers? This cannot be undone.')) {
+                saveUndo();
+                bgColor = [204, 188, 252];
+                layers.mid = Array.from({length: H}, () => Array(W).fill(2));
+                layers.fg = Array.from({length: H}, () => Array(W).fill(2));
+                redraw();
+                updBgColorIndicator();
+                hint('All layers cleared!');
+            }
+        };
+
+        // Event Listeners
         $(document).on('click', '.palette-color', function() {
-            selCol = parseInt($(this).data('idx'));
-            updPal();
+            const idx = parseInt($(this).data('idx'));
+            if (currentLayer === 'bg') {
+                saveUndo();
+                bgColor = [...pal[idx]];
+                redraw();
+                updBgColorIndicator();
+            } else {
+                selCol = idx;
+                updPal();
+            }
         });
 
         $(document).on('contextmenu touchstart', '.palette-color', function(e) {
@@ -281,17 +561,56 @@
 
         $(document).on('click', '.palette-add', function() {
             if (pal.length < MAX_COL) {
-                const color = prompt("Enter color hex (e.g. #ff8800):", "#888888");
-                if (color) {
-                    try {
-                        pal.push(hex2rgb(color));
-                        selCol = pal.length-1;
-                        updPal();
-                    } catch (e) {
-                        hint('Invalid color format!');
-                    }
+                showColorPicker();
+            }
+        });
+
+        $(document).on('click', '.preset-color', function() {
+            const color = $(this).data('color');
+            $('#hexInput').val(color);
+        });
+
+        $('#confirmColorPicker').on('click', function() {
+            const color = $('#hexInput').val();
+            if (color) {
+                try {
+                    pal.push(hex2rgb(color));
+                    selCol = pal.length-1;
+                    updPal();
+                    hideColorPicker();
+                } catch (e) {
+                    hint('Invalid color format!');
                 }
             }
+        });
+
+        $('#cancelColorPicker').on('click', hideColorPicker);
+        $('#colorPickerOverlay').on('click', function(e) {
+            if (e.target === this) hideColorPicker();
+        });
+
+        // Layer controls
+        $('#layerBg').on('click', function() {
+            currentLayer = 'bg';
+            updLayerButtons();
+        });
+        $('#layerMid').on('click', function() {
+            currentLayer = 'mid';
+            updLayerButtons();
+        });
+        $('#layerFg').on('click', function() {
+            currentLayer = 'fg';
+            updLayerButtons();
+        });
+
+        // Brush shape controls
+        $('#brushSquare').on('click', function() {
+            brushShape = 'square';
+            updBrushShape();
+        });
+        $('#brushRound').on('click', function() {
+            brushShape = 'round';
+            updBrushShape();
         });
 
         $('#brushSel').on('change', function() {
@@ -304,6 +623,7 @@
         });
 
         $('#undoBtn').on('click', undo);
+        $('#clearBtn').on('click', clearAll);
 
         $('#musicMute').on('click', () => setMusicSt('mute'));
         $('#musicLow').on('click', () => setMusicSt('low'));
@@ -318,6 +638,8 @@
 
         $('#cvs').on('mousedown touchstart', function(e) {
             e.preventDefault();
+            if (currentLayer === 'bg') return;
+            
             drawing = true;
             saveUndo();
             const [x, y] = getCvsPos(e.originalEvent);
@@ -327,7 +649,7 @@
 
         $('#cvs').on('mousemove touchmove', function(e) {
             e.preventDefault();
-            if (!drawing) return;
+            if (!drawing || currentLayer === 'bg') return;
             const [x, y] = getCvsPos(e.originalEvent);
             paint(x, y);
         });
@@ -360,6 +682,9 @@
 
         $(() => {
             updPal();
+            updLayerButtons();
+            updBgColorIndicator();
+            updBrushShape();
             resizeCvs();
             redraw();
             updUndoBtn();
