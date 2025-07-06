@@ -6,204 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <link rel="stylesheet" href="styles.css">
-    <style>
-
-        .editor-container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 0 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .panel {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid var(--border-color);
-        }
-
-        .btn {
-            padding: 10px 16px;
-            background: var(--button-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            color: var(--text-primary);
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-
-        .btn.primary { background: var(--button-active); }
-        .btn.selected { background: var(--button-active); border-color: var(--success-color); }
-        .btn:hover { background: var(--button-hover); }
-        .btn:disabled { 
-            opacity: 0.5; 
-            cursor: not-allowed; 
-            background: var(--button-bg);
-        }
-
-        .tools { display: grid; grid-template-columns: 1fr; gap: 20px; }
-        .tool-section { display: flex; flex-direction: column; gap: 12px; }
-        .tool-section h3 { margin: 0; color: var(--text-accent); font-size: 16px; }
-
-        .palette-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-            gap: 8px;
-        }
-
-        .palette-color, .palette-add {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .palette-color.selected {
-            border: 3px solid var(--success-color);
-            box-shadow: 0 0 0 2px var(--success-color);
-        }
-
-        .palette-add {
-            background: var(--button-active);
-            color: var(--text-primary);
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .select-box {
-            padding: 8px 12px;
-            background: var(--button-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-size: 14px;
-            cursor: pointer;
-            min-width: 100px;
-        }
-
-        .select-box:focus {
-            outline: none;
-            border-color: var(--success-color);
-        }
-
-        .select-box option {
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-            border: none;
-        }
-
-        .canvas-panel {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .canvas-container {
-            background: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 16px;
-            overflow: auto;
-            max-height: 60vh;
-        }
-
-        #canvas {
-            image-rendering: pixelated;
-            background: rgb(204,188,252);
-            border-radius: 4px;
-            cursor: crosshair;
-            display: block;
-        }
-
-        .footer {
-            text-align: center;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .hint {
-            text-align: center;
-            font-size: 14px;
-            color: var(--text-accent);
-        }
-
-        .undo-controls {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .music-controls {
-            display: flex;
-            gap: 4px;
-            align-items: center;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 4px;
-        }
-
-        .music-btn {
-            padding: 6px 10px;
-            background: transparent;
-            border: none;
-            border-radius: 4px;
-            color: var(--text-primary);
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
-            min-width: 24px;
-        }
-
-        .music-btn:hover {
-            background: var(--button-hover);
-        }
-
-        .music-btn.active {
-            background: var(--button-active);
-        }
-
-        @media (max-width: 768px) {
-            .editor-container { margin: 10px auto; padding: 0 12px; }
-            .panel { padding: 16px; }
-            .tools { gap: 16px; }
-            .controls { grid-template-columns: 1fr; }
-            .palette-grid { grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
-            .palette-color, .palette-add { width: 36px; height: 36px; }
-            #canvas { touch-action: none; }
-            .footer { flex-direction: column; gap: 8px; }
-        }
-
-        @media (min-width: 1024px) {
-            .tools { grid-template-columns: 1fr 1fr; }
-            .controls { grid-template-columns: 1fr 1fr 1fr; }
-        }
-    </style>
 </head>
 <body>
     <audio id="bgMusic" loop preload="auto">
@@ -216,14 +18,13 @@
             <div class="tools">
                 <div class="tool-section">
                     <h3>Color Palette</h3>
-                    <div class="palette-grid" id="palette"></div>
+                    <div class="palette-grid" id="pal"></div>
                 </div>
-
                 <div class="tool-section">
                     <div class="controls">
                         <div class="control-group">
                             <h3>Brush Size</h3>
-                            <select class="select-box" id="brushSelect">
+                            <select class="select-box" id="brushSel">
                                 <option value="1">1px</option>
                                 <option value="2">2px</option>
                                 <option value="3">3px</option>
@@ -236,7 +37,7 @@
                         </div>
                         <div class="control-group">
                             <h3>Zoom Level</h3>
-                            <select class="select-box" id="zoomSelect">
+                            <select class="select-box" id="zoomSel">
                                 <option value="1" selected>1x</option>
                                 <option value="2">2x</option>
                                 <option value="3">3x</option>
@@ -256,17 +57,15 @@
                 </div>
             </div>
         </div>
-
         <div class="panel canvas-panel">
             <div class="canvas-container">
-                <canvas id="canvas" width="256" height="240"></canvas>
+                <canvas id="cvs" width="256" height="240"></canvas>
             </div>
         </div>
-
         <div class="panel">
             <div class="footer">
-                <button class="btn primary" id="download">Download PNG</button>
-                <button class="btn" id="clipboard">Copy to Clipboard</button>
+                <button class="btn primary" id="dl">Download PNG</button>
+                <button class="btn" id="clip">Copy to Clipboard</button>
                 <div class="music-controls">
                     <button class="music-btn" id="musicMute">🔇</button>
                     <button class="music-btn active" id="musicLow">🔉</button>
@@ -277,49 +76,45 @@
     </div>
 
     <script>
-        const W = 256, H = 240, MAX_COLORS = 16;
-        const TRANSPARENT_COLOR = [204, 188, 252];
+        const W = 256, H = 240, MAX_COL = 16;
+        const TRANS = [204, 188, 252];
         
-        let palette = [[0,0,0], [255,255,255], TRANSPARENT_COLOR];
-        let selectedColor = 0, brushSize = 4, zoom = 1, drawing = false;
-        let pixelData = Array.from({length: H}, () => Array(W).fill(2)); // Start with transparent color
-        let lastPaintPos = null;
-        
-        // Undo system
+        let pal = [[0,0,0], [255,255,255], TRANS];
+        let selCol = 0, brushSz = 4, zm = 1, drawing = false;
+        let pxData = Array.from({length: H}, () => Array(W).fill(2));
+        let lastPos = null;
         let undoStack = [];
-        let maxUndoSteps = 50;
+        let maxUndo = 50;
+        let musicSt = 'low';
         
-        // Music system
-        let musicState = 'low'; // 'mute', 'low', 'high'
-        
-        const canvas = $('#canvas')[0];
-        const ctx = canvas.getContext('2d');
+        const cvs = $('#cvs')[0];
+        const ctx = cvs.getContext('2d');
         const bgMusic = $('#bgMusic')[0];
 
-        const rgbToHex = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, '0')).join('');
-        const hexToRgb = hex => {
+        const rgb2hex = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, '0')).join('');
+        const hex2rgb = hex => {
             hex = hex.replace('#','');
             if (hex.length === 3) hex = hex.split('').map(x=>x+x).join('');
             return [0,1,2].map(i=>parseInt(hex.substr(i*2,2),16));
         };
 
-        const showHint = msg => {
-            const $hint = $('#hint');
-            const orig = $hint.text();
-            $hint.text(msg).css('color', '#28a745');
-            setTimeout(() => $hint.text(orig).css('color', 'var(--text-accent)'), 2000);
+        const hint = msg => {
+            const $h = $('#hint');
+            const orig = $h.text();
+            $h.text(msg).css('color', '#28a745');
+            setTimeout(() => $h.text(orig).css('color', 'var(--text-accent)'), 2000);
         };
 
-        const updateMusicControls = () => {
+        const updMusicCtrl = () => {
             $('.music-btn').removeClass('active');
-            $('#music' + musicState.charAt(0).toUpperCase() + musicState.slice(1)).addClass('active');
+            $('#music' + musicSt.charAt(0).toUpperCase() + musicSt.slice(1)).addClass('active');
         };
 
-        const setMusicState = (state) => {
-            musicState = state;
-            updateMusicControls();
+        const setMusicSt = st => {
+            musicSt = st;
+            updMusicCtrl();
             
-            switch(state) {
+            switch(st) {
                 case 'mute':
                     bgMusic.pause();
                     bgMusic.currentTime = 0;
@@ -341,92 +136,78 @@
             }
         };
 
-        const saveToUndoStack = () => {
-            // Deep copy the current pixel data
-            const snapshot = pixelData.map(row => [...row]);
-            undoStack.push(snapshot);
-            
-            // Limit undo stack size
-            if (undoStack.length > maxUndoSteps) {
-                undoStack.shift();
-            }
-            
-            updateUndoButton();
+        const saveUndo = () => {
+            const snap = pxData.map(row => [...row]);
+            undoStack.push(snap);
+            if (undoStack.length > maxUndo) undoStack.shift();
+            updUndoBtn();
         };
 
         const undo = () => {
             if (undoStack.length > 0) {
-                pixelData = undoStack.pop();
-                redrawCanvas();
-                updateUndoButton();
+                pxData = undoStack.pop();
+                redraw();
+                updUndoBtn();
             }
         };
 
-        const updateUndoButton = () => {
-            const $undoBtn = $('#undoBtn');
-            if (undoStack.length > 0) {
-                $undoBtn.prop('disabled', false);
-            } else {
-                $undoBtn.prop('disabled', true);
-            }
+        const updUndoBtn = () => {
+            const $u = $('#undoBtn');
+            $u.prop('disabled', undoStack.length === 0);
         };
 
-        const updatePalette = () => {
+        const updPal = () => {
             let html = '';
-            palette.forEach((rgb, i) => {
-                const selected = selectedColor === i ? ' selected' : '';
-                html += `<div class="palette-color${selected}" style="background:${rgbToHex(rgb)}" data-idx="${i}"></div>`;
+            pal.forEach((rgb, i) => {
+                const sel = selCol === i ? ' selected' : '';
+                html += `<div class="palette-color${sel}" style="background:${rgb2hex(rgb)}" data-idx="${i}"></div>`;
             });
-            if (palette.length < MAX_COLORS) {
+            if (pal.length < MAX_COL) {
                 html += '<div class="palette-add">+</div>';
             }
-            $('#palette').html(html);
+            $('#pal').html(html);
         };
 
-        const drawPixel = (x, y, colorIdx) => {
+        const drawPx = (x, y, colIdx) => {
             if (x >= 0 && y >= 0 && x < W && y < H) {
-                pixelData[y][x] = colorIdx;
+                pxData[y][x] = colIdx;
             }
         };
 
-        const redrawCanvas = () => {
+        const redraw = () => {
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                    ctx.fillStyle = rgbToHex(palette[pixelData[y][x]]);
+                    ctx.fillStyle = rgb2hex(pal[pxData[y][x]]);
                     ctx.fillRect(x, y, 1, 1);
                 }
             }
         };
 
-        const resizeCanvas = () => {
-            $('#canvas').css({width: W * zoom, height: H * zoom});
+        const resizeCvs = () => {
+            $('#cvs').css({width: W * zm, height: H * zm});
         };
 
-        const getCanvasPos = e => {
-            const rect = canvas.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const getCvsPos = e => {
+            const rect = cvs.getBoundingClientRect();
+            const cX = e.touches ? e.touches[0].clientX : e.clientX;
+            const cY = e.touches ? e.touches[0].clientY : e.clientY;
             return [
-                Math.floor((clientX - rect.left) / zoom),
-                Math.floor((clientY - rect.top) / zoom)
+                Math.floor((cX - rect.left) / zm),
+                Math.floor((cY - rect.top) / zm)
             ];
         };
 
-        // Bresenham's line algorithm for smooth drawing
         const drawLine = (x0, y0, x1, y1) => {
             const dx = Math.abs(x1 - x0);
             const dy = Math.abs(y1 - y0);
             const sx = x0 < x1 ? 1 : -1;
             const sy = y0 < y1 ? 1 : -1;
             let err = dx - dy;
-
             let x = x0, y = y0;
             
             while (true) {
                 paintBrush(x, y);
-                
                 if (x === x1 && y === y1) break;
-                
                 const e2 = 2 * err;
                 if (e2 > -dy) {
                     err -= dy;
@@ -440,50 +221,48 @@
         };
 
         const paintBrush = (x, y) => {
-            const half = Math.floor(brushSize/2);
-            for (let dy = -half; dy < brushSize-half; dy++) {
-                for (let dx = -half; dx < brushSize-half; dx++) {
-                    drawPixel(x+dx, y+dy, selectedColor);
+            const half = Math.floor(brushSz/2);
+            for (let dy = -half; dy < brushSz-half; dy++) {
+                for (let dx = -half; dx < brushSz-half; dx++) {
+                    drawPx(x+dx, y+dy, selCol);
                 }
             }
         };
 
         const paint = (x, y) => {
-            if (lastPaintPos) {
-                drawLine(lastPaintPos[0], lastPaintPos[1], x, y);
+            if (lastPos) {
+                drawLine(lastPos[0], lastPos[1], x, y);
             } else {
                 paintBrush(x, y);
             }
-            lastPaintPos = [x, y];
-            redrawCanvas();
+            lastPos = [x, y];
+            redraw();
         };
 
-        const exportImage = () => {
-            const exportCanvas = document.createElement('canvas');
-            exportCanvas.width = W;
-            exportCanvas.height = H;
-            const ectx = exportCanvas.getContext('2d');
+        const expImg = () => {
+            const expCvs = document.createElement('canvas');
+            expCvs.width = W;
+            expCvs.height = H;
+            const ectx = expCvs.getContext('2d');
             const imgData = ectx.createImageData(W, H);
             
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                    const [r,g,b] = palette[pixelData[y][x]];
+                    const [r,g,b] = pal[pxData[y][x]];
                     const i = (y*W + x)*4;
                     imgData.data[i] = r;
                     imgData.data[i+1] = g;
                     imgData.data[i+2] = b;
-                    // Make transparent color actually transparent
-                    imgData.data[i+3] = (r === TRANSPARENT_COLOR[0] && g === TRANSPARENT_COLOR[1] && b === TRANSPARENT_COLOR[2]) ? 0 : 255;
+                    imgData.data[i+3] = (r === TRANS[0] && g === TRANS[1] && b === TRANS[2]) ? 0 : 255;
                 }
             }
             ectx.putImageData(imgData, 0, 0);
-            return exportCanvas;
+            return expCvs;
         };
 
-        // Event handlers
         $(document).on('click', '.palette-color', function() {
-            selectedColor = parseInt($(this).data('idx'));
-            updatePalette();
+            selCol = parseInt($(this).data('idx'));
+            updPal();
         });
 
         $(document).on('contextmenu touchstart', '.palette-color', function(e) {
@@ -492,56 +271,44 @@
             if (idx > 2) {
                 setTimeout(() => {
                     if (confirm('Remove this color?')) {
-                        palette.splice(idx, 1);
-                        if (selectedColor >= palette.length) selectedColor = palette.length-1;
-                        updatePalette();
+                        pal.splice(idx, 1);
+                        if (selCol >= pal.length) selCol = pal.length-1;
+                        updPal();
                     }
                 }, 500);
             }
         });
 
         $(document).on('click', '.palette-add', function() {
-            if (palette.length < MAX_COLORS) {
+            if (pal.length < MAX_COL) {
                 const color = prompt("Enter color hex (e.g. #ff8800):", "#888888");
                 if (color) {
                     try {
-                        palette.push(hexToRgb(color));
-                        selectedColor = palette.length-1;
-                        updatePalette();
+                        pal.push(hex2rgb(color));
+                        selCol = pal.length-1;
+                        updPal();
                     } catch (e) {
-                        showHint('Invalid color format!');
+                        hint('Invalid color format!');
                     }
                 }
             }
         });
 
-        $('#brushSelect').on('change', function() {
-            brushSize = parseInt($(this).val());
+        $('#brushSel').on('change', function() {
+            brushSz = parseInt($(this).val());
         });
 
-        $('#zoomSelect').on('change', function() {
-            zoom = parseInt($(this).val());
-            resizeCanvas();
+        $('#zoomSel').on('change', function() {
+            zm = parseInt($(this).val());
+            resizeCvs();
         });
 
-        $('#undoBtn').on('click', function() {
-            undo();
-        });
+        $('#undoBtn').on('click', undo);
 
-        // Music controls
-        $('#musicMute').on('click', function() {
-            setMusicState('mute');
-        });
+        $('#musicMute').on('click', () => setMusicSt('mute'));
+        $('#musicLow').on('click', () => setMusicSt('low'));
+        $('#musicHigh').on('click', () => setMusicSt('high'));
 
-        $('#musicLow').on('click', function() {
-            setMusicState('low');
-        });
-
-        $('#musicHigh').on('click', function() {
-            setMusicState('high');
-        });
-
-        // Keyboard shortcuts
         $(document).on('keydown', function(e) {
             if (e.ctrlKey && e.key === 'z') {
                 e.preventDefault();
@@ -549,68 +316,58 @@
             }
         });
 
-        // Canvas events with improved drawing
-        $('#canvas').on('mousedown touchstart', function(e) {
+        $('#cvs').on('mousedown touchstart', function(e) {
             e.preventDefault();
             drawing = true;
-            
-            // Save state before starting to draw
-            saveToUndoStack();
-            
-            const [x, y] = getCanvasPos(e.originalEvent);
-            lastPaintPos = null; // Reset for new stroke
+            saveUndo();
+            const [x, y] = getCvsPos(e.originalEvent);
+            lastPos = null;
             paint(x, y);
         });
 
-        $('#canvas').on('mousemove touchmove', function(e) {
+        $('#cvs').on('mousemove touchmove', function(e) {
             e.preventDefault();
             if (!drawing) return;
-            const [x, y] = getCanvasPos(e.originalEvent);
+            const [x, y] = getCvsPos(e.originalEvent);
             paint(x, y);
         });
 
         $(document).on('mouseup touchend mouseleave', () => {
             drawing = false;
-            lastPaintPos = null;
+            lastPos = null;
         });
 
-        $('#download').click(() => {
-            const url = exportImage().toDataURL('image/png');
+        $('#dl').click(() => {
+            const url = expImg().toDataURL('image/png');
             $('<a>').attr({href: url, download: 'sticker.png'})[0].click();
-            showHint('Downloaded!');
+            hint('Downloaded!');
         });
 
-        $('#clipboard').click(async () => {
-            exportImage().toBlob(async blob => {
+        $('#clip').click(async () => {
+            expImg().toBlob(async blob => {
                 try {
                     if (navigator.clipboard?.write) {
                         await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
-                        showHint('Copied to clipboard!');
+                        hint('Copied to clipboard!');
                     } else {
-                        showHint('Clipboard not supported on this device.');
+                        hint('Clipboard not supported on this device.');
                     }
                 } catch (e) {
-                    showHint('Failed to copy to clipboard.');
+                    hint('Failed to copy to clipboard.');
                 }
             }, 'image/png');
         });
 
-        // Initialize
         $(() => {
-            updatePalette();
-            resizeCanvas();
-            redrawCanvas();
-            updateUndoButton();
+            updPal();
+            resizeCvs();
+            redraw();
+            updUndoBtn();
+            saveUndo();
+            setMusicSt('low');
             
-            // Save initial state
-            saveToUndoStack();
-            
-            // Initialize music
-            setMusicState('low');
-            
-            // Handle user interaction requirement for autoplay
             $(document).one('click touchstart', function() {
-                if (musicState !== 'mute') {
+                if (musicSt !== 'mute') {
                     bgMusic.play().catch(() => {});
                 }
             });
