@@ -16,7 +16,7 @@
                 <div class="credit-label">Credits</div>
                 <div class="object-level" id="objectLevel">Level 1</div>
             </div>
-            <button class="button-base upgrade-button" id="upgradeButton" style="display: none;">Upgrade - 300 Credits</button>
+            <button class="button-base upgrade-button" id="upgradeButton" style="display: none;">Upgrade - 300</button>
             <button class="button-base refresh-button" id="refreshButton" style="display: none;">Refresh Cooldown</button>
             <button class="button-base subtick-button" id="subtickButton" style="display: none;">Charge Subtick</button>
             <div class="subtick-meter" id="subtickMeter" style="display: none;">Subticks: 0</div>
@@ -64,6 +64,31 @@
             const CACHE_KEY = 'rabbitobjects_save', MAX_OBJECTS = 4000;
             let state = { credits: 0, objects: [createEmptyObject()], isMuted: false };
             let currentMusicAudio = null, cooldownIntervals = new Map();
+            
+            function formatNumber(num) {
+                if (num < 1000) return num.toString();
+                
+                const units = [
+                    { value: 1e24, symbol: 'Y' },  // Yotta
+                    { value: 1e21, symbol: 'Z' },  // Zetta
+                    { value: 1e18, symbol: 'E' },  // Exa
+                    { value: 1e15, symbol: 'P' },  // Peta
+                    { value: 1e12, symbol: 'T' },  // Tera
+                    { value: 1e9,  symbol: 'G' },  // Giga
+                    { value: 1e6,  symbol: 'M' },  // Mega
+                    { value: 1e3,  symbol: 'K' }   // Kilo
+                ];
+                
+                for (const unit of units) {
+                    if (num >= unit.value) {
+                        const formatted = (num / unit.value).toFixed(1);
+                        // Remove trailing .0 if it exists
+                        return formatted.replace(/\.0$/, '') + unit.symbol;
+                    }
+                }
+                
+                return num.toString();
+            }
             
             function createEmptyObject() {
                 return { 
@@ -309,21 +334,22 @@
                 
                 // Process subticks (give credits, no break risk, no SFX)
                 if (obj.subtickCount > 0) {
-                    state.credits += obj.tickValue * obj.subtickCount;
-                    showFeedback(`${obj.subtickCount} subticks: +${obj.tickValue * obj.subtickCount} credits!`, 'success');
+                    const subtickCredits = obj.tickValue * obj.subtickCount;
+                    state.credits += subtickCredits;
+                    showFeedback(`${obj.subtickCount} subticks: +${formatNumber(subtickCredits)}!`, 'success');
                     obj.subtickCount = 0;
                 }
                 
                 // Main tick
                 state.credits += obj.tickValue;
-                showFeedback(`+${obj.tickValue} credits!`, 'success');
+                showFeedback(`+${formatNumber(obj.tickValue)}!`, 'success');
                 obj.lastTicked = Date.now();
                 startCooldownTimer(idx);
                 
                 // Check for break
                 if (Math.random() * 100 < obj.breakProbability) {
                     state.credits += obj.shatterBonus;
-                    showFeedback(`Object shattered! +${obj.shatterBonus} bonus!`, 'warning');
+                    showFeedback(`Object shattered! +${formatNumber(obj.shatterBonus)} bonus!`, 'warning');
                     playBreakSfx(obj.breakSfx);
                     if (obj.currentMusic) stopMusic();
                     clearCooldown(idx);
@@ -359,7 +385,7 @@
             }
             
             function updateUI() {
-                $('#creditAmount').text(state.credits.toLocaleString());
+                $('#creditAmount').text(formatNumber(state.credits));
                 const obj = state.objects[0];
                 const buttons = { upgrade: $('#upgradeButton'), refresh: $('#refreshButton'), subtick: $('#subtickButton') };
                 const $discard = $('#discardButton'), $level = $('#objectLevel'), $meter = $('#subtickMeter');
@@ -368,17 +394,17 @@
                     Object.values(buttons).forEach(btn => btn.hide());
                     $discard.hide(); $meter.hide(); $level.text('Level 1');
                 } else {
-                    buttons.upgrade.show().text(`Upgrade - ${getCost(obj, 'upgrade').toLocaleString()} Credits`).prop('disabled', state.credits < getCost(obj, 'upgrade'));
+                    buttons.upgrade.show().text(`Upgrade - ${formatNumber(getCost(obj, 'upgrade'))}`).prop('disabled', state.credits < getCost(obj, 'upgrade'));
                     $discard.show(); $level.text(`Level ${obj.level}`);
                     
                     if (obj.level > 2) {
                         const refreshCost = getCost(obj, 'refresh');
-                        buttons.refresh.show().text(`Refresh - ${refreshCost.toLocaleString()} Credits`).prop('disabled', state.credits < refreshCost || !isOnCooldown(0));
+                        buttons.refresh.show().text(`Refresh - ${formatNumber(refreshCost)}`).prop('disabled', state.credits < refreshCost || !isOnCooldown(0));
                     } else buttons.refresh.hide();
                     
                     if (obj.level > 4) {
                         const subtickCost = getCost(obj, 'subtick');
-                        buttons.subtick.show().text(`Charge Subtick - ${subtickCost.toLocaleString()} Credits`).prop('disabled', state.credits < subtickCost || subtickCost <= 0);
+                        buttons.subtick.show().text(`Charge Subtick - ${formatNumber(subtickCost)}`).prop('disabled', state.credits < subtickCost || subtickCost <= 0);
                         $meter.show().text(`Subticks: ${obj.subtickCount}`);
                     } else { buttons.subtick.hide(); $meter.hide(); }
                 }
@@ -406,9 +432,9 @@
                         
                         let stats = `<div class="stat-row"><span class="stat-label">Tier:</span><span class="stat-value">${tierDisplay}</span></div>
                             <div class="stat-row"><span class="stat-label">Level:</span><span class="stat-value">${obj.level}</span></div>
-                            <div class="stat-row"><span class="stat-label">Tick:</span><span class="stat-value">${obj.tickValue}</span></div>
+                            <div class="stat-row"><span class="stat-label">Tick:</span><span class="stat-value">${formatNumber(obj.tickValue)}</span></div>
                             <div class="stat-row"><span class="stat-label">Break:</span><span class="stat-value">${obj.breakProbability}%</span></div>
-                            <div class="stat-row"><span class="stat-label">Shatter:</span><span class="stat-value">${obj.shatterBonus}</span></div>
+                            <div class="stat-row"><span class="stat-label">Shatter:</span><span class="stat-value">${formatNumber(obj.shatterBonus)}</span></div>
                             <div class="stat-row"><span class="stat-label">Cooldown:</span><span class="stat-value">${obj.cooldown}s</span></div>`;
                         
                         if (obj.subtickCount > 0) stats += `<div class="stat-row"><span class="stat-label">Subticks:</span><span class="stat-value">${obj.subtickCount}</span></div>`;
