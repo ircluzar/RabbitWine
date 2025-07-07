@@ -26,7 +26,7 @@
                 <div class="section-title">Object</div>
                 <div class="button-group">
                     <button class="button-base auto-button" id="autoButton" style="display: none;">Auto</button>
-                    <button class="discard-button" id="discardButton" style="display: none;">Discard</button>
+                    <button class="button-base discard-button" id="discardButton" style="display: none;"> X </button>
                 </div>
             </div>
             <div class="objects-grid" id="objectsGrid"></div>
@@ -64,7 +64,7 @@
         
         .button-group {
             display: flex;
-            gap: 15px;
+            gap: 10px;
             align-items: center;
         }
         
@@ -75,20 +75,55 @@
             padding: 8px 16px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
-            transition: background-color 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-width: 60px;
+            height: 36px;
         }
         
         .auto-button:hover {
             background: #5a6578;
+            transform: translateY(-1px);
         }
         
         .auto-button.active {
             background: #48bb78;
+            box-shadow: 0 2px 4px rgba(72, 187, 120, 0.3);
         }
         
         .auto-button.active:hover {
             background: #38a169;
+        }
+        
+        .discard-button {
+            background: #e53e3e;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-width: 70px;
+            height: 36px;
+        }
+        
+        .discard-button:hover {
+            background: #c53030;
+            transform: translateY(-1px);
+        }
+        
+        .subtick-button.draining {
+            background: #f56565;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
         }
     </style>
     <script>
@@ -97,6 +132,8 @@
             let state = { credits: 0, objects: [createEmptyObject()], isMuted: false };
             let currentMusicAudio = null, cooldownIntervals = new Map();
             let autoClickEnabled = false; // Auto button state (not saved)
+            let isDraining = false; // Track if full charge is currently draining
+            let drainInterval = null;
             
             function formatNumber(num) {
                 if (num < 1000) return num.toString();
@@ -210,6 +247,16 @@
                 }
             }
             
+            function stopDraining() {
+                if (drainInterval) {
+                    clearInterval(drainInterval);
+                    drainInterval = null;
+                }
+                isDraining = false;
+                $('#subtickButton').removeClass('draining');
+                updateUI();
+            }
+            
             function generateObj() {
                 return {
                     imageNumber: Math.floor(Math.random() * MAX_OBJECTS), level: 1, baseCost: 300, costScaling: 1.3 + Math.random() * 0.69,
@@ -308,16 +355,53 @@
             function chargeSubtick() {
                 const obj = state.objects[0];
                 if (obj.isEmpty) return;
-                const cost = getCost(obj, 'subtick');
-                if (state.credits < cost || cost <= 0) return;
                 
-                playPopSfx();
-                state.credits -= cost; obj.subtickCount++;
-                showFeedback('Subtick charged!', 'success');
-                saveGame(); updateUI();
+                // Level 10+ behavior: Full Charge
+                if (obj.level >= 10) {
+                    if (isDraining) return; // Prevent multiple drain sequences
+                    
+                    const cost = getCost(obj, 'subtick');
+                    if (state.credits < cost || cost <= 0) return;
+                    
+                    // Start draining
+                    isDraining = true;
+                    $('#subtickButton').addClass('draining');
+                    
+                    drainInterval = setInterval(() => {
+                        const currentCost = getCost(obj, 'subtick');
+                        if (state.credits < currentCost || currentCost <= 0) {
+                            stopDraining();
+                            return;
+                        }
+                        
+                        playPopSfx();
+                        state.credits -= currentCost;
+                        obj.subtickCount++;
+                        saveGame();
+                        updateUI();
+                    }, 100);
+                    
+                    showFeedback('Full Charge activated!', 'success');
+                } else {
+                    // Original behavior for levels < 10
+                    const cost = getCost(obj, 'subtick');
+                    if (state.credits < cost || cost <= 0) return;
+                    
+                    playPopSfx();
+                    state.credits -= cost; obj.subtickCount++;
+                    showFeedback('Subtick charged!', 'success');
+                    saveGame(); updateUI();
+                }
             }
             
             function resetObject(obj) {
+                // Reset auto button state when object breaks
+                autoClickEnabled = false;
+                $('#autoButton').removeClass('active');
+                
+                // Stop any draining
+                stopDraining();
+                
                 Object.assign(obj, createEmptyObject());
             }
             
@@ -463,9 +547,19 @@
                     
                     if (obj.level > 4) {
                         const subtickCost = getCost(obj, 'subtick');
-                        buttons.subtick.show().text(`Charge Subtick - ${formatNumber(subtickCost)}`).prop('disabled', state.credits < subtickCost || subtickCost <= 0);
+                        const buttonText = obj.level >= 10 ? 'Full Charge' : 'Charge Subtick';
+                        const canAfford = state.credits >= subtickCost && subtickCost > 0;
+                        const isDisabled = !canAfford || isDraining;
+                        
+                        buttons.subtick.show()
+                            .text(`${buttonText} - ${formatNumber(subtickCost)}`)
+                            .prop('disabled', isDisabled);
+                        
                         $meter.show().text(`Subticks: ${obj.subtickCount}`);
-                    } else { buttons.subtick.hide(); $meter.hide(); }
+                    } else { 
+                        buttons.subtick.hide(); 
+                        $meter.hide(); 
+                    }
                 }
                 renderSlots();
             }
