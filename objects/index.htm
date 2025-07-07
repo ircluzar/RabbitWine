@@ -24,7 +24,10 @@
         <div class="objects-panel panel">
             <div class="section-header">
                 <div class="section-title">Object</div>
-                <button class="discard-button" id="discardButton" style="display: none;">Discard Object</button>
+                <div class="button-group">
+                    <button class="button-base auto-button" id="autoButton" style="display: none;">Auto</button>
+                    <button class="discard-button" id="discardButton" style="display: none;">Discard</button>
+                </div>
             </div>
             <div class="objects-grid" id="objectsGrid"></div>
         </div>
@@ -58,12 +61,42 @@
             opacity: 0;
             transition: opacity 2s ease-out;
         }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .auto-button {
+            background: #4a5568;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+        
+        .auto-button:hover {
+            background: #5a6578;
+        }
+        
+        .auto-button.active {
+            background: #48bb78;
+        }
+        
+        .auto-button.active:hover {
+            background: #38a169;
+        }
     </style>
     <script>
         $(document).ready(function() {
             const CACHE_KEY = 'rabbitobjects_save', MAX_OBJECTS = 4000;
             let state = { credits: 0, objects: [createEmptyObject()], isMuted: false };
             let currentMusicAudio = null, cooldownIntervals = new Map();
+            let autoClickEnabled = false; // Auto button state (not saved)
             
             function formatNumber(num) {
                 if (num < 1000) return num.toString();
@@ -165,6 +198,16 @@
                 if (state.isMuted) { stopMusic(); $btn.text('🔇').addClass('muted'); }
                 else { $btn.text('🔊').removeClass('muted'); const obj = state.objects[0]; if (!obj.isEmpty && obj.currentMusic) playMusic(obj.music); }
                 saveGame();
+            }
+            
+            function toggleAuto() {
+                autoClickEnabled = !autoClickEnabled;
+                const $btn = $('#autoButton');
+                if (autoClickEnabled) {
+                    $btn.text('Auto').addClass('active');
+                } else {
+                    $btn.text('Auto').removeClass('active');
+                }
             }
             
             function generateObj() {
@@ -307,8 +350,17 @@
                 if (obj.isEmpty) return;
                 clearCooldown(idx);
                 const interval = setInterval(() => {
-                    if (isOnCooldown(idx)) updateCooldownDisplay(idx);
-                    else { clearCooldown(idx); updateCooldownDisplay(idx); }
+                    if (isOnCooldown(idx)) {
+                        updateCooldownDisplay(idx);
+                    } else {
+                        clearCooldown(idx);
+                        updateCooldownDisplay(idx);
+                        
+                        // Auto-click when cooldown reaches 0
+                        if (autoClickEnabled && idx === 0 && !obj.isEmpty) {
+                            tickObject(idx);
+                        }
+                    }
                 }, 100);
                 cooldownIntervals.set(idx, interval);
             }
@@ -388,14 +440,21 @@
                 $('#creditAmount').text(formatNumber(state.credits));
                 const obj = state.objects[0];
                 const buttons = { upgrade: $('#upgradeButton'), refresh: $('#refreshButton'), subtick: $('#subtickButton') };
-                const $discard = $('#discardButton'), $level = $('#objectLevel'), $meter = $('#subtickMeter');
+                const $discard = $('#discardButton'), $auto = $('#autoButton'), $level = $('#objectLevel'), $meter = $('#subtickMeter');
                 
                 if (obj.isEmpty) {
                     Object.values(buttons).forEach(btn => btn.hide());
-                    $discard.hide(); $meter.hide(); $level.text('Level 1');
+                    $discard.hide(); $auto.hide(); $meter.hide(); $level.text('Level 1');
                 } else {
                     buttons.upgrade.show().text(`Upgrade - ${formatNumber(getCost(obj, 'upgrade'))}`).prop('disabled', state.credits < getCost(obj, 'upgrade'));
                     $discard.show(); $level.text(`Level ${obj.level}`);
+                    
+                    // Show Auto button at level 20+
+                    if (obj.level >= 20) {
+                        $auto.show();
+                    } else {
+                        $auto.hide();
+                    }
                     
                     if (obj.level > 2) {
                         const refreshCost = getCost(obj, 'refresh');
@@ -476,6 +535,7 @@
                 $('#refreshButton').on('click', refreshCooldown);
                 $('#subtickButton').on('click', chargeSubtick);
                 $('#discardButton').on('click', discardObject);
+                $('#autoButton').on('click', toggleAuto);
                 
                 updateUI();
                 setInterval(saveGame, 5000);
