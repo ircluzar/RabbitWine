@@ -86,6 +86,7 @@
             }
             
             function getObjectTier(level) {
+				if (level >= 100) return 'realities';
                 if (level >= 50) return 'places';
                 if (level >= 20) return 'orbs';
                 return 'shapes';
@@ -99,9 +100,11 @@
                     imageNum = Math.floor(obj.imageNumber / 4);
                 } else if (tier === 'places') {
                     imageNum = Math.floor(obj.imageNumber / 40);
+                } else if (tier === 'realities') {
+                    imageNum = Math.floor(obj.imageNumber / 100);
                 }
                 
-                return `${tier}/${imageNum}.png`;
+                return `${tier}/${imageNum}.gif`;
             }
             
             function validateSave(saved) {
