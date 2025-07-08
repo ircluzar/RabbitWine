@@ -59,3 +59,94 @@
             .credit-amount { font-size: 2em; }
             .mute-button { width: 40px; height: 40px; font-size: 1em; }
         }
+		.tier-transition {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tier-transition::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            opacity: 0;
+            z-index: 10;
+            pointer-events: none;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        .tier-transition.flashing::before {
+            opacity: 1;
+        }
+        
+        .tier-transition.revealing::before {
+            opacity: 0;
+            transition: opacity 2s ease-out;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .auto-button {
+            background: #4a5568;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-width: 60px;
+            height: 36px;
+        }
+        
+        .auto-button:hover {
+            background: #5a6578;
+            transform: translateY(-1px);
+        }
+        
+        .auto-button.active {
+            background: #48bb78;
+            box-shadow: 0 2px 4px rgba(72, 187, 120, 0.3);
+        }
+        
+        .auto-button.active:hover {
+            background: #38a169;
+        }
+        
+        .discard-button {
+            background: #e53e3e;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-width: 70px;
+            height: 36px;
+        }
+        
+        .discard-button:hover {
+            background: #c53030;
+            transform: translateY(-1px);
+        }
+        
+        .subtick-button.draining {
+            background: #f56565;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
