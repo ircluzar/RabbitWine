@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rabbit Wine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <link rel="stylesheet" href="objects.css">
+    <link rel="stylesheet" href="objects.css?v2">
 </head>
 <body>
     <button class="mute-button" id="muteButton" title="Toggle Music">🔊</button>
@@ -13,10 +13,10 @@
         <div class="stats-panel panel">
             <div class="credit-display">
                 <div class="credit-amount" id="creditAmount">0</div>
-                <div class="credit-label">Credits</div>
                 <div class="object-level" id="objectLevel">Level 1</div>
             </div>
             <button class="button-base upgrade-button" id="upgradeButton" style="display: none;">Upgrade - 300</button>
+            <button class="button-base hyperscale-button" id="hyperscaleButton" style="display: none;">Hyperscale</button>
             <button class="button-base refresh-button" id="refreshButton" style="display: none;">Refresh Cooldown</button>
             <button class="button-base subtick-button" id="subtickButton" style="display: none;">Charge Subtick</button>
             <div class="subtick-meter" id="subtickMeter" style="display: none;">Subticks: 0</div>
@@ -34,12 +34,27 @@
     </div>
     <div class="feedback" id="feedback"></div>
     <script>
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (wakeLock) return;
+
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+    });
+  } catch (err) {
+  }
+}
+
         $(document).ready(function() {
             const CACHE_KEY = 'rabbitobjects_save', MAX_OBJECTS = 4000;
             let state = { credits: 0, objects: [createEmptyObject()], isMuted: false };
             let currentMusicAudio = null, cooldownIntervals = new Map();
             let autoClickEnabled = false, isDraining = false, isAutoUpgrading = false;
             let drainInterval = null, autoUpgradeInterval = null, upgradeHoldTimer = null;
+            let isHyperscaling = false, hyperscaleTimeout = null;
             
             const tiers = [
                 { min: 0, name: 'shapes', img: n => n },
@@ -57,9 +72,16 @@
             
             function formatNumber(num) {
                 if (num < 1000) return num.toString();
+                
                 for (const unit of formatUnits) {
                     if (num >= unit.value) {
-                        return (num / unit.value).toFixed(1).replace(/\.0$/, '') + unit.symbol;
+                        const value = num / unit.value;
+                        if (unit.symbol === 'Y' && value >= 1000) {
+                            const eValue = Math.floor(Math.log10(value / 1000) / 3) + 1;
+                            const displayValue = value / Math.pow(1000, eValue);
+                            return displayValue.toFixed(1).replace(/\.0$/, '') + 'e' + eValue;
+                        }
+                        return value.toFixed(1).replace(/\.0$/, '') + unit.symbol;
                     }
                 }
                 return num.toString();
@@ -149,6 +171,10 @@
                     if (autoUpgradeInterval) clearInterval(autoUpgradeInterval);
                     autoUpgradeInterval = null; isAutoUpgrading = false;
                     $('#upgradeButton').removeClass('auto-upgrading');
+                } else if (type === 'hyperscale') {
+                    if (hyperscaleTimeout) clearTimeout(hyperscaleTimeout);
+                    hyperscaleTimeout = null; isHyperscaling = false;
+                    $('#hyperscaleButton').hide();
                 }
                 updateUI();
             }
@@ -291,12 +317,75 @@
             }
             
             function discardObject() {
+			requestWakeLock();
+			
                 const obj = state.objects[0];
                 if (obj.isEmpty) return;
                 if (obj.currentMusic) stopMusic();
                 clearCooldown(0); playBreakSfx(obj.breakSfx);
                 resetObject(obj);
                 saveGame(); updateUI(); showFeedback('Object discarded!', 'warning');
+            }
+            
+            function hyperscaleWorkflow() {
+                if (!isHyperscaling) return;
+                
+                const obj = state.objects[0];
+                
+                if (obj.isEmpty) {
+                    fillEmptySlot(0);
+                    hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), 420);
+                    return;
+                }
+                
+                if (obj.level === 1) {
+                    if (state.credits >= getCost(obj, 'upgrade')) {
+                        upgradeObject();
+                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), 420);
+                        return;
+                    } else {
+                        stopProcess('hyperscale');
+                        showFeedback('Hyperscale stopped - insufficient credits', 'warning');
+                        return;
+                    }
+                }
+                
+                if (obj.level === 2) {
+                    const nextUpgradeCost = getCost(obj, 'upgrade');
+                    if (nextUpgradeCost < 400) {
+                        isAutoUpgrading = true;
+                        $('#upgradeButton').addClass('auto-upgrading');
+                        
+                        autoUpgradeInterval = setInterval(() => {
+                            const obj = state.objects[0];
+                            if (obj.isEmpty || state.credits < getCost(obj, 'upgrade')) {
+                                stopProcess('upgrade');
+                                return;
+                            }
+                            upgradeObject();
+                        }, 100);
+                        
+                        stopProcess('hyperscale');
+                        showFeedback('Hyperscale complete - Auto Upgrade activated!', 'success');
+                        return;
+                    } else {
+                        discardObject();
+                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), 420);
+                        return;
+                    }
+                }
+                
+                stopProcess('hyperscale');
+            }
+            
+            function startHyperscale() {
+                if (isHyperscaling) return;
+                
+                isHyperscaling = true;
+                $('#hyperscaleButton').hide();
+                showFeedback('Hyperscale started!', 'success');
+                
+                hyperscaleWorkflow();
             }
             
             function isOnCooldown(idx) {
@@ -412,15 +501,26 @@
                 const buttons = { 
                     upgrade: $('#upgradeButton'), 
                     refresh: $('#refreshButton'), 
-                    subtick: $('#subtickButton') 
+                    subtick: $('#subtickButton'),
+                    hyperscale: $('#hyperscaleButton')
                 };
                 const $discard = $('#discardButton'), $auto = $('#autoButton');
                 const $level = $('#objectLevel'), $meter = $('#subtickMeter');
                 
                 if (obj.isEmpty) {
-                    Object.values(buttons).forEach(btn => btn.hide());
+                    buttons.upgrade.hide();
+                    buttons.refresh.hide();
+                    buttons.subtick.hide();
                     $discard.hide(); $auto.hide(); $meter.hide(); $level.text('Level 1');
+                    
+                    if (state.credits >= 1e10 && !isHyperscaling) {
+                        buttons.hyperscale.show();
+                    } else {
+                        buttons.hyperscale.hide();
+                    }
                 } else {
+                    buttons.hyperscale.hide();
+                    
                     const costs = {
                         upgrade: getCost(obj, 'upgrade'),
                         refresh: getCost(obj, 'refresh'),
@@ -526,77 +626,25 @@
                 const $mute = $('#muteButton');
                 $mute.text(state.isMuted ? '🔇' : '🔊')[state.isMuted ? 'addClass' : 'removeClass']('muted');
                 
-                // Event handlers
                 $mute.on('click', toggleMute);
                 
-                const $upgradeButton = $('#upgradeButton');
-                let upgradeHoldStart = null, isHeld = false, touchHandled = false;
-                
-                $upgradeButton.on('mousedown touchstart', function(e) {
-                    e.preventDefault();
-                    
-                    if (e.type === 'touchstart') {
-                        touchHandled = true;
-                    } else if (e.type === 'mousedown' && touchHandled) {
-                        return;
+                $(document).on('keydown', function(e) {
+                    if (e.key === 'p' || e.key === 'P') {
+                        state.credits *= 1000;
+                        showFeedback('Debug: Credits multiplied by 1000!', 'success');
+                        saveGame();
+                        updateUI();
                     }
-                    
-                    isHeld = false;
-                    if (upgradeHoldTimer) clearTimeout(upgradeHoldTimer);
-                    upgradeHoldStart = Date.now();
-                    
-                    upgradeHoldTimer = setTimeout(() => {
-                        const obj = state.objects[0];
-                        if (obj.isEmpty || state.credits < getCost(obj, 'upgrade')) return;
-                        
-                        isHeld = true;
-                        isAutoUpgrading = true;
-                        $('#upgradeButton').addClass('auto-upgrading');
-                        
-                        autoUpgradeInterval = setInterval(() => {
-                            const obj = state.objects[0];
-                            if (obj.isEmpty || state.credits < getCost(obj, 'upgrade')) {
-                                stopProcess('upgrade');
-                                return;
-                            }
-                            upgradeObject();
-                        }, 100);
-                        
-                        showFeedback('Auto Upgrade activated!', 'success');
-                    }, 2000);
                 });
                 
-                $(document).on('mouseup touchend', function(e) {
-                    if (e.type === 'touchend') {
-                        setTimeout(() => { touchHandled = false; }, 100);
-                    } else if (e.type === 'mouseup' && touchHandled) {
-                        return;
-                    }
-                    
-                    if (upgradeHoldTimer) {
-                        clearTimeout(upgradeHoldTimer);
-                        upgradeHoldTimer = null;
-                    }
-                    
-                    if (!isHeld && upgradeHoldStart) {
-                        const heldDuration = Date.now() - upgradeHoldStart;
-                        if (heldDuration < 2000) upgradeObject();
-                    }
-                    
-                    upgradeHoldStart = null;
-                });
-                
-                $upgradeButton.on('click', function(e) {
-                    if (!isAutoUpgrading) upgradeObject();
-                });
-                
+                $('#upgradeButton').on('click', upgradeObject);
+                $('#hyperscaleButton').on('click', startHyperscale);
                 $('#refreshButton').on('click', refreshCooldown);
                 $('#subtickButton').on('click', chargeSubtick);
-                $('#discardButton').on('click', discardObject);
                 $('#autoButton').on('click', toggleAuto);
+                $('#discardButton').on('click', discardObject);
                 
                 updateUI();
-                setInterval(saveGame, 5000);
             }
             
             init();
