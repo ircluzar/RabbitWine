@@ -98,7 +98,7 @@ async function requestWakeLock() {
 				if(slower)
 					realmax = 40;
 			
-                if (state.credits < 1e12) return 420; // Default timing
+                if (state.credits < 1e12) return (420/4); // Default timing
                 if (state.credits >= 1e69) return realmax; // Max speed
                 
                 // Calculate E value (exponent in scientific notation)
@@ -109,7 +109,7 @@ async function requestWakeLock() {
                 // At 1e69 (E=19): 69ms
                 const maxE = 19; // (69-12)/3 = 19
                 const progress = Math.min(eValue / maxE, 1);
-                return Math.floor(420 - (420 - realmax) * progress);
+                return Math.floor((420/4) - ((420/4) - realmax) * progress);
             }
             
             function createEmptyObject() {
