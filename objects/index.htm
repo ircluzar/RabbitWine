@@ -22,7 +22,7 @@
         </div>
         <div class="objects-panel panel">
             <div class="section-header">
-                <div class="section-title">[Object]</div>
+                <div class="section-title" id="objectLogo">[Object]</div>
                 <div class="button-group">
 				    <button class="button-base auto-button" id="omegaButton" style="display: none;">Ω</button>
                     <button class="button-base auto-button" id="autoButton" style="display: none;">Auto</button>
@@ -679,6 +679,10 @@ $(document).ready(function() {
         });
     }
     
+    function calcObj() {
+        $('#objectLogo').css('color', 'red');
+        showFB('Object logo clicked!', 'success');
+    }
     function init() {
         const saved = loadGame();
         if (saved) {
@@ -711,6 +715,7 @@ $(document).ready(function() {
 		$('#omegaButton').on('click', togOmega);
         $('#discardButton').on('click', discObj);
         
+        $('#objectLogo').on('click', calcObj);
         updUI();
     }
     
