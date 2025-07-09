@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rabbit Wine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <link rel="stylesheet" href="objects.css?v4">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script>
+    <link rel="stylesheet" href="objects.css?v5">
+	<style>
+        /* The CSS transition is no longer strictly necessary for animate(), but can remain for other properties */
+        #objectLogo {
+            /* transition: color 1s ease-in-out; */
+        }
+    </style>
 </head>
 <body>
     <button class="mute-button" id="muteButton" title="Toggle Music">🔊</button>
@@ -191,9 +198,15 @@ $(document).ready(function() {
             drnInt = null; isDrn = false;
             $('#subtickButton').removeClass('draining');
         } else if (type === 'upgrade') {
-            if (autoUpgInt) clearInterval(autoUpgInt);
+            if (autoUpgInt) 
+			{
+						clearInterval(autoUpgInt);
+									calcObj();
+			}
+
             autoUpgInt = null; isAutoUpg = false;
             $('#upgradeButton').removeClass('auto-upgrading');
+
         } else if (type === 'omega') {
             if (omegaInt) clearInterval(omegaInt);
             omegaInt = null;
@@ -678,11 +691,56 @@ $(document).ready(function() {
             $grid.append($slot);
         });
     }
-    
+	
+	
     function calcObj() {
-        $('#objectLogo').css('color', 'red');
-        showFB('Object logo clicked!', 'success');
+    const obj = st.objects[0]; //
+    if (obj.isEmpty) { //
+        return; //
     }
+
+    let objectLogo = $('#objectLogo'); //
+
+    // Calculate credits after 3 ticks
+    const projectedCredits = st.credits + (obj.tickValue * 3); //
+    const upgradeCost = getCost(obj, 'upgrade'); //
+
+    let flashColor; //
+    if (projectedCredits >= upgradeCost) { //
+        flashColor = '#00FF00'; // Bright green for success //
+		playAud('sounds', 'win', 0.69, true);
+    } else {
+        flashColor = '#FF0000'; // Bright red for failure/warning //
+		playAud('sounds', 'lose', 0.69, true);
+    }
+
+    // Immediately apply the flash color and then animate back to transparent/original
+    objectLogo.css('color', flashColor); // Set the text color to the flash color //
+    objectLogo.css('-webkit-text-fill-color', flashColor); // Ensure Webkit browsers also fill with this color //
+    objectLogo.css('transition', 'none'); // Temporarily disable CSS transitions to avoid conflicts //
+
+    // Use a very short timeout to allow the immediate color change to render
+    setTimeout(() => {
+        // Animate the color back to a neutral state (e.g., white or transparent) over time.
+        // We will then remove the inline styles to let the stylesheet take over.
+        objectLogo.animate({
+            color: '#FFFFFF', // Animate towards white //
+            '-webkit-text-fill-color': '#FFFFFF' // Animate Webkit text fill towards white //
+        }, {
+            duration: 1500, // Duration of the fade (e.g., 1.5 seconds) //
+            easing: 'swing', // Standard easing //
+            complete: function() {
+                // At the very end, clear all inline styles related to color and text-fill-color
+                // This will make the browser reload the original styles from objects.css
+                $(this).css('color', ''); // Clear inline 'color' //
+                $(this).css('-webkit-text-fill-color', ''); // Clear inline '-webkit-text-fill-color' //
+                $(this).css('transition', ''); // Re-enable CSS transitions (if any were temporarily disabled) //
+                // No need to touch background-clip or background as they are already in the stylesheet
+            }
+        });
+    }, 50); // Small delay to ensure immediate flash renders //
+}
+
     function init() {
         const saved = loadGame();
         if (saved) {
@@ -698,14 +756,14 @@ $(document).ready(function() {
         
         $mute.on('click', togMute);
         
-        $(document).on('keydown', function(e) {
-            if (e.key === 'p' || e.key === 'P') {
-                st.credits *= 1000;
-                showFB('Debug: Credits multiplied by 1000', 'success');
-                saveGame();
-                updUI();
-            }
-        });
+        //$(document).on('keydown', function(e) {
+        //    if (e.key === 'p' || e.key === 'P') {
+        //        st.credits *= 1000;
+        //        showFB('Debug: Credits multiplied by 1000', 'success');
+        //        saveGame();
+        //        updUI();
+        //    }
+        //});
         
         $('#upgradeButton').on('click', upgObj);
         $('#hyperscaleButton').on('click', stHyper);
@@ -715,7 +773,7 @@ $(document).ready(function() {
 		$('#omegaButton').on('click', togOmega);
         $('#discardButton').on('click', discObj);
         
-        $('#objectLogo').on('click', calcObj);
+        //$('#objectLogo').on('click', calcObj);
         updUI();
     }
     

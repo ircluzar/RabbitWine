@@ -138,6 +138,13 @@ body {
 	transition: all 0.3s ease-in-out; 
 }
 
+.section-title.no-gradient-text {
+    -webkit-background-clip: unset; /* Disable background clip */
+    -webkit-text-fill-color: unset; /* Re-enable text fill color */
+    background: none; /* Remove background gradient */
+    text-shadow: none; /* Temporarily remove text shadow for a cleaner fade */
+}
+
 .button-group { display: flex; gap: 10px; align-items: center; }
 
 .auto-button, .discard-button { 
