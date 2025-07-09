@@ -19,13 +19,14 @@
             <button class="button-base hyperscale-button" id="hyperscaleButton" style="display: none;">Hyperscale</button>
             <button class="button-base refresh-button" id="refreshButton" style="display: none;">Refresh Cooldown</button>
             <button class="button-base subtick-button" id="subtickButton" style="display: none;">Charge Subtick</button>
-            <div class="subtick-meter" id="subtickMeter" style="display: none;">Subticks: 0</div>
         </div>
         <div class="objects-panel panel">
             <div class="section-header">
-                <div class="section-title">Object</div>
+                <div class="section-title">[Object]</div>
                 <div class="button-group">
+				    <button class="button-base auto-button" id="omegaButton" style="display: none;">Ω</button>
                     <button class="button-base auto-button" id="autoButton" style="display: none;">Auto</button>
+
                     <button class="button-base discard-button" id="discardButton" style="display: none;"> X </button>
                 </div>
             </div>
@@ -50,8 +51,8 @@ $(document).ready(function() {
     const CK = 'rabbitobjects_save', MAX_OBJ = 4000;
     let st = { credits: 0, objects: [createEmptyObj()], isMuted: false };
     let curMusic = null, cdInts = new Map();
-    let autoClk = false, isDrn = false, isAutoUpg = false;
-    let drnInt = null, autoUpgInt = null, upgHold = null;
+    let autoClk = false, isDrn = false, isAutoUpg = false, isOmega = false;
+    let drnInt = null, autoUpgInt = null, omegaInt = null, upgHold = null;
     let isHyper = false, hyperTO = null;
     
     const tiers = [
@@ -173,6 +174,17 @@ $(document).ready(function() {
         $('#autoButton').text('Auto').toggleClass('active', autoClk);
     }
     
+    function togOmega() {
+        isOmega = !isOmega;
+        $('#omegaButton').text('Ω').toggleClass('active', isOmega);
+        
+        if (isOmega) {
+            stOmegaUpg();
+        } else {
+            stopProc('omega');
+        }
+    }
+    
     function stopProc(type) {
         if (type === 'drain') {
             if (drnInt) clearInterval(drnInt);
@@ -182,6 +194,9 @@ $(document).ready(function() {
             if (autoUpgInt) clearInterval(autoUpgInt);
             autoUpgInt = null; isAutoUpg = false;
             $('#upgradeButton').removeClass('auto-upgrading');
+        } else if (type === 'omega') {
+            if (omegaInt) clearInterval(omegaInt);
+            omegaInt = null;
         } else if (type === 'hyperscale') {
             if (hyperTO) clearTimeout(hyperTO);
             hyperTO = null; isHyper = false;
@@ -291,6 +306,24 @@ $(document).ready(function() {
         }, getDynTiming(false));
     }
     
+    function stOmegaUpg() {
+        if (!isOmega) return;
+        
+        const perfOmegaUpg = () => {
+            const obj = st.objects[0];
+            if (obj.isEmpty || st.credits < getCost(obj, 'upgrade') || !isOmega) {
+                return;
+            }
+            upgObj();
+        };
+        
+        perfOmegaUpg();
+        
+        omegaInt = setInterval(() => {
+            perfOmegaUpg();
+        }, getDynTiming(false));
+    }
+    
     function refCD() {
         const obj = st.objects[0];
         if (obj.isEmpty || !isOnCD(0)) return;
@@ -343,9 +376,12 @@ $(document).ready(function() {
     
     function rstObj(obj) {
         autoClk = false;
+        isOmega = false;
         $('#autoButton').removeClass('active');
+        $('#omegaButton').removeClass('active');
         stopProc('drain');
         stopProc('upgrade');
+        stopProc('omega');
         Object.assign(obj, createEmptyObj());
     }
     
@@ -385,7 +421,8 @@ $(document).ready(function() {
         
         if (obj.level === 2) {
             const nextUpgCost = getCost(obj, 'upgrade');
-            if (nextUpgCost < 400) {
+            const threshold = st.credits >= 1e20 ? 395 : 400;
+            if (nextUpgCost < threshold) {
                 stAutoUpg();
                 stopProc('hyperscale');
                 showFB('Hyperscale complete - Auto Upgrade activated!', 'success');
@@ -460,33 +497,39 @@ $(document).ready(function() {
     }
     
     function tckObj(idx) {
-        const obj = st.objects[idx];
-        if (obj.isEmpty || isOnCD(idx)) return;
-        
-        if (obj.subtickCount > 0) {
-            const subCred = obj.tickValue * obj.subtickCount;
-            st.credits += subCred;
-            showFB(`${obj.subtickCount} subticks: +${fmtNum(subCred)}!`, 'success');
-            obj.subtickCount = 0;
-        }
-        
-        st.credits += obj.tickValue;
-        showFB(`+${fmtNum(obj.tickValue)}!`, 'success');
-        obj.lastTicked = Date.now();
-        stCDTimer(idx);
-        
-        if (Math.random() * 100 < obj.breakProbability) {
-            st.credits += obj.shatterBonus;
-            showFB(`Object shattered! +${fmtNum(obj.shatterBonus)} bonus!`, 'warning');
-            playBrkSfx(obj.breakSfx);
-            if (obj.currentMusic) stopMusic();
-            clearCD(idx);
-            rstObj(obj);
-        } else {
-            playTckSfx((obj.breakSfx % 3) + 1);
-        }
-        saveGame(); updUI();
+    const obj = st.objects[idx];
+    if (obj.isEmpty || isOnCD(idx)) return;
+
+    let gain = obj.tickValue;
+    let msg = `+${fmtNum(gain)}!`;
+
+    if (obj.subtickCount > 0) {
+        const subCred = obj.tickValue * obj.subtickCount;
+        gain += subCred;
+        msg = `+${fmtNum(gain)}`;
+        obj.subtickCount = 0;
     }
+
+    st.credits += gain;
+    showFB(msg, 'success');
+    obj.lastTicked = Date.now();
+    stCDTimer(idx);
+
+    if (Math.random() * 100 < obj.breakProbability) {
+        st.credits += obj.shatterBonus;
+        showFB(`Object shattered! +${fmtNum(obj.shatterBonus)} bonus!`, 'warning');
+        playBrkSfx(obj.breakSfx);
+        if (obj.currentMusic) stopMusic();
+        clearCD(idx);
+        rstObj(obj);
+    } else {
+        playTckSfx((obj.breakSfx % 3) + 1);
+    }
+
+    saveGame();
+    updUI();
+}
+
     
     function fillEmptySlot(idx) {
         const obj = st.objects[idx];
@@ -526,14 +569,14 @@ $(document).ready(function() {
             subtick: $('#subtickButton'),
             hyperscale: $('#hyperscaleButton')
         };
-        const $disc = $('#discardButton'), $auto = $('#autoButton');
-        const $lvl = $('#objectLevel'), $meter = $('#subtickMeter');
+        const $disc = $('#discardButton'), $auto = $('#autoButton'), $omega = $('#omegaButton');
+        const $lvl = $('#objectLevel');
         
         if (obj.isEmpty) {
             btns.upgrade.hide();
             btns.refresh.hide();
             btns.subtick.hide();
-            $disc.hide(); $auto.hide(); $meter.hide(); $lvl.text('Level 1');
+            $disc.hide(); $auto.hide(); $omega.hide(); $lvl.text('Level 1');
             
             if (st.credits >= 1e10 && !isHyper) {
                 btns.hyperscale.show();
@@ -558,6 +601,9 @@ $(document).ready(function() {
             if (obj.level >= 20) $auto.show();
             else $auto.hide();
             
+            if (obj.level >= 100) $omega.show();
+            else $omega.hide();
+            
             if (obj.level > 2) {
                 btns.refresh.show().text(`Refresh - ${fmtNum(costs.refresh)}`)
                     .prop('disabled', st.credits < costs.refresh || !isOnCD(0));
@@ -570,10 +616,8 @@ $(document).ready(function() {
                 
                 btns.subtick.show().text(`${btnTxt} - ${fmtNum(costs.subtick)}`)
                     .prop('disabled', isDisabled);
-                $meter.show().text(`Subticks: ${obj.subtickCount}`);
             } else { 
-                btns.subtick.hide(); 
-                $meter.hide(); 
+                btns.subtick.hide();
             }
         }
         renSlots();
@@ -664,6 +708,7 @@ $(document).ready(function() {
         $('#refreshButton').on('click', refCD);
         $('#subtickButton').on('click', chrgSubtick);
         $('#autoButton').on('click', togAuto);
+		$('#omegaButton').on('click', togOmega);
         $('#discardButton').on('click', discObj);
         
         updUI();
