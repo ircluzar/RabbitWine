@@ -91,6 +91,27 @@ async function requestWakeLock() {
                 return (num % 1 === 0 ? num.toString() : num.toFixed(2).replace(/\.?0+$/, '')) + suffix;
             }
             
+            // Calculate dynamic timing based on credits
+            function getDynamicTiming(slower) {
+			
+				let realmax = 12;
+				if(slower)
+					realmax = 40;
+			
+                if (state.credits < 1e12) return 420; // Default timing
+                if (state.credits >= 1e69) return realmax; // Max speed
+                
+                // Calculate E value (exponent in scientific notation)
+                const eValue = Math.floor(Math.log10(state.credits / 1e12) / 3);
+                
+                // Linear interpolation from 420ms to 69ms based on E value
+                // At 1e12 (E=0): 420ms
+                // At 1e69 (E=19): 69ms
+                const maxE = 19; // (69-12)/3 = 19
+                const progress = Math.min(eValue / maxE, 1);
+                return Math.floor(420 - (420 - realmax) * progress);
+            }
+            
             function createEmptyObject() {
                 return { 
                     id: 'master', isEmpty: true, imageNumber: null, level: 1, baseCost: 300, 
@@ -258,6 +279,28 @@ async function requestWakeLock() {
                 saveGame(); updateUI();
             }
             
+            function startAutoUpgrade() {
+                if (isAutoUpgrading) return;
+                
+                isAutoUpgrading = true;
+                $('#upgradeButton').addClass('auto-upgrading');
+                
+                const performAutoUpgrade = () => {
+                    const obj = state.objects[0];
+                    if (obj.isEmpty || state.credits < getCost(obj, 'upgrade')) {
+                        stopProcess('upgrade');
+                        return;
+                    }
+                    upgradeObject();
+                };
+                
+                performAutoUpgrade(); // First upgrade immediately
+                
+                autoUpgradeInterval = setInterval(() => {
+                    performAutoUpgrade();
+                }, getDynamicTiming(false));
+            }
+            
             function refreshCooldown() {
                 const obj = state.objects[0];
                 if (obj.isEmpty || !isOnCooldown(0)) return;
@@ -317,8 +360,8 @@ async function requestWakeLock() {
             }
             
             function discardObject() {
-			requestWakeLock();
-			
+                requestWakeLock();
+                
                 const obj = state.objects[0];
                 if (obj.isEmpty) return;
                 if (obj.currentMusic) stopMusic();
@@ -334,14 +377,14 @@ async function requestWakeLock() {
                 
                 if (obj.isEmpty) {
                     fillEmptySlot(0);
-                    hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), 420);
+                    hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), getDynamicTiming(true));
                     return;
                 }
                 
                 if (obj.level === 1) {
                     if (state.credits >= getCost(obj, 'upgrade')) {
                         upgradeObject();
-                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), 420);
+                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), getDynamicTiming(true));
                         return;
                     } else {
                         stopProcess('hyperscale');
@@ -353,24 +396,13 @@ async function requestWakeLock() {
                 if (obj.level === 2) {
                     const nextUpgradeCost = getCost(obj, 'upgrade');
                     if (nextUpgradeCost < 400) {
-                        isAutoUpgrading = true;
-                        $('#upgradeButton').addClass('auto-upgrading');
-                        
-                        autoUpgradeInterval = setInterval(() => {
-                            const obj = state.objects[0];
-                            if (obj.isEmpty || state.credits < getCost(obj, 'upgrade')) {
-                                stopProcess('upgrade');
-                                return;
-                            }
-                            upgradeObject();
-                        }, 100);
-                        
+                        startAutoUpgrade();
                         stopProcess('hyperscale');
                         showFeedback('Hyperscale complete - Auto Upgrade activated!', 'success');
                         return;
                     } else {
                         discardObject();
-                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), 420);
+                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), getDynamicTiming(true));
                         return;
                     }
                 }
