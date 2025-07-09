@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rabbit Wine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <link rel="stylesheet" href="objects.css?v2">
+    <link rel="stylesheet" href="objects.css?v4">
 </head>
 <body>
     <button class="mute-button" id="muteButton" title="Toggle Music">🔊</button>
@@ -250,23 +250,23 @@ $(document).ready(function() {
         const newTier = getObjTier(obj.level);
         
         const upgs = [
-            () => { obj.tickValue = Math.max(2, Math.floor(obj.tickValue * 2.69)) + 25; return 'Tick value increased!'; },
+            () => { obj.tickValue = Math.max(2, Math.floor(obj.tickValue * 2.69)) + 25; return 'Tick value increased'; },
             () => { 
                 if (obj.breakProbability > 5) {
                     obj.breakProbability = Math.max(5, obj.breakProbability - 4);
                 } else {
                     obj.breakProbability = Math.max(0.01, obj.breakProbability * 0.99);
                 }
-                return 'Break chance reduced!'; 
+                return 'Break chance reduced'; 
             },
-            () => { obj.shatterBonus = Math.floor(obj.shatterBonus * 2.69); return 'Shatter bonus increased!'; },
+            () => { obj.shatterBonus = Math.floor(obj.shatterBonus * 2.69); return 'Shatter bonus increased'; },
             () => { 
                 if (obj.cooldown > 2) {
                     obj.cooldown = Math.max(2, obj.cooldown - 2);
                 } else {
                     obj.cooldown = Math.max(0.01, obj.cooldown * 0.99);
                 }
-                return 'Cooldown reduced!'; 
+                return 'Cooldown reduced'; 
             }
         ];
         
@@ -276,7 +276,7 @@ $(document).ready(function() {
             const $slot = $(`.object-slot[data-index="0"]`);
             if ($slot.length) perfTierTrans(obj, $slot);
             
-            const tierNms = { orbs: 'Shape → Orb!', places: 'Orb → Place!', realities: 'Place → Reality!' };
+            const tierNms = { orbs: 'Shape → Orb', places: 'Orb → Place', realities: 'Place → Reality' };
             fbMsg = `Tier upgrade: ${tierNms[newTier.name] || fbMsg}`;
         }
         
@@ -333,7 +333,7 @@ $(document).ready(function() {
         playPopSfx();
         st.credits -= cost; obj.lastTicked = null;
         clearCD(0); updCDDisp(0);
-        showFB('Cooldown refreshed!', 'success');
+        showFB('Cooldown refreshed', 'success');
         saveGame(); updUI();
     }
     
@@ -362,14 +362,14 @@ $(document).ready(function() {
                 saveGame(); updUI();
             }, 100);
             
-            showFB('Full Charge activated!', 'success');
+            showFB('Full Charge activated', 'success');
         } else {
             const cost = getCost(obj, 'subtick');
             if (st.credits < cost || cost <= 0) return;
             
             playPopSfx();
             st.credits -= cost; obj.subtickCount++;
-            showFB('Subtick charged!', 'success');
+            showFB('Subtick charged', 'success');
             saveGame(); updUI();
         }
     }
@@ -393,7 +393,7 @@ $(document).ready(function() {
         if (obj.currentMusic) stopMusic();
         clearCD(0); playBrkSfx(obj.breakSfx);
         rstObj(obj);
-        saveGame(); updUI(); showFB('Object discarded!', 'warning');
+        saveGame(); updUI(); showFB('Object discarded', 'warning');
     }
     
     function hyperWF() {
@@ -425,7 +425,7 @@ $(document).ready(function() {
             if (nextUpgCost < threshold) {
                 stAutoUpg();
                 stopProc('hyperscale');
-                showFB('Hyperscale complete - Auto Upgrade activated!', 'success');
+                showFB('Hyperscale complete - Auto Upgrade activated', 'success');
                 return;
             } else {
                 discObj();
@@ -442,7 +442,7 @@ $(document).ready(function() {
         
         isHyper = true;
         $('#hyperscaleButton').hide();
-        showFB('Hyperscale started!', 'success');
+        showFB('Hyperscale started', 'success');
         
         hyperWF();
     }
@@ -501,7 +501,7 @@ $(document).ready(function() {
     if (obj.isEmpty || isOnCD(idx)) return;
 
     let gain = obj.tickValue;
-    let msg = `+${fmtNum(gain)}!`;
+    let msg = `+${fmtNum(gain)}`;
 
     if (obj.subtickCount > 0) {
         const subCred = obj.tickValue * obj.subtickCount;
@@ -517,7 +517,7 @@ $(document).ready(function() {
 
     if (Math.random() * 100 < obj.breakProbability) {
         st.credits += obj.shatterBonus;
-        showFB(`Object shattered! +${fmtNum(obj.shatterBonus)} bonus!`, 'warning');
+        showFB(`Object shattered, +${fmtNum(obj.shatterBonus)}`, 'warning');
         playBrkSfx(obj.breakSfx);
         if (obj.currentMusic) stopMusic();
         clearCD(idx);
@@ -697,7 +697,7 @@ $(document).ready(function() {
         $(document).on('keydown', function(e) {
             if (e.key === 'p' || e.key === 'P') {
                 st.credits *= 1000;
-                showFB('Debug: Credits multiplied by 1000!', 'success');
+                showFB('Debug: Credits multiplied by 1000', 'success');
                 saveGame();
                 updUI();
             }

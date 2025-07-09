@@ -33,7 +33,19 @@ body {
     border: 1px solid var(--border); 
 }
 
-.stats-panel { display: flex; flex-direction: column; gap: 12px; }
+.stats-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* Calculate the min-height based on the expected content:
+       - credit-display height (e.g., ~100px based on font size and padding)
+       - 4 button-base heights (e.g., 4 * ~40px = 160px for padding and font size)
+       - 4 gaps (4 * 12px = 48px)
+       - stats-panel padding (2 * 18px = 36px)
+       Total estimated: 100 + 160 + 48 + 36 = 344px. Adjust as needed.
+    */
+    min-height: 350px; /* Adjust this value as needed to fit all elements comfortably */
+}
 
 .credit-display { 
     text-align: center; 
