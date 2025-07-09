@@ -38,649 +38,639 @@ let wakeLock = null;
 
 async function requestWakeLock() {
   if (wakeLock) return;
-
   try {
     wakeLock = await navigator.wakeLock.request('screen');
     wakeLock.addEventListener('release', () => {
       wakeLock = null;
     });
-  } catch (err) {
-  }
+  } catch (err) {}
 }
 
-        $(document).ready(function() {
-            const CACHE_KEY = 'rabbitobjects_save', MAX_OBJECTS = 4000;
-            let state = { credits: 0, objects: [createEmptyObject()], isMuted: false };
-            let currentMusicAudio = null, cooldownIntervals = new Map();
-            let autoClickEnabled = false, isDraining = false, isAutoUpgrading = false;
-            let drainInterval = null, autoUpgradeInterval = null, upgradeHoldTimer = null;
-            let isHyperscaling = false, hyperscaleTimeout = null;
-            
-            const tiers = [
-                { min: 0, name: 'shapes', img: n => n },
-                { min: 20, name: 'orbs', img: n => Math.floor(n / 4) },
-                { min: 50, name: 'places', img: n => Math.floor(n / 40) },
-                { min: 100, name: 'realities', img: n => Math.floor(n / 100) }
-            ];
-            
-            const formatUnits = [
-                { value: 1e24, symbol: 'Y' }, { value: 1e21, symbol: 'Z' },
-                { value: 1e18, symbol: 'E' }, { value: 1e15, symbol: 'P' },
-                { value: 1e12, symbol: 'T' }, { value: 1e9, symbol: 'G' },
-                { value: 1e6, symbol: 'M' }, { value: 1e3, symbol: 'K' }
-            ];
-            
-            function formatNumber(num) {
-                if (num < 1000) return num.toString();
-                
-                for (const unit of formatUnits) {
-                    if (num >= unit.value) {
-                        const value = num / unit.value;
-                        if (unit.symbol === 'Y' && value >= 1000) {
-                            const eValue = Math.floor(Math.log10(value / 1000) / 3) + 1;
-                            const displayValue = value / Math.pow(1000, eValue);
-                            return displayValue.toFixed(1).replace(/\.0$/, '') + 'e' + eValue;
-                        }
-                        return value.toFixed(1).replace(/\.0$/, '') + unit.symbol;
-                    }
+$(document).ready(function() {
+    const CK = 'rabbitobjects_save', MAX_OBJ = 4000;
+    let st = { credits: 0, objects: [createEmptyObj()], isMuted: false };
+    let curMusic = null, cdInts = new Map();
+    let autoClk = false, isDrn = false, isAutoUpg = false;
+    let drnInt = null, autoUpgInt = null, upgHold = null;
+    let isHyper = false, hyperTO = null;
+    
+    const tiers = [
+        { min: 0, name: 'shapes', img: n => n },
+        { min: 20, name: 'orbs', img: n => Math.floor(n / 4) },
+        { min: 50, name: 'places', img: n => Math.floor(n / 40) },
+        { min: 100, name: 'realities', img: n => Math.floor(n / 100) }
+    ];
+    
+    const fmtUnits = [
+        { value: 1e24, symbol: 'Y' }, { value: 1e21, symbol: 'Z' },
+        { value: 1e18, symbol: 'E' }, { value: 1e15, symbol: 'P' },
+        { value: 1e12, symbol: 'T' }, { value: 1e9, symbol: 'G' },
+        { value: 1e6, symbol: 'M' }, { value: 1e3, symbol: 'K' }
+    ];
+    
+    function fmtNum(n) {
+        if (n < 1000) return n.toString();
+        
+        for (const u of fmtUnits) {
+            if (n >= u.value) {
+                const v = n / u.value;
+                if (u.symbol === 'Y' && v >= 1000) {
+                    const eVal = Math.floor(Math.log10(v / 1000) / 3) + 1;
+                    const dispVal = v / Math.pow(1000, eVal);
+                    return dispVal.toFixed(1).replace(/\.0$/, '') + 'e' + eVal;
                 }
-                return num.toString();
+                return v.toFixed(1).replace(/\.0$/, '') + u.symbol;
             }
-            
-            function formatDecimal(num, suffix = '') {
-                return (num % 1 === 0 ? num.toString() : num.toFixed(2).replace(/\.?0+$/, '')) + suffix;
-            }
-            
-            // Calculate dynamic timing based on credits
-            function getDynamicTiming(slower) {
-			
-				let realmax = 12;
-				if(slower)
-					realmax = 40;
-			
-                if (state.credits < 1e12) return (420/4); // Default timing
-                if (state.credits >= 1e69) return realmax; // Max speed
-                
-                // Calculate E value (exponent in scientific notation)
-                const eValue = Math.floor(Math.log10(state.credits / 1e12) / 3);
-                
-                // Linear interpolation from 420ms to 69ms based on E value
-                // At 1e12 (E=0): 420ms
-                // At 1e69 (E=19): 69ms
-                const maxE = 19; // (69-12)/3 = 19
-                const progress = Math.min(eValue / maxE, 1);
-                return Math.floor((420/4) - ((420/4) - realmax) * progress);
-            }
-            
-            function createEmptyObject() {
-                return { 
-                    id: 'master', isEmpty: true, imageNumber: null, level: 1, baseCost: 300, 
-                    costScaling: 1.5, tickValue: null, breakProbability: null, shatterBonus: null, 
-                    music: null, breakSfx: null, cooldown: null, lastTicked: null, 
-                    currentMusic: null, subtickCount: 0 
-                };
-            }
-            
-            function getObjectTier(level) {
-                for (let i = tiers.length - 1; i >= 0; i--) {
-                    if (level >= tiers[i].min) return tiers[i];
-                }
-                return tiers[0];
-            }
-            
-            function getImagePath(obj) {
-                const tier = getObjectTier(obj.level);
-                return `${tier.name}/${tier.img(obj.imageNumber)}.gif`;
-            }
-            
-            function validateSave(saved) {
-                try {
-                    if (!saved?.objects?.[0] || typeof saved.credits !== 'number' || saved.credits < 0) return false;
-                    const obj = saved.objects[0];
-                    if (typeof obj.subtickCount !== 'number') obj.subtickCount = 0;
-                    if (typeof obj.currentMusic !== 'boolean') obj.currentMusic = false;
-                    return true;
-                } catch (e) { return false; }
-            }
-            
-            function saveGame() { try { localStorage.setItem(CACHE_KEY, JSON.stringify(state)); } catch(e) {} }
-            function loadGame() { try { const saved = JSON.parse(localStorage.getItem(CACHE_KEY)); return validateSave(saved) ? saved : null; } catch(e) { return null; } }
-            
-            function playAudio(folder, num, vol, isWav, loop = false) {
-                if (state.isMuted) return;
-                const audio = new Audio(`${folder}/${num}.${isWav ? 'wav' : 'mp3'}`);
-                audio.volume = vol; audio.loop = loop;
-                audio.play().catch(() => {});
-                return audio;
-            }
-            
-            function playMusic(num) { 
-                if (currentMusicAudio) currentMusicAudio.pause(); 
-                currentMusicAudio = playAudio('corridor', num, 0.15, false, true); 
-            }
-            
-            function playBreakSfx(num) { playAudio('break', num, 0.25, true); }
-            function playTickSfx(num) { playAudio('tick', num, 0.2, false); }
-            function playPopSfx() { playAudio('pop', Math.floor(Math.random() * 10) + 1, 0.69, true); }
-            function stopMusic() { if (currentMusicAudio) { currentMusicAudio.pause(); currentMusicAudio = null; } }
-            
-            function toggleMute() {
-                state.isMuted = !state.isMuted;
-                const $btn = $('#muteButton');
-                if (state.isMuted) { 
-                    stopMusic(); 
-                    $btn.text('🔇').addClass('muted'); 
-                } else { 
-                    $btn.text('🔊').removeClass('muted'); 
-                    const obj = state.objects[0]; 
-                    if (!obj.isEmpty && obj.currentMusic) playMusic(obj.music); 
-                }
-                saveGame();
-            }
-            
-            function toggleAuto() {
-                autoClickEnabled = !autoClickEnabled;
-                $('#autoButton').text('Auto').toggleClass('active', autoClickEnabled);
-            }
-            
-            function stopProcess(type) {
-                if (type === 'drain') {
-                    if (drainInterval) clearInterval(drainInterval);
-                    drainInterval = null; isDraining = false;
-                    $('#subtickButton').removeClass('draining');
-                } else if (type === 'upgrade') {
-                    if (autoUpgradeInterval) clearInterval(autoUpgradeInterval);
-                    autoUpgradeInterval = null; isAutoUpgrading = false;
-                    $('#upgradeButton').removeClass('auto-upgrading');
-                } else if (type === 'hyperscale') {
-                    if (hyperscaleTimeout) clearTimeout(hyperscaleTimeout);
-                    hyperscaleTimeout = null; isHyperscaling = false;
-                    $('#hyperscaleButton').hide();
-                }
-                updateUI();
-            }
-            
-            function generateObj() {
-                return {
-                    imageNumber: Math.floor(Math.random() * MAX_OBJECTS), level: 1, baseCost: 300,
-                    costScaling: 1.3 + Math.random() * 0.69, tickValue: Math.floor(Math.random() * 11) + 4,
-                    breakProbability: Math.floor(Math.random() * 35) + 16, shatterBonus: Math.floor(Math.random() * 420) + 69,
-                    music: Math.floor(Math.random() * 39) + 1, breakSfx: Math.floor(Math.random() * 18) + 1,
-                    cooldown: Math.floor(Math.random() * 20) + 1, lastTicked: null, currentMusic: false, subtickCount: 0
-                };
-            }
-            
-            function getCost(obj, type) {
-                const base = type === 'upgrade' ? Math.floor(obj.baseCost * Math.pow(obj.costScaling, obj.level - 1)) : state.credits;
-                return type === 'upgrade' ? base : Math.floor(base * (type === 'refresh' ? 10 + obj.level : 15 + obj.level) / 100);
-            }
-            
-            function performTierTransition(obj, $slot) {
-                const $img = $slot.find('.object-image');
-                $slot.addClass('tier-transition flashing');
-                obj.music = Math.floor(Math.random() * 39) + 1;
-                
-                if (obj.currentMusic && !state.isMuted) {
-                    stopMusic();
-                    playMusic(obj.music);
-                }
-                
-                setTimeout(() => {
-                    $img.attr('src', getImagePath(obj));
-                    $slot.removeClass('flashing').addClass('revealing');
-                    setTimeout(() => $slot.removeClass('tier-transition revealing'), 2000);
-                }, 300);
-            }
-            
-            function upgradeObject() {
-                const obj = state.objects[0];
-                if (obj.isEmpty) return;
-                const cost = getCost(obj, 'upgrade');
-                if (state.credits < cost) return;
-                
-                playPopSfx();
-                state.credits -= cost;
-                const previousTier = getObjectTier(obj.level);
-                obj.level++;
-                const newTier = getObjectTier(obj.level);
-                
-                const upgrades = [
-                    () => { obj.tickValue = Math.max(2, Math.floor(obj.tickValue * 2.69)) + 25; return 'Tick value increased!'; },
-                    () => { 
-                        if (obj.breakProbability > 5) {
-                            obj.breakProbability = Math.max(5, obj.breakProbability - 4);
-                        } else {
-                            obj.breakProbability = Math.max(0.01, obj.breakProbability * 0.99);
-                        }
-                        return 'Break chance reduced!'; 
-                    },
-                    () => { obj.shatterBonus = Math.floor(obj.shatterBonus * 2.69); return 'Shatter bonus increased!'; },
-                    () => { 
-                        if (obj.cooldown > 2) {
-                            obj.cooldown = Math.max(2, obj.cooldown - 2);
-                        } else {
-                            obj.cooldown = Math.max(0.01, obj.cooldown * 0.99);
-                        }
-                        return 'Cooldown reduced!'; 
-                    }
-                ];
-                
-                let feedbackMessage = upgrades[Math.floor(Math.random() * 4)]();
-                
-                if (previousTier !== newTier) {
-                    const $slot = $(`.object-slot[data-index="0"]`);
-                    if ($slot.length) performTierTransition(obj, $slot);
-                    
-                    const tierNames = { orbs: 'Shape → Orb!', places: 'Orb → Place!', realities: 'Place → Reality!' };
-                    feedbackMessage = `Tier upgrade: ${tierNames[newTier.name] || feedbackMessage}`;
-                }
-                
-                showFeedback(feedbackMessage, 'success');
-                saveGame(); updateUI();
-            }
-            
-            function startAutoUpgrade() {
-                if (isAutoUpgrading) return;
-                
-                isAutoUpgrading = true;
-                $('#upgradeButton').addClass('auto-upgrading');
-                
-                const performAutoUpgrade = () => {
-                    const obj = state.objects[0];
-                    if (obj.isEmpty || state.credits < getCost(obj, 'upgrade')) {
-                        stopProcess('upgrade');
-                        return;
-                    }
-                    upgradeObject();
-                };
-                
-                performAutoUpgrade(); // First upgrade immediately
-                
-                autoUpgradeInterval = setInterval(() => {
-                    performAutoUpgrade();
-                }, getDynamicTiming(false));
-            }
-            
-            function refreshCooldown() {
-                const obj = state.objects[0];
-                if (obj.isEmpty || !isOnCooldown(0)) return;
-                const cost = getCost(obj, 'refresh');
-                if (state.credits < cost) return;
-                
-                playPopSfx();
-                state.credits -= cost; obj.lastTicked = null;
-                clearCooldown(0); updateCooldownDisplay(0);
-                showFeedback('Cooldown refreshed!', 'success');
-                saveGame(); updateUI();
-            }
-            
-            function chargeSubtick() {
-                const obj = state.objects[0];
-                if (obj.isEmpty) return;
-                
-                if (obj.level >= 10) {
-                    if (isDraining) return;
-                    const cost = getCost(obj, 'subtick');
-                    if (state.credits < cost || cost <= 0) return;
-                    
-                    isDraining = true;
-                    $('#subtickButton').addClass('draining');
-                    
-                    drainInterval = setInterval(() => {
-                        const currentCost = getCost(obj, 'subtick');
-                        if (state.credits < currentCost || currentCost <= 0) {
-                            stopProcess('drain');
-                            return;
-                        }
-                        
-                        playPopSfx();
-                        state.credits -= currentCost;
-                        obj.subtickCount++;
-                        saveGame(); updateUI();
-                    }, 100);
-                    
-                    showFeedback('Full Charge activated!', 'success');
+        }
+        return n.toString();
+    }
+    
+    function fmtDec(n, suf = '') {
+        return (n % 1 === 0 ? n.toString() : n.toFixed(2).replace(/\.?0+$/, '')) + suf;
+    }
+    
+    function getDynTiming(slower) {
+        let realmax = 12;
+        if(slower) realmax = 40;
+        
+        if (st.credits < 1e12) return (420/4);
+        if (st.credits >= 1e69) return realmax;
+        
+        const eVal = Math.floor(Math.log10(st.credits / 1e12) / 3);
+        const maxE = 19;
+        const prog = Math.min(eVal / maxE, 1);
+        return Math.floor((420/4) - ((420/4) - realmax) * prog);
+    }
+    
+    function createEmptyObj() {
+        return { 
+            id: 'master', isEmpty: true, imageNumber: null, level: 1, baseCost: 300, 
+            costScaling: 1.5, tickValue: null, breakProbability: null, shatterBonus: null, 
+            music: null, breakSfx: null, cooldown: null, lastTicked: null, 
+            currentMusic: null, subtickCount: 0 
+        };
+    }
+    
+    function getObjTier(lvl) {
+        for (let i = tiers.length - 1; i >= 0; i--) {
+            if (lvl >= tiers[i].min) return tiers[i];
+        }
+        return tiers[0];
+    }
+    
+    function getImgPath(obj) {
+        const tier = getObjTier(obj.level);
+        return `${tier.name}/${tier.img(obj.imageNumber)}.gif`;
+    }
+    
+    function valSave(saved) {
+        try {
+            if (!saved?.objects?.[0] || typeof saved.credits !== 'number' || saved.credits < 0) return false;
+            const obj = saved.objects[0];
+            if (typeof obj.subtickCount !== 'number') obj.subtickCount = 0;
+            if (typeof obj.currentMusic !== 'boolean') obj.currentMusic = false;
+            return true;
+        } catch (e) { return false; }
+    }
+    
+    function saveGame() { try { localStorage.setItem(CK, JSON.stringify(st)); } catch(e) {} }
+    function loadGame() { try { const sv = JSON.parse(localStorage.getItem(CK)); return valSave(sv) ? sv : null; } catch(e) { return null; } }
+    
+    function playAud(fld, n, vol, isWav, loop = false) {
+        if (st.isMuted) return;
+        const aud = new Audio(`${fld}/${n}.${isWav ? 'wav' : 'mp3'}`);
+        aud.volume = vol; aud.loop = loop;
+        aud.play().catch(() => {});
+        return aud;
+    }
+    
+    function playMusic(n) { 
+        if (curMusic) curMusic.pause(); 
+        curMusic = playAud('corridor', n, 0.15, false, true); 
+    }
+    
+    function playBrkSfx(n) { playAud('break', n, 0.25, true); }
+    function playTckSfx(n) { playAud('tick', n, 0.2, false); }
+    function playPopSfx() { playAud('pop', Math.floor(Math.random() * 10) + 1, 0.69, true); }
+    function stopMusic() { if (curMusic) { curMusic.pause(); curMusic = null; } }
+    
+    function togMute() {
+        st.isMuted = !st.isMuted;
+        const $btn = $('#muteButton');
+        if (st.isMuted) { 
+            stopMusic(); 
+            $btn.text('🔇').addClass('muted'); 
+        } else { 
+            $btn.text('🔊').removeClass('muted'); 
+            const obj = st.objects[0]; 
+            if (!obj.isEmpty && obj.currentMusic) playMusic(obj.music); 
+        }
+        saveGame();
+    }
+    
+    function togAuto() {
+        autoClk = !autoClk;
+        $('#autoButton').text('Auto').toggleClass('active', autoClk);
+    }
+    
+    function stopProc(type) {
+        if (type === 'drain') {
+            if (drnInt) clearInterval(drnInt);
+            drnInt = null; isDrn = false;
+            $('#subtickButton').removeClass('draining');
+        } else if (type === 'upgrade') {
+            if (autoUpgInt) clearInterval(autoUpgInt);
+            autoUpgInt = null; isAutoUpg = false;
+            $('#upgradeButton').removeClass('auto-upgrading');
+        } else if (type === 'hyperscale') {
+            if (hyperTO) clearTimeout(hyperTO);
+            hyperTO = null; isHyper = false;
+            $('#hyperscaleButton').hide();
+        }
+        updUI();
+    }
+    
+    function genObj() {
+        return {
+            imageNumber: Math.floor(Math.random() * MAX_OBJ), level: 1, baseCost: 300,
+            costScaling: 1.3 + Math.random() * 0.69, tickValue: Math.floor(Math.random() * 11) + 4,
+            breakProbability: Math.floor(Math.random() * 35) + 16, shatterBonus: Math.floor(Math.random() * 420) + 69,
+            music: Math.floor(Math.random() * 39) + 1, breakSfx: Math.floor(Math.random() * 18) + 1,
+            cooldown: Math.floor(Math.random() * 20) + 1, lastTicked: null, currentMusic: false, subtickCount: 0
+        };
+    }
+    
+    function getCost(obj, type) {
+        const base = type === 'upgrade' ? Math.floor(obj.baseCost * Math.pow(obj.costScaling, obj.level - 1)) : st.credits;
+        return type === 'upgrade' ? base : Math.floor(base * (type === 'refresh' ? 10 + obj.level : 15 + obj.level) / 100);
+    }
+    
+    function perfTierTrans(obj, $slot) {
+        const $img = $slot.find('.object-image');
+        $slot.addClass('tier-transition flashing');
+        obj.music = Math.floor(Math.random() * 39) + 1;
+        
+        if (obj.currentMusic && !st.isMuted) {
+            stopMusic();
+            playMusic(obj.music);
+        }
+        
+        setTimeout(() => {
+            $img.attr('src', getImgPath(obj));
+            $slot.removeClass('flashing').addClass('revealing');
+            setTimeout(() => $slot.removeClass('tier-transition revealing'), 2000);
+        }, 300);
+    }
+    
+    function upgObj() {
+        const obj = st.objects[0];
+        if (obj.isEmpty) return;
+        const cost = getCost(obj, 'upgrade');
+        if (st.credits < cost) return;
+        
+        playPopSfx();
+        st.credits -= cost;
+        const prevTier = getObjTier(obj.level);
+        obj.level++;
+        const newTier = getObjTier(obj.level);
+        
+        const upgs = [
+            () => { obj.tickValue = Math.max(2, Math.floor(obj.tickValue * 2.69)) + 25; return 'Tick value increased!'; },
+            () => { 
+                if (obj.breakProbability > 5) {
+                    obj.breakProbability = Math.max(5, obj.breakProbability - 4);
                 } else {
-                    const cost = getCost(obj, 'subtick');
-                    if (state.credits < cost || cost <= 0) return;
-                    
-                    playPopSfx();
-                    state.credits -= cost; obj.subtickCount++;
-                    showFeedback('Subtick charged!', 'success');
-                    saveGame(); updateUI();
+                    obj.breakProbability = Math.max(0.01, obj.breakProbability * 0.99);
                 }
+                return 'Break chance reduced!'; 
+            },
+            () => { obj.shatterBonus = Math.floor(obj.shatterBonus * 2.69); return 'Shatter bonus increased!'; },
+            () => { 
+                if (obj.cooldown > 2) {
+                    obj.cooldown = Math.max(2, obj.cooldown - 2);
+                } else {
+                    obj.cooldown = Math.max(0.01, obj.cooldown * 0.99);
+                }
+                return 'Cooldown reduced!'; 
             }
+        ];
+        
+        let fbMsg = upgs[Math.floor(Math.random() * 4)]();
+        
+        if (prevTier !== newTier) {
+            const $slot = $(`.object-slot[data-index="0"]`);
+            if ($slot.length) perfTierTrans(obj, $slot);
             
-            function resetObject(obj) {
-                autoClickEnabled = false;
-                $('#autoButton').removeClass('active');
-                stopProcess('drain');
-                stopProcess('upgrade');
-                Object.assign(obj, createEmptyObject());
+            const tierNms = { orbs: 'Shape → Orb!', places: 'Orb → Place!', realities: 'Place → Reality!' };
+            fbMsg = `Tier upgrade: ${tierNms[newTier.name] || fbMsg}`;
+        }
+        
+        showFB(fbMsg, 'success');
+        saveGame(); updUI();
+    }
+    
+    function stAutoUpg() {
+        if (isAutoUpg) return;
+        
+        isAutoUpg = true;
+        $('#upgradeButton').addClass('auto-upgrading');
+        
+        const perfAutoUpg = () => {
+            const obj = st.objects[0];
+            if (obj.isEmpty || st.credits < getCost(obj, 'upgrade')) {
+                stopProc('upgrade');
+                return;
             }
+            upgObj();
+        };
+        
+        perfAutoUpg();
+        
+        autoUpgInt = setInterval(() => {
+            perfAutoUpg();
+        }, getDynTiming(false));
+    }
+    
+    function refCD() {
+        const obj = st.objects[0];
+        if (obj.isEmpty || !isOnCD(0)) return;
+        const cost = getCost(obj, 'refresh');
+        if (st.credits < cost) return;
+        
+        playPopSfx();
+        st.credits -= cost; obj.lastTicked = null;
+        clearCD(0); updCDDisp(0);
+        showFB('Cooldown refreshed!', 'success');
+        saveGame(); updUI();
+    }
+    
+    function chrgSubtick() {
+        const obj = st.objects[0];
+        if (obj.isEmpty) return;
+        
+        if (obj.level >= 10) {
+            if (isDrn) return;
+            const cost = getCost(obj, 'subtick');
+            if (st.credits < cost || cost <= 0) return;
             
-            function discardObject() {
-                requestWakeLock();
-                
-                const obj = state.objects[0];
-                if (obj.isEmpty) return;
-                if (obj.currentMusic) stopMusic();
-                clearCooldown(0); playBreakSfx(obj.breakSfx);
-                resetObject(obj);
-                saveGame(); updateUI(); showFeedback('Object discarded!', 'warning');
-            }
+            isDrn = true;
+            $('#subtickButton').addClass('draining');
             
-            function hyperscaleWorkflow() {
-                if (!isHyperscaling) return;
-                
-                const obj = state.objects[0];
-                
-                if (obj.isEmpty) {
-                    fillEmptySlot(0);
-                    hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), getDynamicTiming(true));
+            drnInt = setInterval(() => {
+                const curCost = getCost(obj, 'subtick');
+                if (st.credits < curCost || curCost <= 0) {
+                    stopProc('drain');
                     return;
                 }
                 
-                if (obj.level === 1) {
-                    if (state.credits >= getCost(obj, 'upgrade')) {
-                        upgradeObject();
-                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), getDynamicTiming(true));
-                        return;
-                    } else {
-                        stopProcess('hyperscale');
-                        showFeedback('Hyperscale stopped - insufficient credits', 'warning');
-                        return;
-                    }
-                }
-                
-                if (obj.level === 2) {
-                    const nextUpgradeCost = getCost(obj, 'upgrade');
-                    if (nextUpgradeCost < 400) {
-                        startAutoUpgrade();
-                        stopProcess('hyperscale');
-                        showFeedback('Hyperscale complete - Auto Upgrade activated!', 'success');
-                        return;
-                    } else {
-                        discardObject();
-                        hyperscaleTimeout = setTimeout(() => hyperscaleWorkflow(), getDynamicTiming(true));
-                        return;
-                    }
-                }
-                
-                stopProcess('hyperscale');
-            }
+                playPopSfx();
+                st.credits -= curCost;
+                obj.subtickCount++;
+                saveGame(); updUI();
+            }, 100);
             
-            function startHyperscale() {
-                if (isHyperscaling) return;
-                
-                isHyperscaling = true;
-                $('#hyperscaleButton').hide();
-                showFeedback('Hyperscale started!', 'success');
-                
-                hyperscaleWorkflow();
-            }
+            showFB('Full Charge activated!', 'success');
+        } else {
+            const cost = getCost(obj, 'subtick');
+            if (st.credits < cost || cost <= 0) return;
             
-            function isOnCooldown(idx) {
-                const obj = state.objects[idx];
-                return obj.lastTicked && (Date.now() - obj.lastTicked) < (obj.cooldown * 1000);
+            playPopSfx();
+            st.credits -= cost; obj.subtickCount++;
+            showFB('Subtick charged!', 'success');
+            saveGame(); updUI();
+        }
+    }
+    
+    function rstObj(obj) {
+        autoClk = false;
+        $('#autoButton').removeClass('active');
+        stopProc('drain');
+        stopProc('upgrade');
+        Object.assign(obj, createEmptyObj());
+    }
+    
+    function discObj() {
+        requestWakeLock();
+        
+        const obj = st.objects[0];
+        if (obj.isEmpty) return;
+        if (obj.currentMusic) stopMusic();
+        clearCD(0); playBrkSfx(obj.breakSfx);
+        rstObj(obj);
+        saveGame(); updUI(); showFB('Object discarded!', 'warning');
+    }
+    
+    function hyperWF() {
+        if (!isHyper) return;
+        
+        const obj = st.objects[0];
+        
+        if (obj.isEmpty) {
+            fillEmptySlot(0);
+            hyperTO = setTimeout(() => hyperWF(), getDynTiming(true));
+            return;
+        }
+        
+        if (obj.level === 1) {
+            if (st.credits >= getCost(obj, 'upgrade')) {
+                upgObj();
+                hyperTO = setTimeout(() => hyperWF(), getDynTiming(true));
+                return;
+            } else {
+                stopProc('hyperscale');
+                showFB('Hyperscale stopped - insufficient credits', 'warning');
+                return;
             }
-            
-            function getCooldownRemaining(idx) {
-                const obj = state.objects[idx];
-                if (!obj.lastTicked) return 0;
-                return Math.max(0, (obj.cooldown * 1000) - (Date.now() - obj.lastTicked));
+        }
+        
+        if (obj.level === 2) {
+            const nextUpgCost = getCost(obj, 'upgrade');
+            if (nextUpgCost < 400) {
+                stAutoUpg();
+                stopProc('hyperscale');
+                showFB('Hyperscale complete - Auto Upgrade activated!', 'success');
+                return;
+            } else {
+                discObj();
+                hyperTO = setTimeout(() => hyperWF(), getDynTiming(true));
+                return;
             }
-            
-            function clearCooldown(idx) {
-                if (cooldownIntervals.has(idx)) { 
-                    clearInterval(cooldownIntervals.get(idx)); 
-                    cooldownIntervals.delete(idx); 
-                }
+        }
+        
+        stopProc('hyperscale');
+    }
+    
+    function stHyper() {
+        if (isHyper) return;
+        
+        isHyper = true;
+        $('#hyperscaleButton').hide();
+        showFB('Hyperscale started!', 'success');
+        
+        hyperWF();
+    }
+    
+    function isOnCD(idx) {
+        const obj = st.objects[idx];
+        return obj.lastTicked && (Date.now() - obj.lastTicked) < (obj.cooldown * 1000);
+    }
+    
+    function getCDRem(idx) {
+        const obj = st.objects[idx];
+        if (!obj.lastTicked) return 0;
+        return Math.max(0, (obj.cooldown * 1000) - (Date.now() - obj.lastTicked));
+    }
+    
+    function clearCD(idx) {
+        if (cdInts.has(idx)) { 
+            clearInterval(cdInts.get(idx)); 
+            cdInts.delete(idx); 
+        }
+    }
+    
+    function stCDTimer(idx) {
+        const obj = st.objects[idx];
+        if (obj.isEmpty) return;
+        clearCD(idx);
+        const int = setInterval(() => {
+            if (isOnCD(idx)) {
+                updCDDisp(idx);
+            } else {
+                clearCD(idx);
+                updCDDisp(idx);
+                if (autoClk && idx === 0 && !obj.isEmpty) tckObj(idx);
             }
+        }, 100);
+        cdInts.set(idx, int);
+    }
+    
+    function updCDDisp(idx) {
+        const $slot = $(`.object-slot[data-index="${idx}"]`);
+        const rem = getCDRem(idx);
+        
+        if (rem > 0) {
+            const obj = st.objects[idx];
+            const prog = ((obj.cooldown * 1000 - rem) / (obj.cooldown * 1000)) * 100;
+            $slot.addClass('cooldown').find('.cooldown-bar').css('width', `${prog}%`);
+            $slot.find('.cooldown-text').text(`${fmtDec(rem / 1000, 's')}`).show();
+        } else {
+            $slot.removeClass('cooldown').find('.cooldown-bar').css('width', '0%');
+            $slot.find('.cooldown-text').hide();
+        }
+    }
+    
+    function tckObj(idx) {
+        const obj = st.objects[idx];
+        if (obj.isEmpty || isOnCD(idx)) return;
+        
+        if (obj.subtickCount > 0) {
+            const subCred = obj.tickValue * obj.subtickCount;
+            st.credits += subCred;
+            showFB(`${obj.subtickCount} subticks: +${fmtNum(subCred)}!`, 'success');
+            obj.subtickCount = 0;
+        }
+        
+        st.credits += obj.tickValue;
+        showFB(`+${fmtNum(obj.tickValue)}!`, 'success');
+        obj.lastTicked = Date.now();
+        stCDTimer(idx);
+        
+        if (Math.random() * 100 < obj.breakProbability) {
+            st.credits += obj.shatterBonus;
+            showFB(`Object shattered! +${fmtNum(obj.shatterBonus)} bonus!`, 'warning');
+            playBrkSfx(obj.breakSfx);
+            if (obj.currentMusic) stopMusic();
+            clearCD(idx);
+            rstObj(obj);
+        } else {
+            playTckSfx((obj.breakSfx % 3) + 1);
+        }
+        saveGame(); updUI();
+    }
+    
+    function fillEmptySlot(idx) {
+        const obj = st.objects[idx];
+        if (!obj.isEmpty) return;
+        
+        const newObj = genObj();
+        Object.assign(obj, newObj);
+        obj.isEmpty = false; obj.currentMusic = true;
+        
+        const bonuses = [
+            { thresholds: [5, 15, 25, 35, 45], prop: 'cooldown' },
+            { thresholds: [20, 30, 40], prop: 'breakProbability' }
+        ];
+        
+        bonuses.forEach(({ thresholds, prop }) => {
+            thresholds.forEach(threshold => {
+                if (obj[prop] > threshold) obj.tickValue *= 2;
+            });
+        });
+        
+        stopMusic(); playMusic(obj.music);
+        saveGame(); updUI(); showFB('New object', 'success');
+    }
+    
+    function showFB(msg, type = 'success') {
+        const $fb = $('#feedback');
+        $fb.removeClass('success warning error').addClass(type).text(msg).addClass('show');
+        setTimeout(() => $fb.removeClass('show'), 3000);
+    }
+    
+    function updUI() {
+        $('#creditAmount').text(fmtNum(st.credits));
+        const obj = st.objects[0];
+        const btns = { 
+            upgrade: $('#upgradeButton'), 
+            refresh: $('#refreshButton'), 
+            subtick: $('#subtickButton'),
+            hyperscale: $('#hyperscaleButton')
+        };
+        const $disc = $('#discardButton'), $auto = $('#autoButton');
+        const $lvl = $('#objectLevel'), $meter = $('#subtickMeter');
+        
+        if (obj.isEmpty) {
+            btns.upgrade.hide();
+            btns.refresh.hide();
+            btns.subtick.hide();
+            $disc.hide(); $auto.hide(); $meter.hide(); $lvl.text('Level 1');
             
-            function startCooldownTimer(idx) {
-                const obj = state.objects[idx];
-                if (obj.isEmpty) return;
-                clearCooldown(idx);
-                const interval = setInterval(() => {
-                    if (isOnCooldown(idx)) {
-                        updateCooldownDisplay(idx);
-                    } else {
-                        clearCooldown(idx);
-                        updateCooldownDisplay(idx);
-                        if (autoClickEnabled && idx === 0 && !obj.isEmpty) tickObject(idx);
-                    }
-                }, 100);
-                cooldownIntervals.set(idx, interval);
+            if (st.credits >= 1e10 && !isHyper) {
+                btns.hyperscale.show();
+            } else {
+                btns.hyperscale.hide();
             }
+        } else {
+            btns.hyperscale.hide();
             
-            function updateCooldownDisplay(idx) {
-                const $slot = $(`.object-slot[data-index="${idx}"]`);
-                const remaining = getCooldownRemaining(idx);
+            const costs = {
+                upgrade: getCost(obj, 'upgrade'),
+                refresh: getCost(obj, 'refresh'),
+                subtick: getCost(obj, 'subtick')
+            };
+            
+            const upgTxt = isAutoUpg ? 'Auto Upgrade' : 'Upgrade';
+            btns.upgrade.show().text(`${upgTxt} - ${fmtNum(costs.upgrade)}`)
+                .prop('disabled', st.credits < costs.upgrade);
+            
+            $disc.show(); $lvl.text(`Level ${obj.level}`);
+            
+            if (obj.level >= 20) $auto.show();
+            else $auto.hide();
+            
+            if (obj.level > 2) {
+                btns.refresh.show().text(`Refresh - ${fmtNum(costs.refresh)}`)
+                    .prop('disabled', st.credits < costs.refresh || !isOnCD(0));
+            } else btns.refresh.hide();
+            
+            if (obj.level > 4) {
+                const btnTxt = obj.level >= 10 ? 'Full Charge' : 'Charge Subtick';
+                const canAfford = st.credits >= costs.subtick && costs.subtick > 0;
+                const isDisabled = !canAfford || isDrn;
                 
-                if (remaining > 0) {
-                    const obj = state.objects[idx];
-                    const progress = ((obj.cooldown * 1000 - remaining) / (obj.cooldown * 1000)) * 100;
-                    $slot.addClass('cooldown').find('.cooldown-bar').css('width', `${progress}%`);
-                    $slot.find('.cooldown-text').text(`${formatDecimal(remaining / 1000, 's')}`).show();
-                } else {
-                    $slot.removeClass('cooldown').find('.cooldown-bar').css('width', '0%');
-                    $slot.find('.cooldown-text').hide();
-                }
+                btns.subtick.show().text(`${btnTxt} - ${fmtNum(costs.subtick)}`)
+                    .prop('disabled', isDisabled);
+                $meter.show().text(`Subticks: ${obj.subtickCount}`);
+            } else { 
+                btns.subtick.hide(); 
+                $meter.hide(); 
             }
+        }
+        renSlots();
+    }
+    
+    function renSlots() {
+        const $grid = $('#objectsGrid');
+        $grid.empty();
+        
+        st.objects.forEach((obj, idx) => {
+            const $slot = $('<div>').addClass('object-slot').attr('data-index', idx);
             
-            function tickObject(idx) {
-                const obj = state.objects[idx];
-                if (obj.isEmpty || isOnCooldown(idx)) return;
+            if (obj.isEmpty) {
+                $slot.addClass('empty').html('<div>Click for a new object</div>')
+                    .on('click', () => fillEmptySlot(idx));
+            } else {
+                $slot.addClass('filled');
+                const imgPath = getImgPath(obj);
+                const $img = $('<img>').addClass('object-image').attr('src', imgPath)
+                    .attr('alt', `Object ${obj.imageNumber}`)
+                    .on('error', function() { 
+                        $(this).attr('src', 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+Tm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4='); 
+                    });
                 
-                if (obj.subtickCount > 0) {
-                    const subtickCredits = obj.tickValue * obj.subtickCount;
-                    state.credits += subtickCredits;
-                    showFeedback(`${obj.subtickCount} subticks: +${formatNumber(subtickCredits)}!`, 'success');
-                    obj.subtickCount = 0;
-                }
+                const tier = getObjTier(obj.level);
+                const tierDisp = tier.name.charAt(0).toUpperCase() + tier.name.slice(1, -1);
                 
-                state.credits += obj.tickValue;
-                showFeedback(`+${formatNumber(obj.tickValue)}!`, 'success');
-                obj.lastTicked = Date.now();
-                startCooldownTimer(idx);
-                
-                if (Math.random() * 100 < obj.breakProbability) {
-                    state.credits += obj.shatterBonus;
-                    showFeedback(`Object shattered! +${formatNumber(obj.shatterBonus)} bonus!`, 'warning');
-                    playBreakSfx(obj.breakSfx);
-                    if (obj.currentMusic) stopMusic();
-                    clearCooldown(idx);
-                    resetObject(obj);
-                } else {
-                    playTickSfx((obj.breakSfx % 3) + 1);
-                }
-                saveGame(); updateUI();
-            }
-            
-            function fillEmptySlot(idx) {
-                const obj = state.objects[idx];
-                if (!obj.isEmpty) return;
-                
-                const newObj = generateObj();
-                Object.assign(obj, newObj);
-                obj.isEmpty = false; obj.currentMusic = true;
-                
-                const bonuses = [
-                    { thresholds: [5, 15, 25, 35, 45], prop: 'cooldown' },
-                    { thresholds: [20, 30, 40], prop: 'breakProbability' }
+                const stats = [
+                    ['Tier', tierDisp],
+                    ['Level', obj.level],
+                    ['Tick', fmtNum(obj.tickValue)],
+                    ['Break', fmtDec(obj.breakProbability, '%')],
+                    ['Shatter', fmtNum(obj.shatterBonus)],
+                    ['Cooldown', fmtDec(obj.cooldown, 's')]
                 ];
                 
-                bonuses.forEach(({ thresholds, prop }) => {
-                    thresholds.forEach(threshold => {
-                        if (obj[prop] > threshold) obj.tickValue *= 2;
-                    });
-                });
+                if (obj.subtickCount > 0) stats.push(['Subticks', obj.subtickCount]);
                 
-                stopMusic(); playMusic(obj.music);
-                saveGame(); updateUI(); showFeedback('New object', 'success');
-            }
-            
-            function showFeedback(msg, type = 'success') {
-                const $fb = $('#feedback');
-                $fb.removeClass('success warning error').addClass(type).text(msg).addClass('show');
-                setTimeout(() => $fb.removeClass('show'), 3000);
-            }
-            
-            function updateUI() {
-                $('#creditAmount').text(formatNumber(state.credits));
-                const obj = state.objects[0];
-                const buttons = { 
-                    upgrade: $('#upgradeButton'), 
-                    refresh: $('#refreshButton'), 
-                    subtick: $('#subtickButton'),
-                    hyperscale: $('#hyperscaleButton')
-                };
-                const $discard = $('#discardButton'), $auto = $('#autoButton');
-                const $level = $('#objectLevel'), $meter = $('#subtickMeter');
+                const statsHTML = stats.map(([lbl, val]) => 
+                    `<div class="stat-row"><span class="stat-label">${lbl}:</span><span class="stat-value">${val}</span></div>`
+                ).join('');
                 
-                if (obj.isEmpty) {
-                    buttons.upgrade.hide();
-                    buttons.refresh.hide();
-                    buttons.subtick.hide();
-                    $discard.hide(); $auto.hide(); $meter.hide(); $level.text('Level 1');
-                    
-                    if (state.credits >= 1e10 && !isHyperscaling) {
-                        buttons.hyperscale.show();
-                    } else {
-                        buttons.hyperscale.hide();
-                    }
-                } else {
-                    buttons.hyperscale.hide();
-                    
-                    const costs = {
-                        upgrade: getCost(obj, 'upgrade'),
-                        refresh: getCost(obj, 'refresh'),
-                        subtick: getCost(obj, 'subtick')
-                    };
-                    
-                    const upgradeText = isAutoUpgrading ? 'Auto Upgrade' : 'Upgrade';
-                    buttons.upgrade.show().text(`${upgradeText} - ${formatNumber(costs.upgrade)}`)
-                        .prop('disabled', state.credits < costs.upgrade);
-                    
-                    $discard.show(); $level.text(`Level ${obj.level}`);
-                    
-                    if (obj.level >= 20) $auto.show();
-                    else $auto.hide();
-                    
-                    if (obj.level > 2) {
-                        buttons.refresh.show().text(`Refresh - ${formatNumber(costs.refresh)}`)
-                            .prop('disabled', state.credits < costs.refresh || !isOnCooldown(0));
-                    } else buttons.refresh.hide();
-                    
-                    if (obj.level > 4) {
-                        const buttonText = obj.level >= 10 ? 'Full Charge' : 'Charge Subtick';
-                        const canAfford = state.credits >= costs.subtick && costs.subtick > 0;
-                        const isDisabled = !canAfford || isDraining;
-                        
-                        buttons.subtick.show().text(`${buttonText} - ${formatNumber(costs.subtick)}`)
-                            .prop('disabled', isDisabled);
-                        $meter.show().text(`Subticks: ${obj.subtickCount}`);
-                    } else { 
-                        buttons.subtick.hide(); 
-                        $meter.hide(); 
-                    }
-                }
-                renderSlots();
-            }
-            
-            function renderSlots() {
-                const $grid = $('#objectsGrid');
-                $grid.empty();
+                const $stats = $('<div>').addClass('object-stats').html(statsHTML);
+                const $cdBar = $('<div>').addClass('cooldown-bar');
+                const $cdTxt = $('<div>').addClass('cooldown-text').hide();
                 
-                state.objects.forEach((obj, idx) => {
-                    const $slot = $('<div>').addClass('object-slot').attr('data-index', idx);
-                    
-                    if (obj.isEmpty) {
-                        $slot.addClass('empty').html('<div>Click for a new object</div>')
-                            .on('click', () => fillEmptySlot(idx));
-                    } else {
-                        $slot.addClass('filled');
-                        const imagePath = getImagePath(obj);
-                        const $img = $('<img>').addClass('object-image').attr('src', imagePath)
-                            .attr('alt', `Object ${obj.imageNumber}`)
-                            .on('error', function() { 
-                                $(this).attr('src', 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+Tm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4='); 
-                            });
-                        
-                        const tier = getObjectTier(obj.level);
-                        const tierDisplay = tier.name.charAt(0).toUpperCase() + tier.name.slice(1, -1);
-                        
-                        const stats = [
-                            ['Tier', tierDisplay],
-                            ['Level', obj.level],
-                            ['Tick', formatNumber(obj.tickValue)],
-                            ['Break', formatDecimal(obj.breakProbability, '%')],
-                            ['Shatter', formatNumber(obj.shatterBonus)],
-                            ['Cooldown', formatDecimal(obj.cooldown, 's')]
-                        ];
-                        
-                        if (obj.subtickCount > 0) stats.push(['Subticks', obj.subtickCount]);
-                        
-                        const statsHTML = stats.map(([label, value]) => 
-                            `<div class="stat-row"><span class="stat-label">${label}:</span><span class="stat-value">${value}</span></div>`
-                        ).join('');
-                        
-                        const $stats = $('<div>').addClass('object-stats').html(statsHTML);
-                        const $cooldownBar = $('<div>').addClass('cooldown-bar');
-                        const $cooldownText = $('<div>').addClass('cooldown-text').hide();
-                        
-                        $slot.append($img, $stats, $cooldownBar, $cooldownText).on('click', () => {
-                            if (!isOnCooldown(idx)) {
-                                $slot.addClass('pulsing');
-                                setTimeout(() => $slot.removeClass('pulsing'), 500);
-                                tickObject(idx);
-                            }
-                        });
-                        
-                        updateCooldownDisplay(idx);
-                        if (isOnCooldown(idx)) startCooldownTimer(idx);
-                    }
-                    $grid.append($slot);
-                });
-            }
-            
-            function init() {
-                const saved = loadGame();
-                if (saved) {
-                    state = saved;
-                    const obj = state.objects[0];
-                    if (!obj.isEmpty && obj.currentMusic && !state.isMuted) playMusic(obj.music);
-                } else {
-                    showFeedback('Save reset - creating new game', 'warning');
-                }
-                
-                const $mute = $('#muteButton');
-                $mute.text(state.isMuted ? '🔇' : '🔊')[state.isMuted ? 'addClass' : 'removeClass']('muted');
-                
-                $mute.on('click', toggleMute);
-                
-                $(document).on('keydown', function(e) {
-                    if (e.key === 'p' || e.key === 'P') {
-                        state.credits *= 1000;
-                        showFeedback('Debug: Credits multiplied by 1000!', 'success');
-                        saveGame();
-                        updateUI();
+                $slot.append($img, $stats, $cdBar, $cdTxt).on('click', () => {
+                    if (!isOnCD(idx)) {
+                        $slot.addClass('pulsing');
+                        setTimeout(() => $slot.removeClass('pulsing'), 500);
+                        tckObj(idx);
                     }
                 });
                 
-                $('#upgradeButton').on('click', upgradeObject);
-                $('#hyperscaleButton').on('click', startHyperscale);
-                $('#refreshButton').on('click', refreshCooldown);
-                $('#subtickButton').on('click', chargeSubtick);
-                $('#autoButton').on('click', toggleAuto);
-                $('#discardButton').on('click', discardObject);
-                
-                updateUI();
+                updCDDisp(idx);
+                if (isOnCD(idx)) stCDTimer(idx);
             }
-            
-            init();
+            $grid.append($slot);
         });
+    }
+    
+    function init() {
+        const saved = loadGame();
+        if (saved) {
+            st = saved;
+            const obj = st.objects[0];
+            if (!obj.isEmpty && obj.currentMusic && !st.isMuted) playMusic(obj.music);
+        } else {
+            showFB('Save reset - creating new game', 'warning');
+        }
+        
+        const $mute = $('#muteButton');
+        $mute.text(st.isMuted ? '🔇' : '🔊')[st.isMuted ? 'addClass' : 'removeClass']('muted');
+        
+        $mute.on('click', togMute);
+        
+        $(document).on('keydown', function(e) {
+            if (e.key === 'p' || e.key === 'P') {
+                st.credits *= 1000;
+                showFB('Debug: Credits multiplied by 1000!', 'success');
+                saveGame();
+                updUI();
+            }
+        });
+        
+        $('#upgradeButton').on('click', upgObj);
+        $('#hyperscaleButton').on('click', stHyper);
+        $('#refreshButton').on('click', refCD);
+        $('#subtickButton').on('click', chrgSubtick);
+        $('#autoButton').on('click', togAuto);
+        $('#discardButton').on('click', discObj);
+        
+        updUI();
+    }
+    
+    init();
+});
     </script>
 </body>
 </html>
