@@ -703,16 +703,16 @@ $(document).ready(function() {
     let objectLogo = $('#objectLogo'); //
 
     // Calculate credits after 3 ticks
-    const projectedCredits = st.credits + (obj.tickValue * 3); //
+    const projectedCredits = st.credits + (obj.tickValue * 5); //
     const upgradeCost = getCost(obj, 'upgrade'); //
 
     let flashColor; //
     if (projectedCredits >= upgradeCost) { //
         flashColor = '#00FF00'; // Bright green for success //
-		playAud('sounds', 'win', 0.50, true);
+		playAud('sounds', 'win', 0.420, true);
     } else {
         flashColor = '#FF0000'; // Bright red for failure/warning //
-		playAud('sounds', 'lose', 0.50, true);
+		playAud('sounds', 'lose', 0.420, true);
     }
 
     // Immediately apply the flash color and then animate back to transparent/original
