@@ -706,8 +706,12 @@ $(document).ready(function() {
     const projectedCredits = st.credits + (obj.tickValue * 5); //
     const upgradeCost = getCost(obj, 'upgrade'); //
 
+  // Alternate win condition: if shatter amount is higher than 10x the cost of the next upgrade
+    const alternateWinCondition = obj.shatterBonus > (10 * upgradeCost);
+
+
     let flashColor; //
-    if (projectedCredits >= upgradeCost) { //
+    if (projectedCredits >= upgradeCost || alternateWinCondition) { //
         flashColor = '#00FF00'; // Bright green for success //
 		playAud('sounds', 'win', 0.420, true);
     } else {
