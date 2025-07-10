@@ -146,7 +146,8 @@ $(document).ready(function() {
     
     function playAud(fld, n, vol, isWav, loop = false) {
         if (st.isMuted) return;
-        const aud = new Audio(`${fld}/${n}.${isWav ? 'wav' : 'mp3'}`);
+        //const aud = new Audio(`${fld}/${n}.${isWav ? 'wav' : 'mp3'}`);
+		const aud = new Audio(`${fld}/${n}.m4a`);
         aud.volume = vol; aud.loop = loop;
         aud.play().catch(() => {});
         return aud;
@@ -708,10 +709,10 @@ $(document).ready(function() {
     let flashColor; //
     if (projectedCredits >= upgradeCost) { //
         flashColor = '#00FF00'; // Bright green for success //
-		playAud('sounds', 'win', 0.69, true);
+		playAud('sounds', 'win', 0.50, true);
     } else {
         flashColor = '#FF0000'; // Bright red for failure/warning //
-		playAud('sounds', 'lose', 0.69, true);
+		playAud('sounds', 'lose', 0.50, true);
     }
 
     // Immediately apply the flash color and then animate back to transparent/original
