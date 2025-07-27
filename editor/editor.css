@@ -1,0 +1,816 @@
+/* Consistent spacing for action buttons (download, clipboard, clear) */
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.palette-color[data-idx="2"] {
+    position: relative;
+    background: #ccbcfc;
+}
+.palette-color[data-idx="2"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    pointer-events: none !important;
+    background: repeating-linear-gradient(45deg, #222 0 6px, #ccbcfc 6px 12px, #222 12px 18px, #ccbcfc 18px 24px);
+    opacity: 0.5;
+    z-index: 1;
+}
+@media (min-width: 900px) {
+  .background-color-indicator {
+    min-width: 20px;
+    max-width: 20px;
+    width: 20px;
+    min-height: 44px;
+    height: 44px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Limit the width of the tools-row and center it */
+  .tools-row {
+    max-width: none;
+    margin: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    gap: 25px;
+    align-items: flex-end;
+    min-height: 56px;
+    justify-content: flex-start;
+  }
+  /* Make tool-section not stretch unnecessarily */
+  .tools-row .tool-section {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    justify-content: flex-end;
+    max-width: 270px;
+  }
+  /* Controls should only take as much space as needed */
+  .controls {
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    display: flex;
+    flex-direction: row;
+    gap: 25px;
+    align-items: flex-end;
+  }
+  /* Actions label for undo controls, styled like .section-label */
+  .actions-label {
+    margin: 0 0 4px 0;
+    min-width: 90px;
+    text-align: left;
+    align-self: flex-start;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-accent);
+    line-height: 1.1;
+    display: block;
+  }
+  .panel {
+    padding: 12px 20px;
+  }
+  .tools {
+    flex-direction: column;
+    gap: 20px;
+    align-items: stretch;
+  }
+  
+  /* Color palette section gets full width */
+  .tool-section:first-child {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  /* Container for non-palette sections - arranged horizontally */
+  .tools-row {
+    display: flex;
+    flex-direction: row;
+    gap: 16px; /* Reduced gap between sections */
+    align-items: flex-end; /* Align to bottom so controls line up */
+    min-height: 56px;
+  }
+  
+  /* (moved above, see new .tools-row .tool-section) */
+  
+  /* Labels in tools-row align with their first control */
+  .tools-row .section-label {
+    margin: 0 0 4px 0;
+    text-align: left;
+    align-self: flex-start;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-accent);
+    line-height: 1.1;
+  }
+  
+  /* Layer controls - align label with background indicator */
+  .tools-row .section-label.align-bg-indicator {
+    margin-left: 0; /* Align with first element (bg indicator) */
+  }
+  
+  /* Actions label - align with undo button */
+  .tools-row .section-label.align-undo {
+    margin-left: 0; /* Align with undo button */
+  }
+  
+  /* Make sure all control containers have same height and alignment */
+  .layer-controls,
+  .brush-controls-combo,
+  .undo-controls {
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    display: flex;
+    align-items: center;
+    margin-bottom: 0 !important;
+    box-sizing: border-box;
+  }
+  
+  /* Controls section with multiple groups - add more spacing for Actions */
+  .controls {
+    display: flex;
+    flex-direction: row;
+    gap: 32px; /* Increased gap between Brush and Actions */
+    align-items: flex-end;
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+  }
+  
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    justify-content: flex-end;
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    margin-bottom: 0 !important;
+    box-sizing: border-box;
+  }
+  
+  .section-label {
+    margin: 0 0 4px 0 !important;
+    text-align: left;
+    align-self: flex-start;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-accent);
+    line-height: 1.1;
+  }
+  .palette-grid {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    height: 44px;
+  }
+}
+.brush-controls-combo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    box-sizing: border-box;
+}
+
+.brush-controls-combo .brush-size-select {
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    font-size: 15px;
+    padding-top: 0;
+    padding-bottom: 0;
+    display: flex;
+    align-items: center;
+}
+/* Ensure stars background is always behind all content */
+.background-animation {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.panel {
+    background: rgba(42, 36, 56, 0.82); /* semi-transparent for frosted effect */
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    position: relative;
+    z-index: 1;
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+    box-shadow: 0 2px 8px rgba(204,188,252,0.07);
+}
+/* Ensure stars background is always behind all content */
+.background-animation {
+    z-index: 0 !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+}
+
+.editor-container {
+    position: relative;
+    z-index: 1;
+}
+
+.panel {
+    position: relative;
+    z-index: 2;
+}
+:root {
+    /* Primary violet theme */
+    --bg-primary: #1a1626;
+    --bg-secondary: #2a2438;
+    --bg-accent: #3a3448;
+    --text-primary: #e6e6e6;
+    --text-accent: #b8b8b8;
+    --border-color: #4a4458;
+    --button-bg: #3a3448;
+    --button-active: #5a5468;
+    --button-hover: #4a4458;
+    --error-color: #ff6b6b;
+    --success-color: #28a745;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* =============================================================================
+   EDITOR LAYOUT
+   ============================================================================= */
+
+.editor-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.panel {
+    background: rgba(42, 36, 56, 0.82); /* semi-transparent for frosted effect */
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    position: relative;
+    z-index: 2;
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+}
+
+
+/* Standardized button style */
+.btn, .layer-btn, .brush-shape-btn {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+    padding: 6px 12px;
+    background: var(--button-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.brush-shape-icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+}
+.brush-shape-icon.square {
+    background: #fff;
+    border-radius: 3px;
+    width: 20px;
+    height: 20px;
+    box-shadow: 0 0 0 1px var(--border-color);
+}
+.brush-shape-icon.circle {
+    background: #fff;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    box-shadow: 0 0 0 1px var(--border-color);
+}
+
+/* Restore small music buttons */
+.music-btn {
+    font-family: inherit;
+    font-size: 12px;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.music-btn:hover {
+    background: var(--button-hover);
+}
+.music-btn.active {
+    background: var(--button-active);
+}
+
+.layer-btn.active, .brush-shape-btn.active, .music-btn.active {
+    background: var(--button-active);
+    border-color: #a084ff !important;
+    box-shadow: 0 0 0 3px #a084ff55, 0 0 8px 2px #a084ff99;
+    z-index: 2;
+}
+
+.btn:hover, .music-btn:hover, .layer-btn:hover, .brush-shape-btn:hover {
+    background: var(--button-hover);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--button-bg);
+}
+
+/* Dropdowns standardized */
+
+/* Standard select box */
+.select-box {
+    font-family: inherit;
+    font-size: 15px;
+    min-width: 110px;
+    min-height: 44px;
+    height: 44px;
+    padding: 8px 18px;
+    background: var(--button-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+/* Brush size dropdown: make it half width */
+.brush-size-select {
+    min-width: 55px !important;
+    max-width: 70px;
+    font-size: 14px;
+    padding: 6px 8px;
+    min-height: 44px;
+    height: 44px;
+}
+
+.select-box:focus {
+    outline: none;
+    border-color: #a084ff;
+}
+
+.select-box option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: none;
+}
+
+
+
+.btn:hover {
+    background: var(--button-hover);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--button-bg);
+}
+
+.tools {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .tools {
+    flex-direction: column;
+    gap: 20px;
+    align-items: stretch;
+  }
+  .tool-section {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+}
+
+.tool-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+
+/* Default label style */
+.section-label {
+    margin: 8px 0 2px 0;
+    color: var(--text-accent);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    display: block;
+}
+
+/* Align Color Palette label with first color button */
+.align-palette {
+    margin-left: 0;
+    /* The palette-grid uses flex, so align with first .palette-color */
+    /* The .palette-color has no margin, so no offset needed */
+}
+
+/* Align Layers label with background color indicator */
+.align-bg-indicator {
+    margin-left: 0;
+    /* The background-color-indicator is the first child, so align label with it */
+    display: block;
+}
+
+/* Align Actions label with Undo button */
+.align-undo {
+    margin-left: 0;
+    /* The undo-controls is flex, so align label with first button */
+    display: block;
+}
+
+@media (min-width: 900px) {
+  /* Palette label: align with first color button */
+  .align-palette {
+    margin-left: 0; /* Keep aligned to left edge since palette uses full width */
+    margin-top: 0;
+  }
+  /* Layers label: align with background color indicator */
+  .align-bg-indicator {
+    margin-left: 0; /* width of .background-color-indicator */
+    margin-top: 0;
+  }
+  /* Actions label: align with Undo button */
+  .align-undo {
+    margin-left: 0;
+    margin-top: 0;
+    /* Undo button is already leftmost, so no offset needed */
+  }
+}
+.tool-section:first-child .section-label {
+    margin-top: 0;
+}
+
+.palette-grid {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    height: 44px;
+}
+
+.palette-color, .palette-add {
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Remove individual margins, use gap on parent for spacing */
+    margin: 0;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.palette-color.selected {
+    border: 3px solid #a084ff;
+    box-shadow: 0 0 0 3px #a084ff55, 0 0 8px 2px #a084ff99;
+    z-index: 2;
+}
+
+@media (max-width: 768px) {
+    .background-color-indicator {
+        min-width: 32px;
+        width: 32px;
+        min-height: 32px;
+        height: 36px;
+        /* Match .palette-color and .layer-btn height in mobile, keep width */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+    .palette-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        height: auto;
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .background-color-indicator {
+        min-width: 28px;
+        min-height: 28px;
+        width: 28px;
+        height: 28px;
+    }
+}
+
+.palette-color {
+    background: none;
+}
+
+
+
+.palette-add {
+    background: var(--button-active);
+    color: var(--text-primary);
+    cursor: pointer !important;
+}
+
+/* Remove grid style for .controls to avoid override */
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+
+/* ...existing code... */
+
+.select-box:focus {
+    outline: none;
+    border-color: var(--success-color);
+}
+
+.select-box option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: none;
+}
+
+.canvas-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.canvas-container {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    overflow: hidden;
+    max-height: 60vh;
+}
+
+/* Hide scrollbars for all browsers */
+.canvas-container::-webkit-scrollbar {
+    display: none;
+}
+.canvas-container {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;    /* Firefox */
+}
+
+#cvs {
+    image-rendering: pixelated;
+    background: rgb(204,188,252);
+    border-radius: 4px;
+    cursor: crosshair;
+    display: block;
+    transition: all 0.3s ease;
+}
+
+.footer {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.footer-main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.hint {
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-accent);
+}
+
+.undo-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 12px;
+}
+
+
+.music-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 4px;
+}
+
+/* .music-btn now inherits from .btn above for standardization */
+
+/* =============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================= */
+
+@media (max-width: 768px) {
+    .editor-container {
+        margin: 10px auto;
+        padding: 0 12px;
+    }
+
+    .panel {
+        padding: 16px;
+    }
+
+    .tools {
+        gap: 16px;
+    }
+
+    .controls {
+        grid-template-columns: 1fr;
+    }
+
+    .palette-grid {
+        grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+    }
+
+    .palette-color, .palette-add {
+        width: 36px;
+        height: 36px;
+    }
+
+    #cvs {
+        touch-action: none;
+    }
+
+    .footer {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .footer-main {
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    .btn, .layer-btn, .brush-shape-btn, .select-box {
+        min-width: 90px;
+        min-height: 32px;
+        font-size: 14px;
+        padding: 6px 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .editor-container {
+        padding: 0 8px;
+        margin: 8px auto;
+    }
+
+    .panel {
+        padding: 12px;
+    }
+
+    .tools {
+        gap: 12px;
+    }
+
+    .palette-grid {
+        grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+    }
+
+    .palette-color, .palette-add {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+
+    .canvas-container {
+        padding: 8px;
+        max-height: 45vh;
+    }
+
+    .footer-main {
+        flex-direction: row;
+        gap: 6px;
+    }
+
+    .btn, .layer-btn, .brush-shape-btn, .select-box {
+        min-width: 80px;
+        min-height: 28px;
+        font-size: 13px;
+        padding: 4px 8px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .tools {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .controls {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .palette-grid {
+        grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    }
+
+    .palette-color, .palette-add {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* Orientation-specific styles for canvas scaling */
+@media (orientation: landscape) {
+    .canvas-container {
+        max-height: 70vh;
+        overflow: auto;
+    }
+}
+
+@media (orientation: portrait) {
+    .canvas-container {
+        max-height: 60vh;
+        overflow: auto;
+    }
+}

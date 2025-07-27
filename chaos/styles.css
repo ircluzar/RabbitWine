@@ -1,0 +1,341 @@
+:root {
+            --bg-primary: #1a1626;
+            --bg-secondary: #2d2738;
+            --bg-accent: #3a3447;
+            --text-primary: #e2e2e2;
+            --text-accent: #a0a0a0;
+            --accent-purple: #ccbcfc;
+            --accent-hover: #b8a8f8;
+            --border-color: #444;
+            --glow-color: rgba(204, 188, 252, 0.3);
+        }
+
+        html, body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        .background-animation {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .floating-element {
+            position: absolute;
+            width: 12px; height: 12px;
+            background: var(--accent-purple);
+            border-radius: 50%;
+            opacity: 0.6;
+            animation: float 6s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 2;
+            max-width: min(700px, 100vw - 2.4rem);
+            width: 100%;
+            margin: 0 auto;
+            padding: 2.5rem 1.2rem 1.2rem 1.2rem;
+            background: rgba(45, 39, 56, 0.85);
+            border-radius: 28px;
+            box-shadow: 0 8px 32px rgba(204,188,252,0.13);
+            border: 1.5px solid var(--border-color);
+            margin-top: 3.5rem;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 1.2rem;
+            background: linear-gradient(45deg, var(--accent-purple), #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+            filter: drop-shadow(0 4px 16px var(--glow-color));
+        }
+        h2 {
+            font-size: 1.2rem;
+            color: var(--accent-purple);
+            margin-bottom: 1.1rem;
+            text-align: center;
+        }
+
+        .resolution-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        .resolution-option {
+            background: rgba(60, 52, 80, 0.7);
+            border: 1.5px solid var(--border-color);
+            border-radius: 16px;
+            padding: 0.7rem 1.2rem;
+            color: var(--accent-purple);
+            font-weight: 500;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: background 0.2s, border 0.2s, color 0.2s, transform 0.2s;
+            box-shadow: 0 2px 8px rgba(204,188,252,0.07);
+        }
+        .resolution-option.selected, .resolution-option:hover {
+            background: var(--accent-purple);
+            color: #2d2738;
+            border-color: var(--accent-purple);
+            transform: scale(1.07);
+        }
+
+        .btn {
+            background: var(--accent-purple);
+            color: #2d2738;
+            border: none;
+            border-radius: 16px;
+            padding: 0.7rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0.3rem 0.2rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(204,188,252,0.13);
+            transition: background 0.2s, color 0.2s, transform 0.2s;
+        }
+        .btn:hover, .btn:focus {
+            background: var(--accent-hover);
+            color: #1a1626;
+            transform: scale(1.04);
+        }
+        .btn.small {
+            font-size: 0.9rem;
+            padding: 0.5rem 1.1rem;
+        }
+        .btn.danger {
+            background: #f36b7f;
+            color: #fff;
+        }
+        .btn.danger:hover {
+            background: #e23c5a;
+        }
+        .big-btn {
+            /* Match font size and height to .btn, just wider */
+            font-size: 1rem;
+            padding: 0.7rem 3.5rem;
+            border-radius: 16px;
+            margin-top: 0.5rem;
+            box-shadow: 0 4px 24px rgba(204,188,252,0.18);
+            font-weight: 800;
+            letter-spacing: 0.03em;
+        }
+
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            justify-content: center;
+            margin-bottom: 1.2rem;
+        }
+
+        .main-screen {
+            margin-top: 1.2rem;
+        }
+
+        canvas {
+            display: block;
+            margin: 24px auto 24px auto;
+            background: var(--bg-accent);
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(204,188,252,0.09);
+            border: 1.5px solid var(--border-color);
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 100vw;
+            min-width: 180px;
+        }
+
+        .controls {
+            margin-top: 1.2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+        .control-group {
+            background: rgba(60, 52, 80, 0.5);
+            border-radius: 14px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 0.2rem;
+            border: 1px solid var(--border-color);
+        }
+        .control-label {
+            color: var(--accent-purple);
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        .slider {
+            width: 120px;
+            accent-color: var(--accent-purple);
+        }
+        .slider-value {
+            color: var(--text-accent);
+            font-size: 0.95rem;
+        }
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            margin-bottom: 0.5rem;
+        }
+        .toggle-switch {
+            width: 36px;
+            height: 20px;
+            background: var(--bg-accent);
+            border-radius: 12px;
+            border: 1.5px solid var(--border-color);
+            position: relative;
+            cursor: pointer;
+            transition: background 0.2s, border 0.2s;
+        }
+        .toggle-switch.active {
+            background: var(--accent-purple);
+            border-color: var(--accent-purple);
+        }
+        .color-palette {
+            display: flex;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .color-swatch {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 1.5px solid var(--border-color);
+            box-shadow: 0 1px 4px rgba(204,188,252,0.13);
+        }
+        .effects-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.7rem;
+        }
+        .effect-item {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            background: rgba(204,188,252,0.08);
+            border-radius: 10px;
+            padding: 0.3rem 0.7rem;
+            color: var(--accent-purple);
+            font-size: 0.95rem;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            transition: background 0.2s, border 0.2s, color 0.2s, transform 0.2s;
+        }
+        .effect-item:hover {
+            background: var(--accent-purple);
+            color: #2d2738;
+            border-color: var(--accent-purple);
+            transform: scale(1.07);
+        }
+        .effect-checkbox {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            background: var(--bg-accent);
+            border: 1.5px solid var(--border-color);
+            margin-right: 0.2rem;
+            display: inline-block;
+            vertical-align: middle;
+            position: relative;
+            transition: background 0.2s, border 0.2s;
+        }
+        .effect-checkbox.checked {
+            background: var(--accent-purple);
+            border-color: var(--accent-purple);
+        }
+        .effect-checkbox.checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .blend-mode-display {
+            position: fixed;
+            left: 50%;
+            top: 2.5rem;
+            transform: translateX(-50%);
+            background: rgba(60, 52, 80, 0.95);
+            color: var(--accent-purple);
+            padding: 0.7rem 1.5rem;
+            border-radius: 16px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(204,188,252,0.13);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 10;
+            transition: opacity 0.4s;
+        }
+        .blend-mode-display.show {
+            opacity: 1;
+        }
+
+        /* Progress bar for random button */
+        .progress-container {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .progress-container.show {
+            opacity: 1;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-hover));
+            border-radius: 2px;
+            width: 0%;
+            transition: width 0.2s ease;
+            box-shadow: 0 0 8px var(--glow-color);
+        }
+
+        @media (max-width: 700px) {
+            .container {
+                max-width: 98vw;
+                padding: 1.2rem 0.2rem;
+                margin-top: 1.2rem;
+            }
+            h1 {
+                font-size: 1.3rem;
+            }
+            .control-group {
+                padding: 0.7rem 0.5rem;
+            }
+        }

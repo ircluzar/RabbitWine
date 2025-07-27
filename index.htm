@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
     <link rel="shortcut icon" type="image/png" href="favicon.png">
@@ -35,330 +38,150 @@
     <meta name="apple-touch-fullscreen" content="yes">
     <meta name="format-detection" content="telephone=no">
     <title>Rabbit Wine</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --bg-primary: #1a1626;
-            --bg-secondary: #2d2738;
-            --bg-accent: #3a3447;
-            --text-primary: #e2e2e2;
-            --text-accent: #a0a0a0;
-            --accent-purple: #ccbcfc;
-            --accent-hover: #b8a8f8;
-            --border-color: #444;
-            --glow-color: rgba(204, 188, 252, 0.3);
-        }
-
-        body {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            overflow: hidden;
-            height: 100vh;
-            position: relative;
-        }
-
-        .intro-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            padding: 2rem;
-            text-align: center;
-            position: relative;
-            z-index: 2;
-        }
-
-        .background-animation {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            z-index: 1;
-        }
-
-        .floating-element {
-            position: absolute;
-            width: 12px;
-            height: 12px;
-            background: var(--accent-purple);
-            border-radius: 50%;
-            opacity: 0.6;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(180deg); }
-        }
-
-        .logo-container {
-            margin-bottom: 2rem;
-            animation: fadeInUp 1s ease-out;
-        }
-
-        .logo {
-            max-width: 120px;
-            height: auto;
-            filter: drop-shadow(0 4px 16px var(--glow-color));
-            transition: transform 0.3s ease;
-        }
-
-        .logo:hover {
-            transform: scale(1.05);
-        }
-
-        .title {
-            font-size: 3rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            background: linear-gradient(45deg, var(--accent-purple), #fff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: fadeInUp 1s ease-out 0.2s both;
-        }
-
-        .subtitle {
-            font-size: 1.1rem;
-            color: var(--text-accent);
-            margin-bottom: 3rem;
-            max-width: 500px;
-            line-height: 1.5;
-            animation: fadeInUp 1s ease-out 0.4s both;
-        }
-
-        .features-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            width: 100%;
-            max-width: 400px;
-            margin-bottom: 3rem;
-        }
-
-        .feature-card {
-            background: rgba(45, 39, 56, 0.6);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            text-decoration: none;
-            color: var(--text-primary);
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-            position: relative;
-            overflow: hidden;
-            animation: fadeInUp 1s ease-out 0.6s both;
-        }
-
-        .feature-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(45deg, transparent, rgba(204, 188, 252, 0.1), transparent);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .feature-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--accent-purple);
-            box-shadow: 0 8px 32px rgba(204, 188, 252, 0.2);
-        }
-
-        .feature-card:hover::before {
-            opacity: 1;
-        }
-
-        .feature-icon {
-            font-size: 1.8rem;
-            flex-shrink: 0;
-        }
-
-        .feature-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: var(--accent-purple);
-            margin: 0;
-        }
-
-        .footer-note {
-            color: var(--text-accent);
-            font-size: 0.9rem;
-            opacity: 0.8;
-            animation: fadeInUp 1s ease-out 0.8s both;
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @media (max-width: 768px) {
-            .intro-container {
-                padding: 1rem;
-            }
-            
-            .title {
-                font-size: 2.2rem;
-            }
-            
-            .subtitle {
-                font-size: 1rem;
-                margin-bottom: 2rem;
-            }
-            
-            .features-grid {
-                max-width: 300px;
-            }
-            
-            .feature-card {
-                padding: 1rem;
-            }
-            
-            .feature-icon {
-                font-size: 1.5rem;
-            }
-            
-            .feature-title {
-                font-size: 1rem;
-            }
-            
-            .logo {
-                max-width: 100px;
-            }
-        }
-
-        @media (max-height: 700px) {
-            .intro-container {
-                padding: 1rem;
-            }
-            
-            .title {
-                font-size: 2rem;
-                margin-bottom: 0.5rem;
-            }
-            
-            .subtitle {
-                font-size: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            
-            .features-grid {
-                gap: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            
-            .feature-card {
-                padding: 1rem;
-            }
-            
-            .logo {
-                max-width: 80px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="mainmenu.css">
+    <link rel="stylesheet" href="stars.css">
+    <link rel="stylesheet" href="modals.css">
 </head>
 <body>
     <div class="background-animation" id="backgroundAnimation"></div>
+    <script>
+    // Prevent bfcache and force reload if page is restored from cache
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+    // Detect if navigation is via back/forward
+    window.skipMenuAnimation = false;
+    try {
+        // Use PerformanceNavigation API if available
+        if (window.performance && performance.getEntriesByType) {
+            const navs = performance.getEntriesByType('navigation');
+            if (navs.length && navs[0].type === 'back_forward') {
+                window.skipMenuAnimation = true;
+            }
+        }
+        // Fallback: use sessionStorage flag
+        if (sessionStorage.getItem('skipMenuAnimation') === '1') {
+            window.skipMenuAnimation = true;
+        }
+        // Set flag for next navigation
+        sessionStorage.setItem('skipMenuAnimation', '1');
+    } catch (e) {}
+    </script>
     
     <div class="intro-container">
         <div class="logo-container">
-		<a href="https://github.com/ircluzar/RabbitWine/">
+        <a href="#" id="aboutLogo">
             <img src="rabbitwine.png" alt="rabbit.wine logo" class="logo"></a>
         </div>
         
         <h1 class="title">Rabbit Wine</h1>
         
         <div class="features-grid">
+
             <a href="stickers" class="feature-card">
                 <span class="feature-icon">🏷️</span>
                 <h3 class="feature-title">Stickers</h3>
             </a>
-            
+
             <a href="editor" class="feature-card">
-                <span class="feature-icon">✏️</span>
+                <span class="feature-icon">🎨</span>
                 <h3 class="feature-title">Editor</h3>
             </a>
-            
+
             <a href="objects" class="feature-card">
-                <span class="feature-icon">🎨</span>
+                <span class="feature-icon">🪨</span>
                 <h3 class="feature-title">Objects</h3>
             </a>
+
+            <a href="scroll" class="feature-card">
+                <span class="feature-icon">📄</span>
+                <h3 class="feature-title">Scroll</h3>
+            </a>
+
+            <a href="chaos" class="feature-card">
+                <span class="feature-icon">🌀</span>
+                <h3 class="feature-title">Chaos</h3>
+            </a>
+
+            <a href="ask" class="feature-card">
+                <span class="feature-icon">🍷</span>
+                <h3 class="feature-title">Ask</h3>
+            </a>
+
         </div>
 
     </div>
 
+    <script src="stars.js"></script>
+    <script src="modals.js"></script>
     <script>
-        // Create floating background elements
-        function createFloatingElements() {
-            const container = document.getElementById('backgroundAnimation');
-            const elementCount = window.innerWidth < 768 ? 15 : 25;
-            
-            for (let i = 0; i < elementCount; i++) {
-                const element = document.createElement('div');
-                element.className = 'floating-element';
-                
-                // Random position
-                element.style.left = Math.random() * 100 + '%';
-                element.style.top = Math.random() * 100 + '%';
-                
-                // Random animation delay and duration
-                element.style.animationDelay = Math.random() * 6 + 's';
-                element.style.animationDuration = (4 + Math.random() * 4) + 's';
-                
-                // Random size variation
-                const size = 6 + Math.random() * 12;
-                element.style.width = size + 'px';
-                element.style.height = size + 'px';
-                
-                // Random opacity
-                element.style.opacity = 0.3 + Math.random() * 0.4;
-                
-                container.appendChild(element);
-            }
+    // About modal on logo click
+    document.addEventListener('DOMContentLoaded', function() {
+        var logo = document.getElementById('aboutLogo');
+        if (logo) {
+            logo.addEventListener('click', function(e) {
+                e.preventDefault();
+                var year = new Date().getFullYear();
+                var content = document.createElement('div');
+                content.innerHTML = `
+                  <div class="about-modal-btns" style="display: flex; flex-direction: column; gap: 18px; align-items: center; justify-content: center; margin-bottom: 18px;">
+                    <button onclick="window.open('https://github.com/ircluzar/RabbitWine/', '_blank')">
+                      <span style='font-size:2em; margin-right:10px;'>🐇</span>
+                      <span>Get the source on GitHub</span>
+                    </button>
+                    <button onclick="window.open('https://redscientist.com/', '_blank')">
+                      <span style='font-size:2em; margin-right:10px;'>🌐</span>
+                      <span>Developer: redscientist.com</span>
+                    </button>
+                  </div>
+                  <div style="text-align:center; font-weight:bold; margin: 22px 0 22px 0; font-size: 1.2em;">Rabbit Wine Gen 2</div>
+                  <div class="about-modal-footer">
+                    ${year} — Developed in the matrix under ircluzar's directives.
+                  </div>
+                `;
+                window.Modals.open({
+                  title: 'About Rabbit Wine',
+                  content: content,
+                  confirmText: 'Close',
+                  showCancel: false
+                });
+            });
         }
-        
-        // Initialize floating elements when page loads
-        document.addEventListener('DOMContentLoaded', createFloatingElements);
-        
-        // Recreate elements on resize for responsive behavior
-        let resizeTimeout;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                const container = document.getElementById('backgroundAnimation');
-                container.innerHTML = '';
-                createFloatingElements();
-            }, 150);
+    });
+    </script>
+    <script>
+        // Fade in feature cards with staggered delays, unless coming from back/forward navigation
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.feature-card');
+            if (window.skipMenuAnimation) {
+                cards.forEach(card => {
+                    card.style.opacity = '1';
+                    card.style.animation = 'none';
+                    card.style.transform = 'none';
+                    card.style.animationDelay = '0s';
+                    card.classList.remove('fade-in'); // Remove animation class if present
+                });
+            } else {
+                cards.forEach((card, i) => {
+                    card.classList.add('fade-in');
+                    card.style.animationDelay = (0.09 * i + 0.08) + 's';
+                });
+            }
         });
-        
         // Add subtle hover effects to feature cards
         document.querySelectorAll('.feature-card').forEach(card => {
             card.addEventListener('mouseenter', () => {
                 card.style.transform = 'translateY(-4px) scale(1.02)';
             });
-            
             card.addEventListener('mouseleave', () => {
                 card.style.transform = 'translateY(0) scale(1)';
             });

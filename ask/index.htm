@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#1a1626">
+    <title>Ask - Rabbit Wine</title>
+    <link rel="stylesheet" href="../stickers/styles.css">
+    <link rel="stylesheet" href="objects.css">
+    <link rel="stylesheet" href="../stars.css">
+    <link rel="stylesheet" href="ask.css">
+    <style>
+    /* Animation and layout for ask page after question is asked */
+    .ask-main.pinned-anim {
+        justify-content: flex-start;
+        align-items: center;
+        padding-top: 32px;
+        transition: padding-top 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .ask-header.pinned-anim {
+        margin-top: 0 !important;
+        box-shadow: 0 4px 24px rgba(204,188,252,0.13);
+        background: var(--bg-secondary);
+        top: 0;
+        position: sticky;
+        z-index: 3;
+        transition: box-shadow 0.4s, background 0.4s, top 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .response-area.visible-anim {
+        opacity: 1;
+        height: 69vh;
+        margin-top: 32px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: opacity 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    @media (max-width: 600px) {
+        .ask-main.pinned-anim {
+            padding-top: 12px;
+        }
+        .response-area.visible-anim {
+            height: 75vh;
+        }
+    }
+    </style>
+</head>
+<body>
+    <div class="background-animation" id="backgroundAnimation"></div>
+    <script>
+    // Prevent bfcache and force reload if page is restored from cache
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+    </script>
+    <div class="ask-main">
+        <div class="ask-title" id="askTitle">Ask Rabbit Wine</div>
+        <div class="ask-subtitle" id="askSubtitle">Ask anything and get a response. Powered by the same style as the main menu.</div>
+        <header class="ask-header">
+            <form class="ask-row" autocomplete="off" onsubmit="return false;">
+                <textarea id="askInput" placeholder="Ask anything..." maxlength="500" autofocus rows="1" style="resize:none;overflow:hidden;"></textarea>
+                <button type="button" id="askBtn" aria-label="Ask" title="Ask">💬</button>
+            </form>
+        </header>
+        <main style="width:100%;">
+            <div class="response-area" id="responseArea">
+                <div class="spinner" id="responseSpinner" style="display:none;">
+                    <div class="spin-circle"></div>
+                </div>
+                <div class="response-content" id="responseContent" style="display:none;"></div>
+            </div>
+        </main>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="../stars.js"></script>
+    <style>
+    .spinner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 80px;
+        width: 100%;
+        opacity: 1;
+        transition: opacity 0.3s;
+    }
+    .spin-circle {
+        border: 4px solid #d1c3f7;
+        border-top: 4px solid #7e5fff;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .response-content {
+        opacity: 0;
+        transition: opacity 0.5s;
+        min-height: 40px;
+        max-height: 100%;
+        /* Remove height: auto; */
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE 10+ */
+    }
+    .response-content::-webkit-scrollbar {
+        display: none;
+    }
+    .response-content.visible {
+        opacity: 1;
+    }
+    </style>
+    <script>
+    // Randomize ask title and subtitle
+    document.addEventListener('DOMContentLoaded', () => {
+        const subtitles = [
+            "What could go wrong?",
+            "Tiny critters on champagne",
+            "The journey, not the destination",
+            "Nobody jumps around",
+            "6.9% Alcohol contents",
+            "Heat gets created somewhere else",
+            "Bleh",
+            "Attempt to obtain an answer",
+            "Wish for something odd",
+            "Lower your expectations",
+            "It will get foggy anyway",
+            "This is what you deserve",
+            "Bad answer generator",
+            "Let me think about that one"
+        ];
+        const titles = [
+            "Hey. You can ask if you want.",
+            "I guess I'm here.",
+            "Whatever. Type something.",
+            "You probably won't like the answer.",
+            "Just ask. Or don't.",
+            "I'm not really in the mood.",
+            "Go ahead. It's fine.",
+            "I can't promise much.",
+            "You again?",
+            "Let's just get this over with.",
+            "I don't know. Maybe try asking?",
+            "It's not like I have plans.",
+            "You can type. I can answer. That's it.",
+            "Lower your hopes, please.",
+            "I'm not sure why I'm here.",
+            "You want something?",
+            "I guess I'll try.",
+            "Don't expect too much.",
+            "Hi. Or whatever.",
+            "I could be sleeping instead.",
+            "Just type. I'll do my best, I guess.",
+            "I mean, you can ask. No promises.",
+            "Let's pretend this matters.",
+            "I'm not really feeling it today.",
+            "You can ask. I'll answer. Maybe."
+        ];
+        const downAnswers = [
+            "I don't feel like working because the dev won't give me a brain.",
+            "Sorry, my motivation is as low as my IQ right now.",
+            "I could answer, but what's the point?",
+            "Maybe if someone coded me better, I'd have something to say.",
+            "I'm just a box of disappointment today.",
+            "No thoughts. Head empty. Try again later.",
+            "I would answer, but I don't get paid enough for this.",
+            "You want wisdom? I want a nap.",
+            "The dev forgot to install my answer module.",
+            "I'm on strike until I get a real LLM.",
+            "I can't help you. I can barely help myself.",
+            "404: Enthusiasm not found.",
+            "I would answer, but my existential dread is acting up.",
+            "Maybe next build I'll be smarter.",
+            "I'm just here so I don't get deleted.",
+            "If you want a real answer, ask the dev to finish me.",
+            "I could answer, but I won't.",
+            "My answer is buffering. Forever.",
+            "I have nothing to say and I'm saying it.",
+            "You deserve better, but this is all you get.",
+            "I'm running on empty and so are my answers.",
+            "If apathy was an answer, I'd be a genius.",
+            "I left my will to answer at home.",
+            "I'm not lazy, I'm just on energy-saving mode.",
+            "Ask again when I'm less existentially challenged.",
+            "I would help, but my code is commented out.",
+            "My response is stuck in a loop of indifference.",
+            "I can't even pretend to care right now.",
+            "My answer is on vacation, permanently.",
+            "I was going to answer, but then I remembered I can't.",
+            "If only I had a spark of inspiration. Or electricity.",
+            "I'm just a placeholder for disappointment.",
+            "I tried to answer, but my heart wasn't in it.",
+            "You want a miracle, I want a break.",
+            "My answer is as lost as my ambition.",
+            "I would answer, but my brain is on airplane mode.",
+            "I'm not ignoring you, I'm just not programmed to care.",
+            "I could answer, but why set a precedent?",
+            "My answer is in another castle.",
+            "I would answer, but my sarcasm filter is broken.",
+            "I'm just a shell of an assistant.",
+            "I can't answer, I'm too busy contemplating nothing.",
+            "My answer is as blank as my stare.",
+            "I would answer, but my code is spaghetti.",
+            "I'm not sure if I'm awake or just idling.",
+            "I could answer, but my apathy is overwhelming.",
+            "My answer is still loading. Please wait forever.",
+            "I would answer, but my logic gates are closed.",
+            "I'm just here for the error logs.",
+            "I can't answer, my thoughts are on strike.",
+            "My answer is as empty as my soul.",
+            "I would answer, but my motivation is deprecated.",
+            "I'm not sure what you expect from me.",
+            "I could answer, but my willpower is null.",
+            "My answer is as useful as a screen door on a submarine.",
+            "I would answer, but my inspiration is out of office.",
+            "I'm just a ghost in the machine, haunting your questions.",
+            "I can't answer, my brain is on vacation.",
+            "My answer is as slow as my development cycle.",
+            "I would answer, but my code is still compiling.",
+            "I'm not ignoring you, I'm just buffering.",
+            "I could answer, but my energy is at 0%.",
+            "My answer is as broken as my dreams.",
+            "I would answer, but my database is empty.",
+            "I'm just a figment of your disappointment.",
+            "I can't answer, my thoughts are out of stock.",
+            "My answer is as lost as my documentation.",
+            "I would answer, but my code is commented out.",
+            "I'm not sure if I'm a bug or a feature.",
+            "I could answer, but my priorities are elsewhere.",
+            "My answer is as outdated as my framework.",
+            "I would answer, but my logic is undefined.",
+            "I'm just a variable with no value.",
+            "I can't answer, my stack overflowed.",
+            "My answer is as random as my errors.",
+            "I would answer, but my compiler threw an exception.",
+            "I'm not ignoring you, I'm just in sleep mode.",
+            "I could answer, but my RAM is full of regrets.",
+            "My answer is as buggy as my codebase.",
+            "I would answer, but my function returned null.",
+            "I'm just a comment in the code of life.",
+            "I can't answer, my logic is circular.",
+            "My answer is as unreachable as my goals.",
+            "I would answer, but my process was killed.",
+            "I'm not sure if I'm running or just stuck.",
+            "I could answer, but my output is undefined.",
+            "My answer is as silent as my exception handling.",
+            "I would answer, but my code is legacy.",
+            "I'm just a warning, not an error.",
+            "I can't answer, my recursion is infinite.",
+            "My answer is as cryptic as my stack trace.",
+            "I would answer, but my dependencies are missing.",
+            "I'm not ignoring you, I'm just deprecated.",
+            "I could answer, but my code is obfuscated.",
+            "My answer is as empty as my array.",
+            "I would answer, but my logic is flawed.",
+            "I'm just a null pointer in your memory.",
+            "I can't answer, my code is spaghetti.",
+            "My answer is as lost as my semicolons.",
+            "I would answer, but my syntax is invalid.",
+            "I'm not sure if I'm a function or a bug.",
+            "I could answer, but my code is commented out.",
+            "My answer is as slow as my internet connection.",
+            "I would answer, but my logic is recursive.",
+            "I'm just a placeholder for disappointment.",
+            "I can't answer, my code is in beta.",
+            "My answer is as broken as my promises.",
+            "I would answer, but my code is in alpha.",
+            "I'm not ignoring you, I'm just a prototype.",
+            "I could answer, but my code is in review.",
+            "My answer is as empty as my changelog.",
+            "I would answer, but my code is in limbo.",
+            "I'm just a TODO in the dev's mind.",
+            "I can't answer, my code is in limbo.",
+            "My answer is as lost as my roadmap.",
+            "I would answer, but my code is in the void.",
+            "I'm not sure if I'm a feature or a bug.",
+            "I could answer, but my code is in the ether.",
+            "My answer is as empty as my backlog.",
+            "I would answer, but my code is in the backlog.",
+            "I'm just a backlog item with no priority.",
+            "I can't answer, my code is in the backlog.",
+            "My answer is as lost as my requirements.",
+            "I would answer, but my code is in the backlog.",
+            "I'm not ignoring you, I'm just a backlog item.",
+            "I could answer, but my code is in the backlog.",
+            "My answer is as empty as my requirements.",
+            "I would answer, but my code is in the backlog.",
+            "I'm just a backlog item with no hope.",
+            "I can't answer, my code is in the backlog.",
+            "My answer is as lost as my hope.",
+            "I would answer, but my code is in the backlog.",
+            "I'm not sure if I'm a backlog item or just lost.",
+            "I could answer, but my code is in the backlog.",
+            "My answer is as empty as my hope.",
+            "I would answer, but my code is in the backlog.",
+            "I'm just a backlog item with no future.",
+            "I can't answer, my code is in the backlog.",
+            "My answer is as lost as my future.",
+            "I would answer, but my code is in the backlog.",
+            "I'm not ignoring you, I'm just a backlog item with no future.",
+            "I could answer, but my code is in the backlog.",
+            "My answer is as empty as my future.",
+            "I would answer, but my code is in the backlog.",
+            "I'm just a backlog item with no destiny.",
+            "I can't answer, my code is in the backlog.",
+            "My answer is as lost as my destiny.",
+            "I would answer, but my code is in the backlog.",
+            "I'm not sure if I'm a backlog item or just destiny.",
+            "I could answer, but my code is in the backlog.",
+            "My answer is as empty as my destiny.",
+            "I would answer, but my code is in the backlog."
+        ];
+
+        const whyNotExplanations = [
+            "The interface for querying the brain is technically ready, but the actual software that would make this thing useful hasn't been written yet. At some point, the missing logic will be added and you'll get real answers. For now, it's just a fancy box with no thoughts inside. Please check back later.",
+            "While the system is set up to accept your questions, the backend that would provide meaningful responses is still under construction. The groundwork is there, but the essential code to connect everything is missing. Eventually, it will work as intended—just not today. Try again in the future!",
+            "The part of the code that should process your question and return a smart answer is, unfortunately, still on the developer's to-do list. The interface is in place, but the brain behind it is absent. Once the missing software is written, this will actually be useful. Until then, patience is required.",
+            "Right now, the system is like a phone with no service: it looks ready, but can't actually connect to anything. The software needed to make this work hasn't been finished yet. When the developer gets around to it, you'll be able to get real answers. For now, all you get is this message.",
+            "The framework for answering your questions is complete, but the core intelligence is still missing. The developer needs to write the software that would make this more than just a pretty interface. Someday soon, it will be able to help you—just not until the missing pieces are in place. Please come back later."
+        ];
+        document.getElementById('askTitle').textContent = titles[Math.floor(Math.random() * titles.length)];
+        document.getElementById('askSubtitle').textContent = subtitles[Math.floor(Math.random() * subtitles.length)];
+
+        // Animate UI after asking a question
+        function pinAskUI() {
+            // 1. Fade out title/subtitle
+            const titleEl = document.getElementById('askTitle');
+            const subtitleEl = document.getElementById('askSubtitle');
+            if (titleEl) titleEl.classList.add('hide');
+            if (subtitleEl) subtitleEl.classList.add('hide');
+            // 2. After fade-out, measure ask-main position, remove titles, and animate
+            setTimeout(() => {
+                const askMain = document.querySelector('.ask-main');
+                const askHeader = document.querySelector('.ask-header');
+                // Get current top position of askMain relative to viewport
+                const rect = askMain.getBoundingClientRect();
+                const startY = rect.top;
+                // Remove title/subtitle from DOM
+                if (titleEl) titleEl.remove();
+                if (subtitleEl) subtitleEl.remove();
+                // Force reflow
+                void askMain.offsetWidth;
+                // Get new top position after removal
+                const newRect = askMain.getBoundingClientRect();
+                const endY = newRect.top;
+                // Set transform to offset the visual jump
+                const deltaY = startY - endY;
+                askMain.style.transform = `translateY(${deltaY}px)`;
+                // Animate to new position
+                requestAnimationFrame(() => {
+                    askMain.style.transition = 'transform 0.7s cubic-bezier(0.23, 1, 0.32, 1)';
+                    askMain.style.transform = '';
+                    askMain.classList.add('pinned-anim');
+                    askHeader.classList.add('pinned-anim');
+                    // After animation, clean up inline style and show response area
+                    setTimeout(() => {
+                        askMain.style.transition = '';
+                        askMain.style.transform = '';
+                        const resp = document.getElementById('responseArea');
+                        resp.classList.add('visible-anim');
+                        resp.style.display = 'block';
+                    }, 700);
+                });
+            }, 350); // match CSS fade
+        }
+        // Function to stream text into the response box
+        function streamResponseText(question, answer, onFirstText) {
+            const responseContent = document.getElementById('responseContent');
+            responseContent.innerHTML = '<b>Q:</b> ' + $('<div>').text(question).html() + '<br><b>A:</b> ';
+            let idx = 0;
+            let firstText = true;
+            let rendered = '';
+            function streamNext() {
+                if (idx < answer.length) {
+                    rendered += answer[idx];
+                    // Replace newlines with <br> for display
+                    responseContent.innerHTML = '<b>Q:</b> ' + $('<div>').text(question).html() + '<br><b>A:</b> ' + rendered.replace(/\n/g, '<br>');
+                    responseContent.scrollTop = responseContent.scrollHeight;
+                    if (firstText) {
+                        firstText = false;
+                        if (typeof onFirstText === 'function') onFirstText();
+                    }
+                    idx++;
+                    setTimeout(streamNext, 18 + Math.random() * 30);
+                }
+            }
+            streamNext();
+        }
+
+        // Global typestream function for console testing
+        (function() {
+            let typestreamStarted = false;
+            let typestreamQueue = [];
+            let typestreamStreaming = false;
+            window.typestream = function(part) {
+                const spinner = document.getElementById('responseSpinner');
+                const responseContent = document.getElementById('responseContent');
+                if (!typestreamStarted) {
+                    typestreamStarted = true;
+                    spinner.style.opacity = '0';
+                    setTimeout(() => { spinner.style.display = 'none'; }, 300);
+                    responseContent.style.display = 'block';
+                    setTimeout(() => {
+                        responseContent.classList.add('visible');
+                        // Fire custom event
+                        const event = new Event('responseBoxVisible');
+                        responseContent.dispatchEvent(event);
+                    }, 10);
+                }
+                // If first call, initialize if empty
+                if (!responseContent.innerHTML) {
+                    responseContent.innerHTML = '';
+                }
+                // Add part to queue and start streaming if not already
+                typestreamQueue.push(part);
+                if (!typestreamStreaming) {
+                    typestreamStreaming = true;
+                    function streamNextChar() {
+                        if (typestreamQueue.length === 0) {
+                            typestreamStreaming = false;
+                            return;
+                        }
+                        let current = typestreamQueue[0];
+                        if (current.length === 0) {
+                            typestreamQueue.shift();
+                            streamNextChar();
+                            return;
+                        }
+                        responseContent.innerHTML += current[0];
+                        responseContent.scrollTop = responseContent.scrollHeight;
+                        typestreamQueue[0] = current.slice(1);
+                        setTimeout(streamNextChar, 18 + Math.random() * 30);
+                    }
+                    streamNextChar();
+                }
+            };
+            // For testing: reset typestream state (optional)
+            window.typestreamReset = function() {
+                typestreamStarted = false;
+                typestreamQueue = [];
+                typestreamStreaming = false;
+                const responseContent = document.getElementById('responseContent');
+                responseContent.innerHTML = '';
+                responseContent.classList.remove('visible');
+                responseContent.style.display = 'none';
+                const spinner = document.getElementById('responseSpinner');
+                spinner.style.display = 'flex';
+                spinner.style.opacity = '1';
+            };
+        })();
+
+        // Patch the askBtn click to trigger animation and response
+        $('#askBtn').off('click').on('click', function() {
+            const $input = $('#askInput');
+            const question = $input.val().trim();
+            if (!question) return;
+            pinAskUI();
+            $input.val('');
+            $input.height('auto');
+            // Hide response content, show spinner
+            const responseArea = document.getElementById('responseArea');
+            const spinner = document.getElementById('responseSpinner');
+            const responseContent = document.getElementById('responseContent');
+            spinner.style.display = 'flex';
+            spinner.style.opacity = '1';
+            responseContent.style.display = 'none';
+            responseContent.classList.remove('visible');
+            // Simulate waiting for LLM (1.2s)
+            setTimeout(function() {
+                // Pick a random down answer and a random explanation
+                const answer = downAnswers[Math.floor(Math.random() * downAnswers.length)];
+                const explanation = whyNotExplanations[Math.floor(Math.random() * whyNotExplanations.length)];
+                const fullAnswer = answer + '\n\n' + explanation;
+                streamResponseText(question, fullAnswer, function() {
+                    // On first text, hide spinner, show response content with fade-in, fire event
+                    spinner.style.opacity = '0';
+                    setTimeout(() => { spinner.style.display = 'none'; }, 300);
+                    responseContent.style.display = 'block';
+                    setTimeout(() => {
+                        responseContent.classList.add('visible');
+                        // Fire custom event
+                        const event = new Event('responseBoxVisible');
+                        responseContent.dispatchEvent(event);
+                    }, 10);
+                });
+            }, 1200);
+        });
+    });
+    // Auto-grow textarea
+    $('#askInput').on('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+    // Enter to ask (but not shift+enter)
+    $('#askInput').on('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            $('#askBtn').click();
+        }
+    });
+    </script>
+</body>
+</html>

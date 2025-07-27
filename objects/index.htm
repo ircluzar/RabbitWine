@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rabbit Wine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script>
     <link rel="stylesheet" href="objects.css?v5">
-	<style>
+    <!-- Stars background aesthetics -->
+    <link rel="stylesheet" href="../stars.css">
+    <style>
         /* The CSS transition is no longer strictly necessary for animate(), but can remain for other properties */
         #objectLogo {
             /* transition: color 1s ease-in-out; */
@@ -15,6 +17,8 @@
     </style>
 </head>
 <body>
+    <!-- Stars background container -->
+    <div id="backgroundAnimation" class="background-animation"></div>
     <button class="mute-button" id="muteButton" title="Toggle Music">🔊</button>
     <div class="container">
         <div class="stats-panel panel">
@@ -31,7 +35,7 @@
             <div class="section-header">
                 <div class="section-title" id="objectLogo">[Object]</div>
                 <div class="button-group">
-				    <button class="button-base auto-button" id="omegaButton" style="display: none;">Ω</button>
+                    <button class="button-base auto-button" id="omegaButton" style="display: none;">Ω</button>
                     <button class="button-base auto-button" id="autoButton" style="display: none;">Auto</button>
 
                     <button class="button-base discard-button" id="discardButton" style="display: none;"> X </button>
@@ -41,7 +45,12 @@
         </div>
     </div>
     <div class="feedback" id="feedback"></div>
+    <!-- Stars background JS -->
+    <script src="../stars.js"></script>
     <script>
+
+let lastPopSfxTime = 0;
+let lastBrkSfxTime = 0;
 let wakeLock = null;
 
 async function requestWakeLock() {
@@ -77,6 +86,7 @@ $(document).ready(function() {
     ];
     
     function fmtNum(n) {
+        if (n === null || n === undefined || isNaN(n)) return '0';
         if (n < 1000) return n.toString();
         
         for (const u of fmtUnits) {
@@ -94,6 +104,7 @@ $(document).ready(function() {
     }
     
     function fmtDec(n, suf = '') {
+        if (n === null || n === undefined || isNaN(n)) return '0' + suf;
         return (n % 1 === 0 ? n.toString() : n.toFixed(2).replace(/\.?0+$/, '')) + suf;
     }
     
@@ -127,6 +138,9 @@ $(document).ready(function() {
     }
     
     function getImgPath(obj) {
+        if (obj.isEmpty || obj.imageNumber === null || obj.imageNumber === undefined) {
+            return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+RW1wdHk8L3RleHQ+Cjwvc3ZnPg==';
+        }
         const tier = getObjTier(obj.level);
         return `${tier.name}/${tier.img(obj.imageNumber)}.gif`;
     }
@@ -147,7 +161,7 @@ $(document).ready(function() {
     function playAud(fld, n, vol, isWav, loop = false) {
         if (st.isMuted) return;
         //const aud = new Audio(`${fld}/${n}.${isWav ? 'wav' : 'mp3'}`);
-		const aud = new Audio(`${fld}/${n}.m4a`);
+        const aud = new Audio(`${fld}/${n}.m4a`);
         aud.volume = vol; aud.loop = loop;
         aud.play().catch(() => {});
         return aud;
@@ -158,9 +172,19 @@ $(document).ready(function() {
         curMusic = playAud('corridor', n, 0.15, false, true); 
     }
     
-    function playBrkSfx(n) { playAud('break', n, 0.25, true); }
+function playBrkSfx(n) {
+    const now = Date.now();
+    if (now - lastBrkSfxTime < 130) return;
+    lastBrkSfxTime = now;
+    playAud('break', n, 0.25, true);
+}
     function playTckSfx(n) { playAud('tick', n, 0.2, false); }
-    function playPopSfx() { playAud('pop', Math.floor(Math.random() * 10) + 1, 0.69, true); }
+function playPopSfx() {
+    const now = Date.now();
+    if (now - lastPopSfxTime < 130) return;
+    lastPopSfxTime = now;
+    playAud('pop', Math.floor(Math.random() * 10) + 1, 0.69, true);
+}
     function stopMusic() { if (curMusic) { curMusic.pause(); curMusic = null; } }
     
     function togMute() {
@@ -179,7 +203,7 @@ $(document).ready(function() {
     
     function togAuto() {
         autoClk = !autoClk;
-        $('#autoButton').text('Auto').toggleClass('active', autoClk);
+        $('#autoButton').text('⚡').toggleClass('active', autoClk);
     }
     
     function togOmega() {
@@ -200,10 +224,10 @@ $(document).ready(function() {
             $('#subtickButton').removeClass('draining');
         } else if (type === 'upgrade') {
             if (autoUpgInt) 
-			{
-						clearInterval(autoUpgInt);
-									calcObj();
-			}
+            {
+                        clearInterval(autoUpgInt);
+                                    calcObj();
+            }
 
             autoUpgInt = null; isAutoUpg = false;
             $('#upgradeButton').removeClass('auto-upgrading');
@@ -215,6 +239,11 @@ $(document).ready(function() {
             if (hyperTO) clearTimeout(hyperTO);
             hyperTO = null; isHyper = false;
             $('#hyperscaleButton').hide();
+            
+            // Disable hyperscale visual mode and clean up crossfade
+            const $slot = $('.object-slot[data-index="0"]');
+            $slot.removeClass('hyperscale-mode crossfading');
+            $slot.find('.object-image-previous').remove();
         }
         updUI();
     }
@@ -257,7 +286,9 @@ $(document).ready(function() {
         const cost = getCost(obj, 'upgrade');
         if (st.credits < cost) return;
         
+        // Always play pop sound for upgrades, even during hyperscale
         playPopSfx();
+        
         st.credits -= cost;
         const prevTier = getObjTier(obj.level);
         obj.level++;
@@ -288,13 +319,17 @@ $(document).ready(function() {
         
         if (prevTier !== newTier) {
             const $slot = $(`.object-slot[data-index="0"]`);
-            if ($slot.length) perfTierTrans(obj, $slot);
+            // Only perform tier transition animation if not in hyperscale mode
+            if ($slot.length && !isHyper) perfTierTrans(obj, $slot);
             
             const tierNms = { orbs: 'Shape → Orb', places: 'Orb → Place', realities: 'Place → Reality' };
             fbMsg = `Tier upgrade: ${tierNms[newTier.name] || fbMsg}`;
         }
         
-        showFB(fbMsg, 'success');
+        // Only show feedback if not in hyperscale mode
+        if (!isHyper) {
+            showFB(fbMsg, 'success');
+        }
         saveGame(); updUI();
     }
     
@@ -404,10 +439,28 @@ $(document).ready(function() {
         
         const obj = st.objects[0];
         if (obj.isEmpty) return;
-        if (obj.currentMusic) stopMusic();
-        clearCD(0); playBrkSfx(obj.breakSfx);
+        
+        if (obj.currentMusic && !isHyper) stopMusic();
+        clearCD(0); 
+        
+        // Only play break sound if not in hyperscale mode
+        if (!isHyper) {
+            playBrkSfx(obj.breakSfx);
+        }
+        
+        // During hyperscale, prepare for crossfade transition
+        if (isHyper) {
+            startHyperscaleCrossfade(obj);
+        }
+        
         rstObj(obj);
-        saveGame(); updUI(); showFB('Object discarded', 'warning');
+        saveGame(); 
+        updUI(); 
+        
+        // Only show feedback if not in hyperscale mode
+        if (!isHyper) {
+            showFB('Object discarded', 'warning');
+        }
     }
     
     function hyperWF() {
@@ -442,7 +495,8 @@ $(document).ready(function() {
                 showFB('Hyperscale complete - Auto Upgrade activated', 'success');
                 return;
             } else {
-                discObj();
+                // Instead of discarding and creating empty, directly create new object
+                hyperscaleDiscardAndReplace();
                 hyperTO = setTimeout(() => hyperWF(), getDynTiming(true));
                 return;
             }
@@ -456,9 +510,83 @@ $(document).ready(function() {
         
         isHyper = true;
         $('#hyperscaleButton').hide();
+        
+        // Enable hyperscale visual mode
+        const $slot = $('.object-slot[data-index="0"]');
+        $slot.addClass('hyperscale-mode');
+        
         showFB('Hyperscale started', 'success');
         
         hyperWF();
+    }
+    
+    function startHyperscaleCrossfade(currentObj) {
+        const $slot = $('.object-slot[data-index="0"]');
+        const $currentImg = $slot.find('.object-image');
+        
+        if ($currentImg.length && $currentImg.attr('src')) {
+            // Clone current image as previous image for crossfade
+            const $prevImg = $currentImg.clone()
+                .removeClass('object-image')
+                .addClass('object-image-previous');
+            
+            // Remove any existing previous image
+            $slot.find('.object-image-previous').remove();
+            
+            // Add the previous image to the slot
+            $slot.append($prevImg);
+            
+            // Start crossfade (non-blocking)
+            setTimeout(() => {
+                $slot.addClass('crossfading');
+                
+                // Clean up after crossfade completes
+                setTimeout(() => {
+                    $slot.find('.object-image-previous').remove();
+                    $slot.removeClass('crossfading');
+                }, 400); // Match CSS transition duration
+            }, 10);
+        }
+    }
+    
+    function hyperscaleDiscardAndReplace() {
+        requestWakeLock();
+        
+        const obj = st.objects[0];
+        if (obj.isEmpty) return;
+        
+        // Play break sound even during hyperscale for audio feedback
+        playBrkSfx(obj.breakSfx);
+        
+        // Start crossfade transition
+        startHyperscaleCrossfade(obj);
+        
+        // Stop music and clear cooldown
+        if (obj.currentMusic) stopMusic();
+        clearCD(0);
+        
+        // Generate new object data
+        const newObj = genObj();
+        
+        // Replace object data directly (no empty state)
+        Object.assign(obj, newObj);
+        obj.isEmpty = false;
+        obj.currentMusic = true;
+        
+        // Apply bonuses
+        const bonuses = [
+            { thresholds: [5, 15, 25, 35, 45], prop: 'cooldown' },
+            { thresholds: [20, 30, 40], prop: 'breakProbability' }
+        ];
+        
+        bonuses.forEach(({ thresholds, prop }) => {
+            thresholds.forEach(threshold => {
+                if (obj[prop] > threshold) obj.tickValue *= 2;
+            });
+        });
+        
+        saveGame();
+        updUI();
     }
     
     function isOnCD(idx) {
@@ -564,8 +692,18 @@ $(document).ready(function() {
             });
         });
         
-        stopMusic(); playMusic(obj.music);
-        saveGame(); updUI(); showFB('New object', 'success');
+        // Only play music if not in hyperscale mode to reduce resource usage
+        if (!isHyper) {
+            stopMusic(); 
+            playMusic(obj.music);
+            showFB('New object', 'success');
+        } else {
+            // During hyperscale, play a pop sound for new object creation
+            playPopSfx();
+        }
+        
+        saveGame(); 
+        updUI(); 
     }
     
     function showFB(msg, type = 'success') {
@@ -639,33 +777,52 @@ $(document).ready(function() {
     
     function renSlots() {
         const $grid = $('#objectsGrid');
+        const existingSlot = $grid.find('.object-slot[data-index="0"]');
+        const wasHyperscale = existingSlot.hasClass('hyperscale-mode');
+        const wasCrossfading = existingSlot.hasClass('crossfading');
+        const $prevImg = existingSlot.find('.object-image-previous').clone();
+        
         $grid.empty();
         
         st.objects.forEach((obj, idx) => {
             const $slot = $('<div>').addClass('object-slot').attr('data-index', idx);
             
-            if (obj.isEmpty) {
+            // Restore hyperscale classes if this was in hyperscale mode
+            if (idx === 0 && wasHyperscale) {
+                $slot.addClass('hyperscale-mode');
+                if (wasCrossfading) {
+                    $slot.addClass('crossfading');
+                }
+            }
+            
+            if (obj.isEmpty && !(isHyper && idx === 0)) {
+                // Don't show empty state during hyperscale for slot 0
                 $slot.addClass('empty').html('<div>Click for a new object</div>')
                     .on('click', () => fillEmptySlot(idx));
             } else {
                 $slot.addClass('filled');
                 const imgPath = getImgPath(obj);
                 const $img = $('<img>').addClass('object-image').attr('src', imgPath)
-                    .attr('alt', `Object ${obj.imageNumber}`)
+                    .attr('alt', `Object ${obj.imageNumber || 'Empty'}`)
                     .on('error', function() { 
                         $(this).attr('src', 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+Tm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4='); 
                     });
+                
+                // If this is slot 0 during hyperscale and was crossfading, restore previous image
+                if (idx === 0 && wasCrossfading && $prevImg.length) {
+                    $slot.append($prevImg);
+                }
                 
                 const tier = getObjTier(obj.level);
                 const tierDisp = tier.name.charAt(0).toUpperCase() + tier.name.slice(1, -1);
                 
                 const stats = [
                     ['Tier', tierDisp],
-                    ['Level', obj.level],
-                    ['Tick', fmtNum(obj.tickValue)],
-                    ['Break', fmtDec(obj.breakProbability, '%')],
-                    ['Shatter', fmtNum(obj.shatterBonus)],
-                    ['Cooldown', fmtDec(obj.cooldown, 's')]
+                    ['Level', obj.level || 1],
+                    ['Tick', fmtNum(obj.tickValue || 0)],
+                    ['Break', fmtDec(obj.breakProbability || 0, '%')],
+                    ['Shatter', fmtNum(obj.shatterBonus || 0)],
+                    ['Cooldown', fmtDec(obj.cooldown || 0, 's')]
                 ];
                 
                 if (obj.subtickCount > 0) stats.push(['Subticks', obj.subtickCount]);
@@ -679,21 +836,17 @@ $(document).ready(function() {
                 const $cdTxt = $('<div>').addClass('cooldown-text').hide();
                 
                 $slot.append($img, $stats, $cdBar, $cdTxt).on('click', () => {
-                    if (!isOnCD(idx)) {
-                        $slot.addClass('pulsing');
-                        setTimeout(() => $slot.removeClass('pulsing'), 500);
-                        tckObj(idx);
-                    }
+                    if (!isOnCD(idx)) tckObj(idx);
                 });
                 
                 updCDDisp(idx);
-                if (isOnCD(idx)) stCDTimer(idx);
             }
+            
             $grid.append($slot);
         });
     }
-	
-	
+    
+    
     function calcObj() {
     const obj = st.objects[0]; //
     if (obj.isEmpty) { //
@@ -707,16 +860,16 @@ $(document).ready(function() {
     const upgradeCost = getCost(obj, 'upgrade'); //
 
   // Alternate win condition: if shatter amount is higher than 10x the cost of the next upgrade
-    const alternateWinCondition = obj.shatterBonus > (10 * upgradeCost);
+    const alternateWinCondition = obj.shatterBonus > (420 * upgradeCost);
 
 
     let flashColor; //
     if (projectedCredits >= upgradeCost || alternateWinCondition) { //
         flashColor = '#00FF00'; // Bright green for success //
-		playAud('sounds', 'win', 0.420, true);
+        playAud('sounds', 'win', 0.420, true);
     } else {
         flashColor = '#FF0000'; // Bright red for failure/warning //
-		playAud('sounds', 'lose', 0.420, true);
+        playAud('sounds', 'lose', 0.420, true);
     }
 
     // Immediately apply the flash color and then animate back to transparent/original
@@ -761,21 +914,19 @@ $(document).ready(function() {
         
         $mute.on('click', togMute);
         
-        //$(document).on('keydown', function(e) {
-        //    if (e.key === 'p' || e.key === 'P') {
-        //        st.credits *= 1000;
-        //        showFB('Debug: Credits multiplied by 1000', 'success');
-        //        saveGame();
-        //        updUI();
-        //    }
-        //});
+        // Cheat keys disabled
+        $(document).on('keydown', function(e) {
+            // 'P' cheat is now disabled.
+        });
         
         $('#upgradeButton').on('click', upgObj);
         $('#hyperscaleButton').on('click', stHyper);
         $('#refreshButton').on('click', refCD);
         $('#subtickButton').on('click', chrgSubtick);
+        $('#autoButton').text('⚡');
         $('#autoButton').on('click', togAuto);
-		$('#omegaButton').on('click', togOmega);
+        $('#omegaButton').on('click', togOmega);
+        $('#discardButton').text('✖');
         $('#discardButton').on('click', discObj);
         
         //$('#objectLogo').on('click', calcObj);

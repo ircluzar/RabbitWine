@@ -5,7 +5,10 @@
     <title>Rabbit Wine</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="editor.css">
+    <link rel="stylesheet" href="../stars.css">
+    <link rel="stylesheet" href="../modals.css">
+    <script src="../modals.js"></script>
     <style>
         .layer-controls {
             display: flex;
@@ -123,6 +126,7 @@
     </style>
 </head>
 <body>
+    <div class="background-animation" id="backgroundAnimation"></div>
     <audio id="bgMusic" loop preload="auto">
         <source src="editor.mp3" type="audio/mpeg">
         <source src="editor.ogg" type="audio/ogg">
@@ -132,57 +136,44 @@
         <div class="panel">
             <div class="tools">
                 <div class="tool-section">
-                    <h3>Layers</h3>
-                    <div class="layer-controls">
-                        <button class="layer-btn" id="layerBg">Background</button>
-                        <button class="layer-btn active" id="layerMid">Midground</button>
-                        <button class="layer-btn" id="layerFg">Foreground</button>
-                        <div class="background-color-indicator" id="bgColorIndicator"></div>
-                    </div>
-                    <div class="layer-info" id="layerInfo">Currently editing: Midground</div>
-                </div>
-                <div class="tool-section">
-                    <h3>Color Palette</h3>
+                    <div class="section-label align-palette">Color Palette</div>
                     <div class="palette-grid" id="pal"></div>
                 </div>
-                <div class="tool-section">
-                    <div class="controls">
-                        <div class="control-group">
-                            <h3>Brush Size</h3>
-                            <select class="select-box" id="brushSel">
-                                <option value="1">1px</option>
-                                <option value="2">2px</option>
-                                <option value="3">3px</option>
-                                <option value="4" selected>4px</option>
-                                <option value="5">5px</option>
-                                <option value="8">8px</option>
-                                <option value="16">16px</option>
-                                <option value="32">32px</option>
-                            </select>
+                <div class="tools-row">
+                    <div class="tool-section">
+                        <div class="section-label align-bg-indicator">Layers</div>
+                        <div class="layer-controls">
+                            <div class="background-color-indicator" id="bgColorIndicator"></div>
+                            <button class="layer-btn" id="layerBg">Back</button>
+                            <button class="layer-btn" id="layerMid">Middle</button>
+                            <button class="layer-btn active" id="layerFg">Front</button>
                         </div>
-                        <div class="control-group">
-                            <h3>Brush Shape</h3>
-                            <div class="brush-shape-controls">
-                                <button class="brush-shape-btn active" id="brushSquare">Square</button>
-                                <button class="brush-shape-btn" id="brushRound">Round</button>
+                    </div>
+                    <div class="tool-section">
+                        <div class="controls">
+                            <div class="control-group">
+                                <div class="section-label">Brush</div>
+                                <div class="brush-controls-combo">
+                                    <select class="select-box brush-size-select" id="brushSel">
+                                        <option value="1">1px</option>
+                                        <option value="2">2px</option>
+                                        <option value="3">3px</option>
+                                        <option value="4" selected>4px</option>
+                                        <option value="5">5px</option>
+                                        <option value="8">8px</option>
+                                        <option value="16">16px</option>
+                                        <option value="32">32px</option>
+                                    </select>
+                                    <button class="brush-shape-btn active" id="brushSquare" title="Square Brush"><span class="brush-shape-icon square"></span></button>
+                                    <button class="brush-shape-btn" id="brushRound" title="Round Brush"><span class="brush-shape-icon circle"></span></button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="control-group">
-                            <h3>Zoom Level</h3>
-                            <select class="select-box" id="zoomSel">
-                                <option value="1" selected>1x</option>
-                                <option value="2">2x</option>
-                                <option value="3">3x</option>
-                                <option value="4">4x</option>
-                                <option value="6">6x</option>
-                                <option value="8">8x</option>
-                            </select>
-                        </div>
-                        <div class="control-group">
-                            <h3>Actions</h3>
-                            <div class="undo-controls">
-                                <button class="btn" id="undoBtn" disabled>Undo</button>
-                                <span class="hint" id="undoHint">Ctrl+Z</span>
+                            <div class="control-group">
+                                <div class="section-label align-undo">Actions</div>
+                                <div class="undo-controls">
+                                    <button class="btn" id="undoBtn" disabled>Undo</button>
+                                    <button class="btn" id="redoBtn" disabled>Redo</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -196,9 +187,11 @@
         </div>
         <div class="panel">
             <div class="footer">
-                <button class="btn primary" id="dl">Download PNG</button>
-                <button class="btn" id="clip">Copy to Clipboard</button>
-                <button class="btn" id="clearBtn">Clear All</button>
+                <div class="footer-main">
+                    <button class="btn primary" id="dl">Download</button>
+                    <button class="btn" id="clip">Copy to Clipboard</button>
+                    <button class="btn" id="clearBtn">Clear</button>
+                </div>
                 <div class="music-controls">
                     <button class="music-btn" id="musicMute">🔇</button>
                     <button class="music-btn active" id="musicLow">🔉</button>
@@ -209,26 +202,17 @@
     </div>
 
     <!-- Color Picker Popup -->
-    <div class="color-picker-overlay" id="colorPickerOverlay" style="display: none;">
-        <div class="color-picker-popup">
-            <h3>Choose Color</h3>
-            <div class="preset-colors" id="presetColors"></div>
-            <input type="text" class="hex-input" id="hexInput" placeholder="#888888">
-            <div class="color-picker-buttons">
-                <button class="btn" id="cancelColorPicker">Cancel</button>
-                <button class="btn primary" id="confirmColorPicker">Add Color</button>
-            </div>
-        </div>
-    </div>
 
+
+    <script src="../stars.js"></script>
     <script>
         const W = 256, H = 240, MAX_COL = 16;
         const TRANS = [204, 188, 252];
         
         let pal = [[0,0,0], [255,255,255], TRANS];
-        let selCol = 0, brushSz = 4, zm = 1, drawing = false;
+        let selCol = 0, brushSz = 4, drawing = false;
         let brushShape = 'square'; // 'square' or 'round'
-        let currentLayer = 'mid'; // 'bg', 'mid', 'fg'
+        let currentLayer = 'fg'; // 'bg', 'mid', 'fg'
         let bgColor = [204, 188, 252]; // Background layer color
         
         // Layer data - each layer has its own pixel data
@@ -239,6 +223,7 @@
         
         let lastPos = null;
         let undoStack = [];
+        let redoStack = [];
         let maxUndo = 50;
         let musicSt = 'low';
         
@@ -374,12 +359,20 @@
             };
             undoStack.push(snap);
             if (undoStack.length > maxUndo) undoStack.shift();
+            redoStack = [];
             updUndoBtn();
+            updRedoBtn();
         };
 
         const undo = () => {
             if (undoStack.length > 0) {
                 const snap = undoStack.pop();
+                // Save current state to redoStack
+                const currentSnap = {
+                    layer: snap.layer,
+                    data: snap.layer === 'bg' ? [...bgColor] : layers[snap.layer].map(row => [...row])
+                };
+                redoStack.push(currentSnap);
                 if (snap.layer === 'bg') {
                     bgColor = snap.data;
                 } else {
@@ -387,6 +380,28 @@
                 }
                 redraw();
                 updUndoBtn();
+                updRedoBtn();
+                updBgColorIndicator();
+            }
+        };
+
+        const redo = () => {
+            if (redoStack.length > 0) {
+                const snap = redoStack.pop();
+                // Save current state to undoStack
+                const currentSnap = {
+                    layer: snap.layer,
+                    data: snap.layer === 'bg' ? [...bgColor] : layers[snap.layer].map(row => [...row])
+                };
+                undoStack.push(currentSnap);
+                if (snap.layer === 'bg') {
+                    bgColor = snap.data;
+                } else {
+                    layers[snap.layer] = snap.data;
+                }
+                redraw();
+                updUndoBtn();
+                updRedoBtn();
                 updBgColorIndicator();
             }
         };
@@ -395,12 +410,16 @@
             const $u = $('#undoBtn');
             $u.prop('disabled', undoStack.length === 0);
         };
+        const updRedoBtn = () => {
+            const $r = $('#redoBtn');
+            $r.prop('disabled', redoStack.length === 0);
+        };
 
         const updLayerButtons = () => {
             $('.layer-btn').removeClass('active');
             $('#layer' + currentLayer.charAt(0).toUpperCase() + currentLayer.slice(1)).addClass('active');
             
-            const layerNames = { bg: 'Background', mid: 'Midground', fg: 'Foreground' };
+            const layerNames = { bg: 'Back', mid: 'Middle', fg: 'Foreground' };
             const info = currentLayer === 'bg' ? 
                 'Background - Click a color to set solid background' : 
                 `Currently editing: ${layerNames[currentLayer]}`;
@@ -423,24 +442,54 @@
                 html += `<div class="palette-color${sel}" style="background:${rgb2hex(rgb)}" data-idx="${i}"></div>`;
             });
             if (pal.length < MAX_COL) {
-                html += '<div class="palette-add">+</div>';
+                html += '<div class="palette-add">➕</div>';
             }
             $('#pal').html(html);
         };
 
-        const showColorPicker = () => {
-            let html = '';
+        // Modal-based color picker
+        function showColorPickerModal(onConfirm, onCancel) {
+            // Build content node
+            const content = document.createElement('div');
+            content.innerHTML = `
+                <div style="margin-bottom:10px;">Choose Color</div>
+                <div class="preset-colors" id="modalPresetColors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+                <input type="text" class="hex-input" id="modalHexInput" placeholder="#888888" style="width:120px;">
+            `;
+            // Fill preset colors
+            const presetDiv = content.querySelector('#modalPresetColors');
             presetColors.forEach(color => {
-                html += `<div class="preset-color" style="background-color:${color}" data-color="${color}"></div>`;
+                const swatch = document.createElement('div');
+                swatch.className = 'preset-color';
+                swatch.style.backgroundColor = color;
+                swatch.style.width = '28px';
+                swatch.style.height = '28px';
+                swatch.style.borderRadius = '6px';
+                swatch.style.border = '2px solid #4a4458';
+                swatch.style.cursor = 'pointer';
+                swatch.onclick = () => {
+                    content.querySelector('#modalHexInput').value = color;
+                };
+                presetDiv.appendChild(swatch);
             });
-            $('#presetColors').html(html);
-            $('#hexInput').val('#888888');
-            $('#colorPickerOverlay').show();
-        };
-
-        const hideColorPicker = () => {
-            $('#colorPickerOverlay').hide();
-        };
+            // Open modal
+            window.Modals.open({
+                title: 'Add Color',
+                content,
+                confirmText: 'Add',
+                cancelText: 'Cancel',
+                onConfirm: function() {
+                    const val = content.querySelector('#modalHexInput').value.trim();
+                    if (/^#([0-9a-fA-F]{6})$/.test(val)) {
+                        onConfirm(val);
+                    } else {
+                        window.Modals.alert('Please enter a valid hex color (e.g. #aabbcc)', 'Invalid Color');
+                        return false;
+                    }
+                },
+                onCancel
+            });
+        }
 
         const drawPx = (x, y, colIdx) => {
             if (x >= 0 && y >= 0 && x < W && y < H && currentLayer !== 'bg') {
@@ -479,16 +528,29 @@
         };
 
         const resizeCvs = () => {
-            $('#cvs').css({width: W * zm, height: H * zm});
+            // Check if we're in landscape mode (width > height)
+            const isLandscape = window.innerWidth > window.innerHeight;
+            const scale = isLandscape ? 2 : 1;
+            
+            $('#cvs').css({
+                width: W * scale, 
+                height: H * scale,
+                'image-rendering': 'pixelated' // Ensure crisp scaling
+            });
         };
 
         const getCvsPos = e => {
             const rect = cvs.getBoundingClientRect();
             const cX = e.touches ? e.touches[0].clientX : e.clientX;
             const cY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // Get current scale factor based on orientation
+            const isLandscape = window.innerWidth > window.innerHeight;
+            const scale = isLandscape ? 2 : 1;
+            
             return [
-                Math.floor((cX - rect.left) / zm),
-                Math.floor((cY - rect.top) / zm)
+                Math.floor((cX - rect.left) / scale),
+                Math.floor((cY - rect.top) / scale)
             ];
         };
 
@@ -557,32 +619,37 @@
             expCvs.height = H;
             const ectx = expCvs.getContext('2d');
             const imgData = ectx.createImageData(W, H);
-            
+
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
                     const i = (y*W + x)*4;
-                    
+
                     // Start with background color
-                    let [r, g, b] = bgColor;
-                    
+                    let [r, g, b, a] = [...bgColor, 255];
+
                     // Apply midground layer
                     const midIdx = layers.mid[y][x];
                     const midColor = pal[midIdx];
                     if (midColor && !(midColor[0] === TRANS[0] && midColor[1] === TRANS[1] && midColor[2] === TRANS[2])) {
                         [r, g, b] = midColor;
                     }
-                    
+
                     // Apply foreground layer
                     const fgIdx = layers.fg[y][x];
                     const fgColor = pal[fgIdx];
                     if (fgColor && !(fgColor[0] === TRANS[0] && fgColor[1] === TRANS[1] && fgColor[2] === TRANS[2])) {
                         [r, g, b] = fgColor;
                     }
-                    
+
+                    // If the final color is #ccbcfc (204,188,252), make it transparent
+                    if (r === 204 && g === 188 && b === 252) {
+                        a = 0;
+                    }
+
                     imgData.data[i] = r;
                     imgData.data[i+1] = g;
                     imgData.data[i+2] = b;
-                    imgData.data[i+3] = 255; // Full opacity for exported image
+                    imgData.data[i+3] = a;
                 }
             }
             ectx.putImageData(imgData, 0, 0);
@@ -590,15 +657,21 @@
         };
 
         const clearAll = () => {
-            if (confirm('Are you sure you want to clear all layers? This cannot be undone.')) {
-                saveUndo();
-                bgColor = [204, 188, 252];
-                layers.mid = Array.from({length: H}, () => Array(W).fill(2));
-                layers.fg = Array.from({length: H}, () => Array(W).fill(2));
-                redraw();
-                updBgColorIndicator();
-                hint('All layers cleared!');
-            }
+            window.Modals.open({
+                title: 'Clear All?',
+                content: 'Are you sure you want to clear all layers? This cannot be undone.',
+                confirmText: 'Clear',
+                cancelText: 'Cancel',
+                onConfirm: function() {
+                    saveUndo();
+                    bgColor = [204, 188, 252];
+                    layers.mid = Array.from({length: H}, () => Array(W).fill(2));
+                    layers.fg = Array.from({length: H}, () => Array(W).fill(2));
+                    redraw();
+                    updBgColorIndicator();
+                    hint('All layers cleared!');
+                }
+            });
         };
 
         // Event Listeners
@@ -615,23 +688,21 @@
             }
         });
 
-        $(document).on('contextmenu touchstart', '.palette-color', function(e) {
-            e.preventDefault();
-            const idx = parseInt($(this).data('idx'));
-            if (idx > 2) {
-                setTimeout(() => {
-                    if (confirm('Remove this color?')) {
-                        pal.splice(idx, 1);
-                        if (selCol >= pal.length) selCol = pal.length-1;
-                        updPal();
-                    }
-                }, 500);
-            }
-        });
+
 
         $(document).on('click', '.palette-add', function() {
             if (pal.length < MAX_COL) {
-                showColorPicker();
+                showColorPickerModal(function(hex) {
+                    // Add color to palette
+                    const rgb = [
+                        parseInt(hex.substr(1,2),16),
+                        parseInt(hex.substr(3,2),16),
+                        parseInt(hex.substr(5,2),16)
+                    ];
+                    pal.push(rgb);
+                    selCol = pal.length - 1;
+                    updPal();
+                });
             }
         });
 
@@ -642,21 +713,16 @@
 
         $('#confirmColorPicker').on('click', function() {
             const color = $('#hexInput').val();
+
             if (color) {
                 try {
                     pal.push(hex2rgb(color));
                     selCol = pal.length-1;
                     updPal();
-                    hideColorPicker();
                 } catch (e) {
                     hint('Invalid color format!');
                 }
             }
-        });
-
-        $('#cancelColorPicker').on('click', hideColorPicker);
-        $('#colorPickerOverlay').on('click', function(e) {
-            if (e.target === this) hideColorPicker();
         });
 
         // Layer controls
@@ -687,12 +753,10 @@
             brushSz = parseInt($(this).val());
         });
 
-        $('#zoomSel').on('change', function() {
-            zm = parseInt($(this).val());
-            resizeCvs();
-        });
+
 
         $('#undoBtn').on('click', undo);
+        $('#redoBtn').on('click', redo);
         $('#clearBtn').on('click', clearAll);
 
         $('#musicMute').on('click', () => setMusicSt('mute'));
@@ -703,6 +767,10 @@
             if (e.ctrlKey && e.key === 'z') {
                 e.preventDefault();
                 undo();
+            } else if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+                // Ctrl+Y or Ctrl+Shift+Z for redo
+                e.preventDefault();
+                redo();
             }
         });
 
@@ -758,8 +826,17 @@
             resizeCvs();
             redraw();
             updUndoBtn();
+            updRedoBtn();
             saveUndo();
             setMusicSt('low');
+            
+            // Handle orientation changes and window resizing
+            $(window).on('resize orientationchange', function() {
+                // Small delay to ensure orientation change is complete
+                setTimeout(() => {
+                    resizeCvs();
+                }, 100);
+            });
             
             $(document).one('click touchstart', function() {
                 if (musicSt !== 'mute') {

@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#1a1626">
+    <title>Scroll - Rabbit Wine</title>
+    <link rel="stylesheet" href="../stickers/styles.css">
+    <link rel="stylesheet" href="../stars.css">
+    <link rel="stylesheet" href="../modals.css">
+    <style>
+        .scroll-header.panel {
+            box-shadow: 0 12px 48px 0 rgba(0,0,0,0.45), 0 2px 8px 0 rgba(0,0,0,0.18);
+        }
+        .add-task-row {
+            box-shadow:
+                0 4px 16px 0 rgba(108, 76, 200, 0.10),
+                0 1.5px 0 0 rgba(204,188,252,0.10);
+        }
+        /* Responsive Layout Enhancements */
+        html, body {
+            overscroll-behavior: none;
+        }
+        body {
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        @media (max-width: 600px) {
+            .scroll-main {
+                max-width: 100vw;
+                padding: 0 2vw 32px 2vw;
+            }
+            .scroll-header {
+                padding: 12px 0 6px 0;
+            }
+            #taskInput {
+                font-size: 18px;
+                padding: 14px 12px;
+            }
+            .task-text {
+                font-size: 18px;
+            }
+            .task-item {
+                padding: 14px 6px;
+            }
+            .control-area {
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
+        @media (min-width: 900px) {
+            body {
+                padding-left: 32px;
+                padding-right: 32px;
+            }
+            .scroll-main {
+                display: flex;
+                flex-direction: row;
+                max-width: 100vw;
+                gap: 24px;
+                align-items: flex-start;
+            }
+            .scroll-main > * {
+                flex: 1 1 33.33%;
+                max-width: 33.33vw;
+                box-sizing: border-box;
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+            main {
+                flex: 1 1 33.33%;
+                margin-top: 8px;
+                max-width: 33.33vw;
+                padding-left: 0;
+                padding-right: 0;
+            }
+            #completedSection {
+                display: block;
+                margin-top: 0;
+                padding-left: 16px;
+                flex: 1 1 33.33%;
+                max-width: 33.33vw;
+                padding-right: 0;
+            }
+            .completed-list {
+                margin-top: 0;
+            }
+            .control-area {
+                flex-direction: row;
+                gap: 8px;
+            }
+        }
+        @media (max-width: 899px) {
+            /* removed: let .show/.hide always control display */
+        }
+        @media (min-width: 900px) {
+            #completedSection {
+                /* layout only, do not force display; let .show/.hide control visibility */
+                margin-top: 0;
+                padding-left: 16px;
+                flex: 1 1 33.33%;
+                max-width: 33.33vw;
+                padding-right: 0;
+            }
+        }
+    </style>
+    <style>
+        /* Scroll-specific overrides and additions (Optimized) */
+        .scroll-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: rgba(45, 36, 56, 0.55);
+            backdrop-filter: blur(12px) saturate(1.3);
+            -webkit-backdrop-filter: blur(12px) saturate(1.3);
+            padding: 16px 0 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .scroll-main {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 0 8px 32px 8px;
+        }
+        .add-task-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        #taskInput {
+            flex: 1 1 0%;
+            max-width: 96%; /* Reduce width to prevent horizontal scrollbar */
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        #addTaskBtn {
+            min-width: 44px;
+            min-height: 44px;
+            border-radius: 50%;
+            font-size: 24px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .control-area {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0 8px 0;
+            justify-content: center;
+            align-items: center;
+            flex-direction: row !important;
+        }
+        @media (max-width: 600px) {
+            .control-area {
+                flex-direction: row !important;
+                justify-content: center;
+                align-items: center;
+            }
+        }
+        .control-btn.square-btn {
+            display: inline-flex;
+        }
+        .complete-btn {
+            min-width: 32px;
+            min-height: 32px;
+            border-radius: 8px;
+            font-size: 18px;
+            margin-left: 4px;
+            background: var(--button-bg, #e0e0e0);
+            color: var(--success-color, #2e7d32);
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .complete-btn:hover {
+            background: var(--button-hover, #ffe066);
+        }
+        .tasks-list, .completed-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .tasks-list {
+            background: rgba(45, 36, 56, 0.40);
+            border-radius: 8px;
+            /* margin-top removed for unified spacing */
+            padding: 8px 0;
+            backdrop-filter: blur(8px) saturate(1.2);
+            -webkit-backdrop-filter: blur(8px) saturate(1.2);
+        }
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(45, 36, 56, 0.55);
+            border-radius: 8px;
+            padding: 12px 8px;
+            margin-bottom: 8px;
+            transition: opacity 0.2s;
+            width: 100%;
+            min-width: 0;
+            backdrop-filter: blur(12px) saturate(1.3);
+            -webkit-backdrop-filter: blur(12px) saturate(1.3);
+            will-change: transform;
+            position: relative;
+            z-index: 1;
+        }
+        .task-item.dragging {
+            /* Remove blur and shadow for performance during drag */
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: none !important;
+            opacity: 0.7;
+        }
+        .drag-placeholder {
+            /* Remove blur for placeholder, keep border for visibility */
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: none !important;
+        }
+        .task-item input[type="checkbox"] {
+            flex-shrink: 0;
+            width: 28px;
+            min-width: 28px;
+            max-width: 28px;
+            margin-right: 6px;
+        }
+        .task-item.checked {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+        .task-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            font-size: 16px;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+        .delete-btn, .restore-btn {
+            display: none;
+            min-width: 32px;
+            min-height: 32px;
+            border-radius: 50%;
+            font-size: 18px;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Black circle with red X for delete button in edit mode */
+        .edit-mode .delete-btn {
+            display: flex;
+            background: #111 !important;
+            color: #d32f2f !important;
+            border: none;
+            position: relative;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .edit-mode .delete-btn::after {
+            content: '❌';
+            color: #d32f2f;
+            font-size: 22px;
+            display: inline-block;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .edit-mode .delete-btn > * {
+            display: none !important;
+        }
+        .completed-list {
+            background: rgba(45, 36, 56, 0.40);
+            border-radius: 8px;
+            /* margin-top removed for unified spacing */
+            padding: 8px 0;
+            backdrop-filter: blur(8px) saturate(1.2);
+            -webkit-backdrop-filter: blur(8px) saturate(1.2);
+        }
+        /* Add unified vertical spacing to main content */
+        main, #completedSection, .add-task-row {
+            margin-top: 16px;
+        }
+        /* Remove margin-top from main if already present */
+        main[style] {
+            margin-top: 0 !important;
+        }
+        .restore-btn {
+            display: flex;
+            background: var(--button-bg);
+            color: var(--success-color);
+        }
+        #completedSection.show {
+            display: block !important;
+        }
+        #completedSection.hide {
+            display: none !important;
+        }
+        .drag-placeholder {
+            background: var(--button-hover);
+            border: 2px dashed var(--text-accent);
+            min-height: 44px;
+        }
+        .edit-mode .task-item {
+            cursor: grab;
+        }
+        .empty-state {
+            text-align: center;
+            color: var(--text-accent);
+            margin: 24px 0;
+        }
+        /* Responsive Layout Enhancements */
+        @media (max-width: 600px) {
+            .scroll-main {
+                max-width: 100vw;
+                padding: 0 2vw 32px 2vw;
+            }
+            .scroll-header {
+                padding: 12px 0 6px 0;
+            }
+            #taskInput {
+                font-size: 18px;
+                padding: 14px 12px;
+            }
+            .task-text {
+                font-size: 18px;
+            }
+            .task-item {
+                padding: 14px 6px;
+            }
+            .control-area {
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
+        @media (min-width: 900px) {
+            .scroll-main {
+                display: flex;
+                flex-direction: row;
+                max-width: 100vw;
+                gap: 24px;
+                align-items: flex-start;
+            }
+            .scroll-main > * {
+                flex: 1 1 33.33%;
+                max-width: 33.33vw;
+                box-sizing: border-box;
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+            main {
+                flex: 1 1 33.33%;
+                margin-top: 8px;
+                max-width: 33.33vw;
+                padding-left: 0;
+                padding-right: 0;
+            }
+            #completedSection {
+                display: block;
+                margin-top: 0;
+                padding-left: 16px;
+                flex: 1 1 33.33%;
+                max-width: 33.33vw;
+                padding-right: 0;
+            }
+            .completed-list {
+                margin-top: 0;
+            }
+            .control-area {
+                flex-direction: row;
+                gap: 8px;
+            }
+        }
+        @media (max-width: 899px) {
+            #completedSection.hide {
+                display: none !important;
+            }
+            #completedSection.show {
+                display: block !important;
+            }
+        }
+        @media (min-width: 900px) {
+            #completedSection {
+                display: block !important;
+            }
+        }
+    </style>
+    <style>
+        /* Fun custom checkbox styles */
+        input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border-color, #888);
+            border-radius: 7px;
+            background: var(--bg-primary, #fff);
+            display: inline-block;
+            position: relative;
+            vertical-align: middle;
+            margin-right: 6px;
+            transition: border-color 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+        input[type="checkbox"]:checked {
+            background: #ffe066;
+            border-color: #e0b800;
+        }
+        /* Completed (archived) tasks: red checkbox */
+        #completedSection input[type="checkbox"]:checked {
+            background: #d32f2f !important;
+            border-color: #d32f2f !important;
+        }
+        #completedSection input[type="checkbox"]:checked::after {
+            color: #d32f2f !important;
+        }
+        input[type="checkbox"]:checked::after {
+            content: attr(data-checkicon);
+            position: absolute;
+            left: 2px;
+            top: 0px;
+            font-size: 20px;
+            line-height: 22px;
+        }
+        input[type="checkbox"]:not(:checked)::after {
+            content: '⬜';
+            position: absolute;
+            left: 2px;
+            top: 0px;
+            font-size: 20px;
+            line-height: 22px;
+            color: #bbb;
+        }
+        input[type="checkbox"]:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        /* Square button style for control buttons */
+        .square-btn {
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
+            max-width: 40px;
+            max-height: 40px;
+            border-radius: 8px !important;
+            font-size: 22px !important;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #addTaskBtn {
+            /* Now styled by .square-btn */
+        }
+    </style>
+</head>
+<body>
+    <div id="backgroundAnimation" class="background-animation"></div>
+    <script>
+    // Prevent bfcache and force reload if page is restored from cache
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+    </script>
+    <div class="scroll-main">
+        <header class="scroll-header panel">
+            <form class="add-task-row" autocomplete="off" onsubmit="return false;">
+                <textarea id="taskInput" placeholder="Add new task..." maxlength="200" autofocus rows="1" style="resize:none;overflow:hidden;"></textarea>
+                <button type="button" class="btn primary square-btn" id="addTaskBtn" aria-label="Add Task" title="Add Task" style="color:#ffd600;filter:drop-shadow(0 0 2px #fff);">➕</button>
+            </form>
+            <div class="control-area">
+                <button class="btn control-btn square-btn" id="showCompletedBtn" title="Show/Hide Completed" aria-label="Show/Hide Completed">✅</button>
+                <button class="btn control-btn square-btn" id="editModeBtn" title="Edit Mode" aria-label="Edit Mode">✏️</button>
+            </div>
+        </header>
+        <main style="margin-top: 8px;">
+            <ul class="tasks-list" id="tasksList"></ul>
+            <div class="empty-state" id="emptyState" style="display:none;">No tasks yet</div>
+        </main>
+        <section id="completedSection" class="hide">
+            <ul class="completed-list" id="completedList"></ul>
+        </section>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="../stars.js"></script>
+    <script src="../modals.js"></script>
+    <script src="scroll.js"></script>
+</body>
+<script>
+// Always start at the top of the viewport on load
+window.addEventListener('DOMContentLoaded', function() {
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+});
+</script>
+</body>
+</html>

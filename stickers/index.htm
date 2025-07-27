@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
     <link rel="shortcut icon" type="image/png" href="favicon.png">
@@ -35,18 +38,82 @@
     <meta name="apple-touch-fullscreen" content="yes">
     <meta name="format-detection" content="telephone=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="../modals.js"></script>
     <title>Rabbit Wine</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Stars background CSS from parent directory -->
+    <link rel="stylesheet" href="../stars.css">
+    <link rel="stylesheet" href="../modals.css">
+    <style>
+    /* Ensure add and remove pack buttons are the same size and spacing */
+    .pack-button.add-pack,
+    .pack-button.remove-pack {
+        min-width: 2.5em;
+        width: 2.5em;
+        height: 2.5em;
+        padding: 0;
+        margin-left: 0.5em;
+        margin-right: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2em;
+        border-radius: 50%;
+        background: var(--panel-bg, #23203a);
+        border: 1.5px solid #4a4458;
+        color: var(--text-accent, #e6e6e6);
+        transition: background 0.15s, color 0.15s;
+    }
+    .pack-button.add-pack:hover,
+    .pack-button.remove-pack:hover {
+        background: #3a3650;
+        color: #ff6b6b;
+    }
+    .pack-selection .pack-button:not(:first-child):not(.add-pack):not(.remove-pack) {
+        margin-left: 0.5em;
+    }
+
+    /* Modal button highlight: black text on light purple background */
+    .modal-box .modal-actions button:focus,
+    .modal-box .modal-actions button:active {
+        background: #d6c6ff !important;
+        color: #111 !important;
+        outline: 2px solid #b39ddb;
+        outline-offset: 1px;
+    }
+
+    /* Modal cancel button highlight: black text on light purple background */
+    .modal-box .modal-actions .modal-cancel:focus,
+    .modal-box .modal-actions .modal-cancel:active {
+        background: #d6c6ff !important;
+        color: #111 !important;
+        outline: 2px solid #b39ddb;
+        outline-offset: 1px;
+    }
+    </style>
 </head>
 <body>
+    <!-- Animated Stars Background -->
+    <script>
+    // Prevent bfcache and force reload if page is restored from cache
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+    </script>
+    <div id="backgroundAnimation" class="background-animation"></div>
     <div class="container">
         <div class="pack-panel panel">
             <div class="pack-selection" id="packSelection"></div>
-            <div class="pack-input" id="packInput">
-                <input type="text" id="packNameInput" placeholder="Enter pack name..." />
-                <button class="confirm" id="confirmAdd">Add</button>
-                <button class="cancel" id="cancelAdd">Cancel</button>
-            </div>
+            <!-- Pack input modal is now handled via Modals.inputBox -->
         </div>
         
         <div class="config-panel panel">
@@ -187,8 +254,9 @@
                     $selection.append($addBtn);
                     
                     if (state.currentPack !== 'violet') {
-                        const $removeBtn = $('<button>').addClass('pack-button remove-pack')
-                            .html('🗑')
+                        const $removeBtn = $('<button>')
+                            .addClass('pack-button remove-pack')
+                            .text('🗑')
                             .on('click', () => this.confirmRemove());
                         $selection.append($removeBtn);
                     }
@@ -203,39 +271,46 @@
                     }
                 },
                 
-                showAddInput() {
-                    $('#packInput').show();
-                    $('#packNameInput').focus();
-                },
-                
-                hideAddInput() {
-                    $('#packInput').hide();
-                    $('#packNameInput').val('');
-                },
-                
-                async confirmAdd() {
-                    const packName = $('#packNameInput').val().trim().toLowerCase();
+                async showAddInput() {
+                    const packName = await window.Modals.inputBox({
+                        message: 'Enter the name of the sticker pack to add:',
+                        title: 'Add Sticker Pack',
+                        placeholder: 'Pack name',
+                        confirmText: 'Add',
+                        cancelText: 'Cancel',
+                        validate: (val) => {
+                            if (!val.trim()) return 'Pack name required';
+                            if (val.trim().toLowerCase() === 'violet') return 'Pack already exists!';
+                            if (state.knownPacks.includes(val.trim().toLowerCase())) return 'Pack already exists!';
+                        }
+                    });
                     if (!packName) return;
-                    
-                    if (packName === 'violet' || state.knownPacks.includes(packName)) {
-                        alert('Pack already exists!');
-                        return;
-                    }
-                    
-                    const config = await this.validatePack(packName);
+                    const name = packName.trim().toLowerCase();
+                    // Use Modals.alert if available, else fallback to window.alert
+                    const showAlert = async (msg, title) => {
+                        if (window.Modals && typeof window.Modals.alert === 'function') {
+                            await window.Modals.alert(msg, title);
+                        } else {
+                            window.alert((title ? title + ': ' : '') + msg);
+                        }
+                    };
+                    const config = await this.validatePack(name);
                     if (config) {
-                        this.addPack(packName);
-                        this.selectPack(packName);
-                        this.hideAddInput();
+                        this.addPack(name);
+                        this.selectPack(name);
                     } else {
-                        alert('Invalid pack name! Config file not found.');
+                        await showAlert('Invalid pack name! Config file not found.', 'Error');
                     }
                 },
+
+                // hideAddInput and confirmAdd are no longer needed
+                hideAddInput() {},
+                async confirmAdd() {},
                 
                 confirmRemove() {
-                    if (confirm(`Are you sure you want to remove the "${state.currentPack}" pack?`)) {
-                        this.removePack(state.currentPack);
-                    }
+                    window.Modals.confirm(`Are you sure you want to remove the "${state.currentPack}" pack?`, 'Remove Pack', 'Remove', 'Cancel').then(confirmed => {
+                        if (confirmed) this.removePack(state.currentPack);
+                    });
                 }
             };
             
@@ -473,13 +548,7 @@
                 settings.save(); preview.updateImmediate();
             });
             
-            // Pack management events
-            $('#confirmAdd').on('click', () => packManager.confirmAdd());
-            $('#cancelAdd').on('click', () => packManager.hideAddInput());
-            $('#packNameInput').on('keypress', function(e) {
-                if (e.which === 13) packManager.confirmAdd();
-                if (e.which === 27) packManager.hideAddInput();
-            });
+            // Pack management events (input modal now used, so no input events needed)
             
             // Init
             async function init() {
@@ -497,5 +566,7 @@
             init();
         });
     </script>
+    <!-- Stars background JS from parent directory -->
+    <script src="../stars.js"></script>
 </body>
 </html>

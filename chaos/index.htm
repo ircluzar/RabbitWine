@@ -1,0 +1,1872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Rabbit Wine</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="shortcut icon" type="image/png" href="../favicon.png">
+    <link rel="manifest" href="../manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../modals.css">
+    <script src="../modals.js"></script>
+    <style>
+        .undo-redo-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .undo-redo-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .history-queue {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        
+        .queue-label {
+            color: #cccccc;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .queue-thumbnails {
+            display: flex;
+            gap: 2px;
+            max-width: 100%;
+            overflow-x: auto;
+            padding: 2px;
+        }
+        
+        .queue-thumbnail {
+            width: 16px;
+            height: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            background-size: cover;
+            background-position: center;
+            flex-shrink: 0;
+            cursor: default;
+            transition: border-color 0.2s ease;
+        }
+        
+        .queue-thumbnail.current {
+            border: 2px solid #4CAF50;
+            box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+        }
+        
+        .queue-thumbnail.redo-available {
+            border-color: rgba(255, 193, 7, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div class="background-animation" id="backgroundAnimation"></div>
+    <div class="container">
+        <div id="s1" class="setup-screen" style="display: block;">
+            <h2>Select Canvas Resolution</h2>
+            <div class="resolution-grid">
+                <div class="resolution-option selected" data-size="256">256x256</div>
+                <div class="resolution-option" data-size="512">512x512</div>
+                <div class="resolution-option" data-size="1024">1024x1024</div>
+                <div class="resolution-option" data-size="2048">2048x2048</div>
+                <div class="resolution-option" data-size="4096">4096x4096</div>
+            </div>
+            <div style="display: flex; justify-content: center; margin-top: 1.2rem;">
+                <button id="cb" class="btn big-btn">Create Canvas</button>
+            </div>
+        </div>
+        
+        <div id="s2" class="main-screen" style="display: none;">
+            <div class="button-row" style="margin-bottom: 1rem;">
+                <button id="randb" class="btn big-btn">🎲 Random Chaos</button>
+                <div id="progressContainer" class="progress-container">
+                    <div id="progressBar" class="progress-bar"></div>
+                </div>
+            </div>
+            
+            <div class="undo-redo-section" style="margin-bottom: 1rem;">
+                <div class="undo-redo-buttons">
+                    <button id="undo" class="btn small">↩️ Undo</button>
+                    <button id="redo" class="btn small">↪️ Redo</button>
+                </div>
+                <div id="historyQueue" class="history-queue">
+                    <div id="queueThumbnails" class="queue-thumbnails"></div>
+                </div>
+            </div>
+            
+            <canvas id="c"></canvas>
+            <div class="button-row">
+                <button id="mb" class="btn">🎨 Apply a new Layer to Canvas</button>
+                <button id="ab" class="btn">🚀 Start Auto Mode</button>
+                <button id="db" class="btn small">💾 Download</button>
+                <button id="cbpb" class="btn small">📋 Copy to Clipboard</button>
+                <button id="rb" class="btn small danger">🔄 Restart</button>
+                <button id="testb" class="btn small" style="display:none">🧪 Test Random</button>
+            </div>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <label class="control-label">Speed Control</label>
+                    <div class="slider-container">
+                        <input type="range" id="ss" class="slider" min="1" max="500" value="20">
+                        <div class="slider-value">Speed: <span id="sv">20</span>ms</div>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <label class="control-label">Gradient Opacity</label>
+                    <div class="slider-container">
+                        <input type="range" id="os" class="slider" min="10" max="100" value="100">
+                        <div class="slider-value">Opacity: <span id="ov">100</span>%</div>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <label class="control-label">Saturation Range</label>
+                    <div class="slider-container">
+                        <input type="range" id="ms" class="slider" min="0" max="100" value="50">
+                        <div class="slider-value">Min: <span id="mv">50</span>%</div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="xs" class="slider" min="0" max="100" value="100">
+                        <div class="slider-value">Max: <span id="xv">100</span>%</div>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <label class="control-label">Color Limits</label>
+                    <div class="toggle-container">
+                        <div id="mt" class="toggle-switch"></div>
+                        <span style="color: #cccccc;">Limit Colors</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="mcs" class="slider" min="2" max="20" value="8">
+                        <div class="slider-value">Max Colors: <span id="mcv">8</span></div>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <label class="control-label">Fixed Colors</label>
+                    <div class="toggle-container">
+                        <div id="ft" class="toggle-switch"></div>
+                        <span style="color: #cccccc;">Use Fixed Palette</span>
+                    </div>
+                    <button id="rdb" class="btn small">🎲 Randomize</button>
+                    <div id="p" class="color-palette"></div>
+                </div>
+                
+                <div class="control-group">
+                    <label class="control-label">Blend Effects</label>
+                    <button id="et" class="btn small">Show Effects</button>
+                    <div id="el" class="effects-list"></div>
+                </div>
+                
+                <div class="control-group">
+                    <label class="control-label">Gradient/Shape Types</label>
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <button id="st-all" class="btn small">Select All</button>
+                        <button id="st-shapes" class="btn small">All Shapes</button>
+                        <button id="st-gradients" class="btn small">All Gradients</button>
+                        <button id="st-none" class="btn small">Select None</button>
+                    </div>
+                    <div id="sl" class="effects-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="bd" class="blend-mode-display"></div>
+
+    <script>
+        // Prevent bfcache and force reload if page is restored from cache
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+        // Floating background animation for visual consistency
+        function createFloatingElements() {
+            const container = document.getElementById('backgroundAnimation');
+            const elementCount = window.innerWidth < 768 ? 12 : 20;
+            for (let i = 0; i < elementCount; i++) {
+                const element = document.createElement('div');
+                element.className = 'floating-element';
+                element.style.left = Math.random() * 100 + '%';
+                element.style.top = Math.random() * 100 + '%';
+                element.style.animationDelay = Math.random() * 6 + 's';
+                element.style.animationDuration = (4 + Math.random() * 4) + 's';
+                const size = 7 + Math.random() * 13;
+                element.style.width = size + 'px';
+                element.style.height = size + 'px';
+                element.style.opacity = 0.3 + Math.random() * 0.4;
+                container.appendChild(element);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            createFloatingElements();
+        });
+
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('backgroundAnimation');
+            if (container) {
+                container.innerHTML = '';
+                createFloatingElements();
+            }
+        });
+        const c = document.getElementById('c');
+        const ctx = c.getContext('2d');
+        const bd = document.getElementById('bd');
+        let sel = 256, iv = null, auto = false, fc = [], lc = [], useMax = false, useFix = false, ae = [];
+        // Undo/Redo stacks
+        let undoStack = [], redoStack = [], maxHistory = 10;
+        // Expanded effects list (50+)
+        const fx = [
+            // Standard blend modes
+            'multiply', 'overlay', 'soft-light', 'hard-light', 'color-dodge', 'color-burn', 'darken', 'lighten', 'screen', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity', 'linear-burn', 'vivid-light', 'linear-light', 'pin-light', 'hard-mix', 'plus-lighter',
+            // Extra blend modes
+            'destination-in', 'destination-out', 'destination-over', 'source-in', 'source-out', 'source-atop', 'destination-atop', 'xor', 'copy',
+            // Custom/creative effects (handled in addGradient)
+            'zigzag', 'wave', 'vertical-stripes', 'horizontal-stripes', 'checkerboard', 'radial-noise', 'hue-shift', 'invert', 'pixelate', 'glow',
+            'rainbow', 'sine-waves', 'diamond', 'rings', 'spiral', 'starburst', 'vignette', 'center-bright', 'center-dark', 'edge-glow',
+            'grain', 'scanlines', 'dots', 'hex-tiles', 'triangles', 'kaleidoscope', 'mirror-x', 'mirror-y', 'mirror-xy', 'split-tone',
+            'posterize', 'solarize', 'threshold', 'emboss', 'edge-detect', 'blur', 'sharpen', 'sepia', 'cool', 'warm',
+            'contrast-boost', 'saturation-boost', 'desaturate', 'fade', 'pastel', 'pop-art', 'psychedelic', 'dream', 'neon', 'ghost',
+            'frost', 'crystal', 'oil-paint', 'watercolor', 'halftone', 'moire', 'ripple', 'twist', 'swirl', 'tunnel',
+            'explode', 'implode', 'fracture', 'fractals', 'bubbles', 'clouds', 'fire', 'ice', 'lava', 'plasma',
+            'electric', 'circuit', 'matrix', 'glitch', 'tv-static', 'old-film', 'paper', 'canvas', 'fabric', 'leather',
+            'wood', 'marble', 'stone', 'metal', 'chrome', 'gold', 'silver', 'bronze', 'plastic', 'rubber',
+        ];
+        // Resize canvas to fit container, keeping square aspect
+        function resizeCanvasElement() {
+            c.style.width = '100%';
+            c.style.height = 'auto';
+        }
+        const init = () => { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, c.width, c.height); };
+
+        // Save current canvas state to undo stack
+        function saveState() {
+            try {
+                if (undoStack.length >= maxHistory) undoStack.shift();
+                undoStack.push(c.toDataURL());
+                // Clear redo stack on new action
+                redoStack = [];
+                updateHistoryQueue();
+            } catch (e) {}
+        }
+
+        // Restore canvas from a dataURL
+        function restoreState(dataURL) {
+            let img = new window.Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, c.width, c.height);
+                ctx.drawImage(img, 0, 0, c.width, c.height);
+                updateHistoryQueue();
+            };
+            img.src = dataURL;
+        }
+
+        // Update the visual history queue
+        function updateHistoryQueue() {
+            const queueContainer = document.getElementById('queueThumbnails');
+            if (!queueContainer) return;
+            
+            queueContainer.innerHTML = '';
+            
+            // Create thumbnails for undo stack
+            undoStack.forEach((dataURL, index) => {
+                const thumbnail = document.createElement('div');
+                thumbnail.className = 'queue-thumbnail';
+                thumbnail.style.backgroundImage = `url(${dataURL})`;
+                
+                // Mark current state (last in undo stack)
+                if (index === undoStack.length - 1) {
+                    thumbnail.classList.add('current');
+                }
+                
+                queueContainer.appendChild(thumbnail);
+            });
+            
+            // Create thumbnails for redo stack (in reverse order)
+            redoStack.slice().reverse().forEach((dataURL) => {
+                const thumbnail = document.createElement('div');
+                thumbnail.className = 'queue-thumbnail redo-available';
+                thumbnail.style.backgroundImage = `url(${dataURL})`;
+                queueContainer.appendChild(thumbnail);
+            });
+        }
+        
+        const getColor = () => {
+            if (useFix && fc.length) return fc[Math.floor(Math.random() * fc.length)];
+            if (useMax && lc.length) return lc[Math.floor(Math.random() * lc.length)];
+            
+            const minSat = parseInt(document.getElementById('ms').value);
+            const maxSat = parseInt(document.getElementById('xs').value);
+            const t = Math.random();
+            
+            if (t < 0.3) {
+                const h = Math.random() * 360;
+                const s = minSat + Math.random() * (maxSat - minSat);
+                const l = 20 + Math.random() * 60;
+                return `hsl(${h}, ${s}%, ${l}%)`;
+            } else if (t < 0.6) {
+                const cols = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFFF00', '#00FFFF', '#FF8000', '#8000FF', '#0080FF'];
+                return cols[Math.floor(Math.random() * cols.length)];
+            } else {
+                const h = Math.random() * 360;
+                const s = minSat + Math.random() * (maxSat - minSat);
+                const l = 30 + Math.random() * 40;
+                return `hsl(${h}, ${s}%, ${l}%)`;
+            }
+        };
+        
+        const getBlend = () => ae[Math.floor(Math.random() * ae.length)];
+        
+        // General notification function
+        function showNotification(msg) {
+            bd.textContent = msg;
+            bd.classList.add('show');
+            setTimeout(() => bd.classList.remove('show'), 2000);
+        }
+        
+
+        // Utility: clamp value between min and max
+        function clamp(val, min, max) {
+            return Math.max(min, Math.min(max, val));
+        }
+
+        // Utility: random noise
+        function noise(x, y, seed = 0) {
+            // Simple hash-based noise
+            let n = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+            return n - Math.floor(n);
+        }
+
+        // Enhanced gradient generator
+        const addGradient = (skip = false) => {
+            saveState();
+
+            // --- Use selected shape/gradient type ---
+            if (!as.length) return; // nothing selected
+            const type = as[Math.floor(Math.random() * as.length)];
+            const blend = getBlend();
+            const opacity = parseInt(document.getElementById('os').value) / 100;
+            const cx = Math.random() * c.width;
+            const cy = Math.random() * c.height;
+            const r = Math.sqrt(c.width * c.width + c.height * c.height) * (0.3 + Math.random() * 0.7);
+            let grad = null;
+            let stops = [];
+            const bandCount = 2 + Math.floor(Math.random() * 4);
+            for (let i = 0; i < bandCount; i++) {
+                let t = i / (bandCount - 1);
+                t = clamp(t + (Math.random() - 0.5) * 0.18, 0, 1);
+                stops.push({
+                    pos: t,
+                    color: getColor()
+                });
+            }
+            ctx.save();
+            if ([
+                'source-over','source-in','source-out','source-atop','destination-over','destination-in','destination-out','destination-atop','lighter','copy','xor',
+                'multiply','screen','overlay','darken','lighten','color-dodge','color-burn','hard-light','soft-light','difference','exclusion','hue','saturation','color','luminosity','linear-burn','vivid-light','linear-light','pin-light','hard-mix','plus-lighter'
+            ].includes(blend)) {
+                ctx.globalCompositeOperation = blend;
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+            }
+            ctx.globalAlpha = opacity;
+
+            // --- Main shape/gradient logic ---
+            function fillStops(grad) {
+                stops.forEach(s => grad.addColorStop(s.pos, s.color));
+                if (Math.random() < 0.5) grad.addColorStop(1, 'transparent');
+            }
+
+            if (type === 'linear') {
+                const angle = Math.random() * Math.PI * 2;
+                const x1 = cx + Math.cos(angle) * r, y1 = cy + Math.sin(angle) * r;
+                const x2 = cx - Math.cos(angle) * r, y2 = cy - Math.sin(angle) * r;
+                grad = ctx.createLinearGradient(x1, y1, x2, y2);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, c.width, c.height);
+            } else if (type === 'radial' || type === 'elliptical') {
+                const rx = r * (0.5 + Math.random());
+                const ry = r * (0.5 + Math.random());
+                grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, c.width, c.height);
+            } else if (type === 'conic' || type === 'kaleidoscope') {
+                // Conic/kaleidoscope: pixel manipulation
+                const img = ctx.getImageData(0, 0, c.width, c.height);
+                const data = img.data;
+                for (let y = 0; y < c.height; y++) {
+                    for (let x = 0; x < c.width; x++) {
+                        const dx = x - cx;
+                        const dy = y - cy;
+                        let angle = Math.atan2(dy, dx);
+                        if (angle < 0) angle += 2 * Math.PI;
+                        let t = angle / (2 * Math.PI);
+                        t += (Math.sin(x * 0.07 + y * 0.13) * 0.07) + (noise(x, y) - 0.5) * 0.08;
+                        t = clamp(t, 0, 1);
+                        let s0 = stops[0], s1 = stops[stops.length - 1];
+                        for (let i = 1; i < stops.length; i++) {
+                            if (t < stops[i].pos) {
+                                s0 = stops[i - 1];
+                                s1 = stops[i];
+                                break;
+                            }
+                        }
+                        function parseHSL(str) {
+                            const m = str.match(/hsl\((\d+),\s*(\d+)%?,\s*(\d+)%?\)/);
+                            if (!m) return [0,0,0];
+                            return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
+                        }
+                        function lerp(a, b, t) { return a + (b - a) * t; }
+                        let tt = (t - s0.pos) / (s1.pos - s0.pos);
+                        tt = clamp(tt, 0, 1);
+                        let c0 = parseHSL(s0.color), c1 = parseHSL(s1.color);
+                        let h = lerp(c0[0], c1[0], tt) + Math.sin(x * 0.09 + y * 0.11) * 8;
+                        let s = lerp(c0[1], c1[1], tt) + (noise(x, y, 1) - 0.5) * 12;
+                        let l = lerp(c0[2], c1[2], tt) + (noise(x, y, 2) - 0.5) * 10;
+                        h = ((h % 360) + 360) % 360;
+                        s = clamp(s, 0, 100);
+                        l = clamp(l, 0, 100);
+                        function hslToRgb(h, s, l) {
+                            s /= 100; l /= 100;
+                            let c = (1 - Math.abs(2 * l - 1)) * s;
+                            let x = c * (1 - Math.abs((h / 60) % 2 - 1));
+                            let m = l - c/2, r1=0,g1=0,b1=0;
+                            if (h < 60) [r1,g1,b1] = [c,x,0];
+                            else if (h < 120) [r1,g1,b1] = [x,c,0];
+                            else if (h < 180) [r1,g1,b1] = [0,c,x];
+                            else if (h < 240) [r1,g1,b1] = [0,x,c];
+                            else if (h < 300) [r1,g1,b1] = [x,0,c];
+                            else [r1,g1,b1] = [c,0,x];
+                            return [clamp(Math.round((r1+m)*255),0,255), clamp(Math.round((g1+m)*255),0,255), clamp(Math.round((b1+m)*255),0,255)];
+                        }
+                        const [rr,gg,bb] = hslToRgb(h, s, l);
+                        const idx = (y * c.width + x) * 4;
+                        let a = opacity * 255 * (0.7 + 0.3 * Math.sin(angle * 6 + t * 12));
+                        data[idx] = rr;
+                        data[idx+1] = gg;
+                        data[idx+2] = bb;
+                        data[idx+3] = clamp(a, 0, 255);
+                    }
+                }
+                ctx.putImageData(img, 0, 0);
+            } else if (type === 'diamond') {
+                // Diamond mask with linear gradient
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - r);
+                ctx.lineTo(cx + r, cy);
+                ctx.lineTo(cx, cy + r);
+                ctx.lineTo(cx - r, cy);
+                ctx.closePath();
+                ctx.clip();
+                const angle = Math.random() * Math.PI * 2;
+                const x1 = cx + Math.cos(angle) * r, y1 = cy + Math.sin(angle) * r;
+                const x2 = cx - Math.cos(angle) * r, y2 = cy - Math.sin(angle) * r;
+                grad = ctx.createLinearGradient(x1, y1, x2, y2);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'star') {
+                // Star shape with radial gradient
+                ctx.save();
+                ctx.beginPath();
+                const spikes = 5 + Math.floor(Math.random() * 4);
+                const outer = r, inner = r * 0.4;
+                for (let i = 0; i < spikes * 2; i++) {
+                    const ang = Math.PI / spikes * i;
+                    const rad = i % 2 === 0 ? outer : inner;
+                    ctx.lineTo(cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
+                }
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'circle') {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, r * 0.7, 0, 2 * Math.PI);
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.7);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'rectangle') {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(cx - r * 0.8, cy - r * 0.5, r * 1.6, r);
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'polygon') {
+                ctx.save();
+                ctx.beginPath();
+                const sides = 5 + Math.floor(Math.random() * 4);
+                for (let i = 0; i < sides; i++) {
+                    const ang = (2 * Math.PI / sides) * i;
+                    ctx.lineTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+                }
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'stripe') {
+                // Stripes pattern
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.closePath();
+                ctx.clip();
+                for (let i = 0; i < 12; i++) {
+                    ctx.fillStyle = getColor();
+                    ctx.fillRect(cx - r + (i * 2 * r / 12), cy - r, r / 6, 2 * r);
+                }
+                ctx.restore();
+            } else if (type === 'burst') {
+                // Burst: radiating lines
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+                ctx.closePath();
+                ctx.clip();
+                for (let i = 0; i < 18; i++) {
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate((2 * Math.PI / 18) * i);
+                    ctx.fillStyle = getColor();
+                    ctx.fillRect(0, -r * 0.1, r, r * 0.2);
+                    ctx.restore();
+                }
+                ctx.restore();
+            } else if (type === 'blob') {
+                // Blob: random organic shape
+                ctx.save();
+                ctx.beginPath();
+                const points = 8 + Math.floor(Math.random() * 5);
+                for (let i = 0; i < points; i++) {
+                    const ang = (2 * Math.PI / points) * i;
+                    const rad = r * (0.6 + Math.random() * 0.4);
+                    ctx.lineTo(cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
+                }
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'hex') {
+                // Hexagon
+                ctx.save();
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const ang = (2 * Math.PI / 6) * i;
+                    ctx.lineTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+                }
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'triangle') {
+                // Triangle
+                ctx.save();
+                ctx.beginPath();
+                for (let i = 0; i < 3; i++) {
+                    const ang = (2 * Math.PI / 3) * i - Math.PI / 2;
+                    ctx.lineTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+                }
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createLinearGradient(cx - r, cy + r, cx + r, cy - r);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'ring') {
+                // Ring: draw two circles
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, r * 0.8, 0, 2 * Math.PI);
+                ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI, true);
+                ctx.closePath();
+                ctx.clip();
+                grad = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 0.8);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+                ctx.restore();
+            } else if (type === 'spiral' || type === 'checker' || type === 'zigzag' || type === 'wave') {
+                // Use custom effect overlays for these
+                ctx.globalAlpha = 1.0;
+                ctx.fillStyle = getColor();
+                ctx.fillRect(0, 0, c.width, c.height);
+                applyCustomEffect(type);
+            } else {
+                // fallback: fill with a random gradient
+                grad = ctx.createLinearGradient(0, 0, c.width, c.height);
+                fillStops(grad);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, c.width, c.height);
+            }
+
+            // --- Custom effect overlays ---
+            // Only apply if the blend is a custom effect
+
+            function applyCustomEffect(effect) {
+                let img = ctx.getImageData(0, 0, c.width, c.height);
+                let data = img.data;
+                const w = c.width, h = c.height;
+                switch (effect) {
+                    case 'sine-waves':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let v = 0.5 + 0.5 * Math.sin(x * 0.08 + Math.sin(y * 0.04) * 2);
+                                data[idx] = data[idx] * v;
+                                data[idx+1] = data[idx+1] * v;
+                                data[idx+2] = data[idx+2] * v;
+                            }
+                        }
+                        break;
+                    case 'diamond':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.abs(x-w/2) + Math.abs(y-h/2);
+                                let v = 1 - clamp(d/(Math.min(w,h)/1.5),0,1)*0.8;
+                                data[idx] = data[idx]*v;
+                                data[idx+1] = data[idx+1]*v;
+                                data[idx+2] = data[idx+2]*v;
+                            }
+                        }
+                        break;
+                    case 'center-bright':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = 1 + 0.7 * (1 - clamp(d/(Math.min(w,h)/2),0,1));
+                                data[idx] = clamp(data[idx]*v,0,255);
+                                data[idx+1] = clamp(data[idx+1]*v,0,255);
+                                data[idx+2] = clamp(data[idx+2]*v,0,255);
+                            }
+                        }
+                        break;
+                    case 'center-dark':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = 1 - 0.7 * (1 - clamp(d/(Math.min(w,h)/2),0,1));
+                                data[idx] = clamp(data[idx]*v,0,255);
+                                data[idx+1] = clamp(data[idx+1]*v,0,255);
+                                data[idx+2] = clamp(data[idx+2]*v,0,255);
+                            }
+                        }
+                        break;
+                    case 'edge-glow':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = 1 + 0.7 * clamp(d/(Math.min(w,h)/2),0,1);
+                                data[idx] = clamp(data[idx]*v,0,255);
+                                data[idx+1] = clamp(data[idx+1]*v,0,255);
+                                data[idx+2] = clamp(data[idx+2]*v,0,255);
+                            }
+                        }
+                        break;
+                    case 'mirror-xy':
+                        for (let y = 0; y < h/2; y++) {
+                            for (let x = 0; x < w/2; x++) {
+                                let idx = (y * w + x) * 4;
+                                let idx2 = ((h-y-1) * w + (w-x-1)) * 4;
+                                data[idx2] = data[idx];
+                                data[idx2+1] = data[idx+1];
+                                data[idx2+2] = data[idx+2];
+                            }
+                        }
+                        break;
+                    case 'split-tone':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                if (x < w/2) {
+                                    data[idx] = clamp(data[idx]*1.2,0,255);
+                                    data[idx+1] = clamp(data[idx+1]*0.8,0,255);
+                                } else {
+                                    data[idx+2] = clamp(data[idx+2]*1.2,0,255);
+                                    data[idx+1] = clamp(data[idx+1]*0.8,0,255);
+                                }
+                            }
+                        }
+                        break;
+                    case 'sharpen':
+                        let tempS = new Uint8ClampedArray(data);
+                        for (let y = 1; y < h-1; y++) {
+                            for (let x = 1; x < w-1; x++) {
+                                let idx = (y * w + x) * 4;
+                                for (let c2 = 0; c2 < 3; c2++) {
+                                    let v = 5*tempS[idx+c2] - tempS[idx-4+c2] - tempS[idx+4+c2] - tempS[idx-w*4+c2] - tempS[idx+w*4+c2];
+                                    data[idx+c2] = clamp(v,0,255);
+                                }
+                            }
+                        }
+                        break;
+                    case 'cool':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp(data[i]*0.9,0,255);
+                            data[i+2] = clamp(data[i+2]*1.1,0,255);
+                        }
+                        break;
+                    case 'warm':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp(data[i]*1.1,0,255);
+                            data[i+2] = clamp(data[i+2]*0.9,0,255);
+                        }
+                        break;
+                    case 'contrast-boost':
+                        for (let i = 0; i < data.length; i += 4) {
+                            for (let c2 = 0; c2 < 3; c2++) {
+                                data[i+c2] = clamp((data[i+c2]-128)*1.3+128,0,255);
+                            }
+                        }
+                        break;
+                    case 'saturation-boost':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let r = data[i], g = data[i+1], b = data[i+2];
+                            let avg = (r+g+b)/3;
+                            data[i] = clamp(avg + (r-avg)*1.3,0,255);
+                            data[i+1] = clamp(avg + (g-avg)*1.3,0,255);
+                            data[i+2] = clamp(avg + (b-avg)*1.3,0,255);
+                        }
+                        break;
+                    case 'desaturate':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let avg = (data[i]+data[i+1]+data[i+2])/3;
+                            data[i] = data[i+1] = data[i+2] = avg;
+                        }
+                        break;
+                    case 'fade':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp(data[i]*0.7+255*0.3,0,255);
+                            data[i+1] = clamp(data[i+1]*0.7+255*0.3,0,255);
+                            data[i+2] = clamp(data[i+2]*0.7+255*0.3,0,255);
+                        }
+                        break;
+                    case 'pastel':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp((data[i]+255)/2,0,255);
+                            data[i+1] = clamp((data[i+1]+255)/2,0,255);
+                            data[i+2] = clamp((data[i+2]+255)/2,0,255);
+                        }
+                        break;
+                    case 'pop-art':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp(data[i]>128?255:0,0,255);
+                            data[i+1] = clamp(data[i+1]>128?255:0,0,255);
+                            data[i+2] = clamp(data[i+2]>128?255:0,0,255);
+                        }
+                        break;
+                    case 'psychedelic':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp(Math.abs(Math.sin(i/10))*255,0,255);
+                            data[i+1] = clamp(Math.abs(Math.cos(i/20))*255,0,255);
+                            data[i+2] = clamp(Math.abs(Math.sin(i/30))*255,0,255);
+                        }
+                        break;
+                    case 'frost':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let n = (Math.random()-0.5)*80;
+                            data[i] = clamp(data[i]+n,0,255);
+                            data[i+1] = clamp(data[i+1]+n,0,255);
+                            data[i+2] = clamp(data[i+2]+n,0,255);
+                        }
+                        break;
+                    case 'ripple':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = 0.5 + 0.5 * Math.sin(d*0.15 + Math.sin(x*0.1));
+                                data[idx] = data[idx]*v;
+                                data[idx+1] = data[idx+1]*v;
+                                data[idx+2] = data[idx+2]*v;
+                            }
+                        }
+                        break;
+                    case 'swirl':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let dx = x-w/2, dy = y-h/2;
+                                let angle = Math.atan2(dy, dx) + 0.5 * Math.sin(Math.sqrt(dx*dx+dy*dy)/30);
+                                let d = Math.sqrt(dx*dx+dy*dy);
+                                let v = 0.5 + 0.5 * Math.sin(angle*8 + d*0.09);
+                                let f = 0.5+0.5*v;
+                                data[idx] = data[idx]*f;
+                                data[idx+1] = data[idx+1]*f;
+                                data[idx+2] = data[idx+2]*f;
+                            }
+                        }
+                        break;
+                    case 'tunnel':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = 0.5 + 0.5 * Math.sin(d*0.25 - Math.atan2(y-h/2, x-w/2)*8);
+                                data[idx] = data[idx]*v;
+                                data[idx+1] = data[idx+1]*v;
+                                data[idx+2] = data[idx+2]*v;
+                            }
+                        }
+                        break;
+                    case 'glitch':
+                        for (let y = 0; y < h; y+=8) {
+                            let offset = Math.floor((Math.random()-0.5)*8);
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let idx2 = (y * w + ((x+offset+w)%w)) * 4;
+                                data[idx] = data[idx2];
+                                data[idx+1] = data[idx2+1];
+                                data[idx+2] = data[idx2+2];
+                            }
+                        }
+                        break;
+                    case 'tv-static':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let n = Math.random()*255;
+                            data[i] = n; data[i+1] = n; data[i+2] = n;
+                        }
+                        break;
+                    // ...existing cases...
+                    case 'zigzag':
+                        for (let y = 0; y < h; y++) {
+                            let offset = Math.floor(8 * Math.sin(y * 0.12));
+                            for (let x = 0; x < w; x++) {
+                                let src = ((y * w + ((x + offset + w) % w)) * 4);
+                                let dst = (y * w + x) * 4;
+                                data[dst] = data[src];
+                                data[dst+1] = data[src+1];
+                                data[dst+2] = data[src+2];
+                            }
+                        }
+                        break;
+                    case 'wave':
+                        for (let x = 0; x < w; x++) {
+                            let offset = Math.floor(8 * Math.sin(x * 0.09));
+                            for (let y = 0; y < h; y++) {
+                                let src = (((((y + offset + h) % h) * w) + x) * 4);
+                                let dst = (y * w + x) * 4;
+                                data[dst] = data[src];
+                                data[dst+1] = data[src+1];
+                                data[dst+2] = data[src+2];
+                            }
+                        }
+                        break;
+                    case 'vertical-stripes':
+                        for (let x = 0; x < w; x++) {
+                            if (x % 16 < 8) {
+                                for (let y = 0; y < h; y++) {
+                                    let idx = (y * w + x) * 4;
+                                    data[idx] = data[idx] * 0.7;
+                                    data[idx+1] = data[idx+1] * 0.7;
+                                    data[idx+2] = data[idx+2] * 0.7;
+                                }
+                            }
+                        }
+                        break;
+                    case 'horizontal-stripes':
+                        for (let y = 0; y < h; y++) {
+                            if (y % 16 < 8) {
+                                for (let x = 0; x < w; x++) {
+                                    let idx = (y * w + x) * 4;
+                                    data[idx] = data[idx] * 0.7;
+                                    data[idx+1] = data[idx+1] * 0.7;
+                                    data[idx+2] = data[idx+2] * 0.7;
+                                }
+                            }
+                        }
+                        break;
+                    case 'checkerboard':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                if (((x >> 4) + (y >> 4)) % 2 === 0) {
+                                    let idx = (y * w + x) * 4;
+                                    data[idx] = data[idx] * 0.5;
+                                    data[idx+1] = data[idx+1] * 0.5;
+                                    data[idx+2] = data[idx+2] * 0.5;
+                                }
+                            }
+                        }
+                        break;
+                    case 'radial-noise':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let n = (Math.sin(d*0.13) + noise(x, y, 3)) * 0.5 + 0.5;
+                                data[idx] = clamp(data[idx] * n, 0, 255);
+                                data[idx+1] = clamp(data[idx+1] * n, 0, 255);
+                                data[idx+2] = clamp(data[idx+2] * n, 0, 255);
+                            }
+                        }
+                        break;
+                    case 'hue-shift':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let r = data[idx], g = data[idx+1], b = data[idx+2];
+                                let mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+                                let h = 0, s = 0, l = (mx+mn)/2/255;
+                                if (mx !== mn) {
+                                    let d = mx - mn;
+                                    s = l > 0.5 ? d/(2- mx/255 - mn/255) : d/(mx/255 + mn/255);
+                                    switch(mx){
+                                        case r: h = (g-b)/d + (g < b ? 6 : 0); break;
+                                        case g: h = (b-r)/d + 2; break;
+                                        case b: h = (r-g)/d + 4; break;
+                                    }
+                                    h /= 6;
+                                }
+                                h = (h + 0.2) % 1;
+                                function hsl2rgb(h,s,l){
+                                    let r,g,b;
+                                    if(s===0){r=g=b=l;}
+                                    else{
+                                        function f(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;}
+                                        let q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;
+                                        r=f(p,q,h+1/3);g=f(p,q,h);b=f(p,q,h-1/3);
+                                    }
+                                    return [r*255,g*255,b*255];
+                                }
+                                [data[idx],data[idx+1],data[idx+2]] = hsl2rgb(h,s,l);
+                            }
+                        }
+                        break;
+                    case 'invert':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = 255 - data[i];
+                            data[i+1] = 255 - data[i+1];
+                            data[i+2] = 255 - data[i+2];
+                        }
+                        break;
+                    case 'pixelate':
+                        let size = Math.max(2, Math.floor(Math.min(w, h) / 32));
+                        for (let y = 0; y < h; y += size) {
+                            for (let x = 0; x < w; x += size) {
+                                let idx = (y * w + x) * 4;
+                                let r = data[idx], g = data[idx+1], b = data[idx+2];
+                                for (let dy = 0; dy < size; dy++) {
+                                    for (let dx = 0; dx < size; dx++) {
+                                        let xx = x + dx, yy = y + dy;
+                                        if (xx < w && yy < h) {
+                                            let i2 = (yy * w + xx) * 4;
+                                            data[i2] = r; data[i2+1] = g; data[i2+2] = b;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    case 'glow':
+                        for (let i = 0; i < 2; i++) {
+                            let temp = new Uint8ClampedArray(data);
+                            for (let y = 1; y < h-1; y++) {
+                                for (let x = 1; x < w-1; x++) {
+                                    let idx = (y * w + x) * 4;
+                                    for (let c2 = 0; c2 < 3; c2++) {
+                                        data[idx+c2] = (
+                                            temp[idx+c2] + temp[idx-4+c2] + temp[idx+4+c2] + temp[idx-w*4+c2] + temp[idx+w*4+c2]
+                                        ) / 5;
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    // --- New custom effects ---
+                    case 'rainbow':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let angle = Math.atan2(y-h/2, x-w/2);
+                                let hue = ((angle/(2*Math.PI)) + 0.5) * 360;
+                                let sat = 80, light = 60;
+                                function hsl2rgb(h,s,l){
+                                    s/=100;l/=100;let c=(1-Math.abs(2*l-1))*s;let x=c*(1-Math.abs((h/60)%2-1));let m=l-c/2,r=0,g=0,b=0;
+                                    if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}
+                                    return [clamp(Math.round((r+m)*255),0,255),clamp(Math.round((g+m)*255),0,255),clamp(Math.round((b+m)*255),0,255)];
+                                }
+                                [data[idx],data[idx+1],data[idx+2]] = hsl2rgb(hue,sat,light);
+                            }
+                        }
+                        break;
+                    case 'rings':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = Math.sin(d*0.12)*0.5+0.5;
+                                data[idx] = data[idx]*v;
+                                data[idx+1] = data[idx+1]*v;
+                                data[idx+2] = data[idx+2]*v;
+                            }
+                        }
+                        break;
+                    case 'spiral':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let dx = x-w/2, dy = y-h/2;
+                                let angle = Math.atan2(dy, dx);
+                                let d = Math.sqrt(dx*dx+dy*dy);
+                                let v = Math.sin(angle*8 + d*0.09);
+                                let f = 0.5+0.5*v;
+                                data[idx] = data[idx]*f;
+                                data[idx+1] = data[idx+1]*f;
+                                data[idx+2] = data[idx+2]*f;
+                            }
+                        }
+                        break;
+                    case 'starburst':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let dx = x-w/2, dy = y-h/2;
+                                let angle = Math.atan2(dy, dx);
+                                let v = Math.abs(Math.sin(angle*12));
+                                let f = 0.7+0.3*v;
+                                data[idx] = data[idx]*f;
+                                data[idx+1] = data[idx+1]*f;
+                                data[idx+2] = data[idx+2]*f;
+                            }
+                        }
+                        break;
+                    case 'vignette':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let d = Math.sqrt((x-w/2)**2 + (y-h/2)**2);
+                                let v = 1 - clamp(d/(Math.min(w,h)/2),0,1)*0.7;
+                                data[idx] = data[idx]*v;
+                                data[idx+1] = data[idx+1]*v;
+                                data[idx+2] = data[idx+2]*v;
+                            }
+                        }
+                        break;
+                    case 'grain':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let n = (Math.random()-0.5)*40;
+                            data[i] = clamp(data[i]+n,0,255);
+                            data[i+1] = clamp(data[i+1]+n,0,255);
+                            data[i+2] = clamp(data[i+2]+n,0,255);
+                        }
+                        break;
+                    case 'scanlines':
+                        for (let y = 0; y < h; y+=2) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                data[idx] = data[idx]*0.8;
+                                data[idx+1] = data[idx+1]*0.8;
+                                data[idx+2] = data[idx+2]*0.8;
+                            }
+                        }
+                        break;
+                    case 'dots':
+                        for (let y = 0; y < h; y+=6) {
+                            for (let x = 0; x < w; x+=6) {
+                                let idx = (y * w + x) * 4;
+                                let v = (data[idx]+data[idx+1]+data[idx+2])/3;
+                                for (let dy = 0; dy < 4; dy++) {
+                                    for (let dx = 0; dx < 4; dx++) {
+                                        let xx = x+dx, yy = y+dy;
+                                        if (xx<w && yy<h) {
+                                            let i2 = (yy*w+xx)*4;
+                                            data[i2] = v; data[i2+1] = v; data[i2+2] = v;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    case 'mirror-x':
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w/2; x++) {
+                                let idx = (y * w + x) * 4;
+                                let idx2 = (y * w + (w-x-1)) * 4;
+                                data[idx2] = data[idx];
+                                data[idx2+1] = data[idx+1];
+                                data[idx2+2] = data[idx+2];
+                            }
+                        }
+                        break;
+                    case 'mirror-y':
+                        for (let y = 0; y < h/2; y++) {
+                            for (let x = 0; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let idx2 = ((h-y-1) * w + x) * 4;
+                                data[idx2] = data[idx];
+                                data[idx2+1] = data[idx+1];
+                                data[idx2+2] = data[idx+2];
+                            }
+                        }
+                        break;
+                    case 'posterize':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = Math.floor(data[i]/64)*64;
+                            data[i+1] = Math.floor(data[i+1]/64)*64;
+                            data[i+2] = Math.floor(data[i+2]/64)*64;
+                        }
+                        break;
+                    case 'solarize':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = data[i]>128?255-data[i]:data[i];
+                            data[i+1] = data[i+1]>128?255-data[i+1]:data[i+1];
+                            data[i+2] = data[i+2]>128?255-data[i+2]:data[i+2];
+                        }
+                        break;
+                    case 'threshold':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let v = (data[i]+data[i+1]+data[i+2])/3 > 128 ? 255 : 0;
+                            data[i] = data[i+1] = data[i+2] = v;
+                        }
+                        break;
+                    case 'emboss':
+                        for (let y = 1; y < h; y++) {
+                            for (let x = 1; x < w; x++) {
+                                let idx = (y * w + x) * 4;
+                                let idx2 = ((y-1) * w + (x-1)) * 4;
+                                for (let c2 = 0; c2 < 3; c2++) {
+                                    let v = data[idx+c2] - data[idx2+c2] + 128;
+                                    data[idx+c2] = clamp(v,0,255);
+                                }
+                            }
+                        }
+                        break;
+                    case 'edge-detect':
+                        for (let y = 1; y < h-1; y++) {
+                            for (let x = 1; x < w-1; x++) {
+                                let idx = (y * w + x) * 4;
+                                let gx = 0, gy = 0;
+                                for (let c2 = 0; c2 < 3; c2++) {
+                                    gx = -data[idx-4+c2] + data[idx+4+c2];
+                                    gy = -data[idx-w*4+c2] + data[idx+w*4+c2];
+                                    let v = Math.sqrt(gx*gx+gy*gy);
+                                    data[idx+c2] = clamp(v,0,255);
+                                }
+                            }
+                        }
+                        break;
+                    case 'blur':
+                        for (let i = 0; i < 2; i++) {
+                            let temp = new Uint8ClampedArray(data);
+                            for (let y = 1; y < h-1; y++) {
+                                for (let x = 1; x < w-1; x++) {
+                                    let idx = (y * w + x) * 4;
+                                    for (let c2 = 0; c2 < 3; c2++) {
+                                        data[idx+c2] = (
+                                            temp[idx+c2] + temp[idx-4+c2] + temp[idx+4+c2] + temp[idx-w*4+c2] + temp[idx+w*4+c2]
+                                        ) / 5;
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    case 'sepia':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let r = data[i], g = data[i+1], b = data[i+2];
+                            data[i] = clamp(0.393*r + 0.769*g + 0.189*b,0,255);
+                            data[i+1] = clamp(0.349*r + 0.686*g + 0.168*b,0,255);
+                            data[i+2] = clamp(0.272*r + 0.534*g + 0.131*b,0,255);
+                        }
+                        break;
+                    case 'neon':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let v = (data[i]+data[i+1]+data[i+2])/3;
+                            data[i] = clamp(v*1.5,0,255);
+                            data[i+1] = clamp(v*0.5,0,255);
+                            data[i+2] = clamp(v*2,0,255);
+                        }
+                        break;
+                    case 'ghost':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = data[i]*0.7+255*0.3;
+                            data[i+1] = data[i+1]*0.7+255*0.3;
+                            data[i+2] = data[i+2]*0.7+255*0.3;
+                        }
+                        break;
+                    case 'dream':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = clamp(data[i]*1.1+Math.sin(i)*8,0,255);
+                            data[i+1] = clamp(data[i+1]*1.1+Math.cos(i)*8,0,255);
+                            data[i+2] = clamp(data[i+2]*1.1+Math.sin(i/2)*8,0,255);
+                        }
+                        break;
+                }
+                ctx.putImageData(img, 0, 0);
+            }
+
+            // If the blend is a custom effect, apply it
+            const customEffects = [
+                'zigzag','wave','vertical-stripes','horizontal-stripes','checkerboard','radial-noise','hue-shift','invert','pixelate','glow',
+                'rainbow','sine-waves','diamond','rings','spiral','starburst','vignette','center-bright','center-dark','edge-glow',
+                'grain','scanlines','dots','mirror-x','mirror-y','mirror-xy','split-tone',
+                'posterize','solarize','threshold','emboss','edge-detect','blur','sharpen','sepia','cool','warm',
+                'contrast-boost','saturation-boost','desaturate','fade','pastel','pop-art','psychedelic','dream','neon','ghost',
+                'frost','ripple','swirl','tunnel','glitch','tv-static'
+            ];
+            if (customEffects.includes(blend)) {
+                applyCustomEffect(blend);
+            }
+
+            ctx.restore();
+            // No blend notification
+        };
+        
+        const genLimited = () => {
+            const max = parseInt(document.getElementById('mcs').value);
+            const minSat = parseInt(document.getElementById('ms').value);
+            const maxSat = parseInt(document.getElementById('xs').value);
+            lc = [];
+            
+            for (let i = 0; i < max; i++) {
+                const h = (360 / max) * i + Math.random() * (360 / max);
+                const s = minSat + Math.random() * (maxSat - minSat);
+                const l = 30 + Math.random() * 40;
+                lc.push(`hsl(${h}, ${s}%, ${l}%)`);
+            }
+        };
+        
+        const genFixed = () => {
+            const max = parseInt(document.getElementById('mcs').value);
+            const minSat = parseInt(document.getElementById('ms').value);
+            const maxSat = parseInt(document.getElementById('xs').value);
+            fc = [];
+            
+            for (let i = 0; i < max; i++) {
+                const h = Math.random() * 360;
+                const s = minSat + Math.random() * (maxSat - minSat);
+                const l = 30 + Math.random() * 40;
+                fc.push(`hsl(${h}, ${s}%, ${l}%)`);
+            }
+            
+            updatePalette();
+        };
+        
+        const updatePalette = () => {
+            const p = document.getElementById('p');
+            p.innerHTML = '';
+            const colors = useFix ? fc : lc;
+            
+            colors.forEach(color => {
+                const s = document.createElement('div');
+                s.className = 'color-swatch';
+                s.style.backgroundColor = color;
+                p.appendChild(s);
+            });
+        };
+        
+        const toggleAuto = () => {
+            if (auto) {
+                clearInterval(iv);
+                iv = null;
+                auto = false;
+                document.getElementById('ab').textContent = '🚀 Start Auto Mode';
+                document.getElementById('ab').classList.remove('danger');
+            } else {
+                const speed = parseInt(document.getElementById('ss').value);
+                iv = setInterval(() => addGradient(true), speed);
+                auto = true;
+                document.getElementById('ab').textContent = '⏹️ Stop Auto Mode';
+                document.getElementById('ab').classList.add('danger');
+            }
+        };
+        
+        const updateSpeed = () => {
+            if (auto) {
+                clearInterval(iv);
+                const speed = parseInt(document.getElementById('ss').value);
+                iv = setInterval(() => addGradient(true), speed);
+            }
+        };
+        
+        const download = () => {
+            const link = document.createElement('a');
+            link.download = `chaos-${sel}x${sel}-${Date.now()}.png`;
+            link.href = c.toDataURL();
+            link.click();
+            showNotification('Download started!');
+        };
+
+        // Copy to Clipboard (PNG)
+        const copyToClipboard = () => {
+            c.toBlob(async blob => {
+                try {
+                    if (navigator.clipboard?.write) {
+                        await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+                        showNotification('Image copied to clipboard!');
+                    } else {
+                        showNotification('Clipboard not supported.');
+                    }
+                } catch (e) {
+                    showNotification('Failed to copy.');
+                }
+            }, 'image/png');
+        };
+        
+        const restart = () => {
+            if (auto) toggleAuto();
+            document.getElementById('s1').style.display = 'block';
+            document.getElementById('s2').style.display = 'none';
+            // Clear undo/redo stacks
+            undoStack = [];
+            redoStack = [];
+            updateHistoryQueue();
+        };
+        
+        const createCanvas = () => {
+            c.width = sel;
+            c.height = sel;
+            init();
+            resizeCanvasElement();
+            document.getElementById('s1').style.display = 'none';
+            document.getElementById('s2').style.display = 'block';
+            // Save initial blank state
+            undoStack = [];
+            redoStack = [];
+            saveState();
+        };
+        // Responsive resize
+        const resizeCanvas = () => {
+            resizeCanvasElement();
+        };
+        
+        const setupEffects = () => {
+            const list = document.getElementById('el');
+            ae = [...fx];
+            
+            fx.forEach(effect => {
+                const item = document.createElement('div');
+                item.className = 'effect-item';
+                item.innerHTML = `<div class="effect-checkbox checked" data-effect="${effect}"></div><span>${effect}</span>`;
+                list.appendChild(item);
+            });
+            
+            list.addEventListener('click', (e) => {
+                const cb = e.target.closest('.effect-checkbox');
+                if (cb) {
+                    const effect = cb.dataset.effect;
+                    cb.classList.toggle('checked');
+                    
+                    if (cb.classList.contains('checked')) {
+                        if (!ae.includes(effect)) ae.push(effect);
+                    } else {
+                        ae = ae.filter(e => e !== effect);
+                    }
+                }
+            });
+        };
+        
+        // Event listeners
+        document.querySelectorAll('.resolution-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                document.querySelector('.resolution-option.selected').classList.remove('selected');
+                opt.classList.add('selected');
+                sel = parseInt(opt.dataset.size);
+            });
+        });
+        
+        document.getElementById('cb').addEventListener('click', createCanvas);
+        document.getElementById('mb').addEventListener('click', () => addGradient());
+        // Allow clicking the canvas to add a new layer
+        document.getElementById('c').addEventListener('click', () => addGradient());
+        document.getElementById('ab').addEventListener('click', toggleAuto);
+        document.getElementById('db').addEventListener('click', download);
+        // Reset button with confirmation
+        document.getElementById('rb').addEventListener('click', () => {
+            window.Modals.confirm('Are you sure you want to reset? This will clear your canvas and cannot be undone.', 'Reset?','Reset','Cancel').then(confirmed => {
+                if (confirmed) restart();
+            });
+        });
+        document.getElementById('cbpb').addEventListener('click', copyToClipboard);
+        // Undo/Redo event listeners
+        document.getElementById('undo').addEventListener('click', () => {
+            if (undoStack.length > 1) {
+                const last = undoStack.pop();
+                if (redoStack.length >= maxHistory) redoStack.shift();
+                redoStack.push(last);
+                restoreState(undoStack[undoStack.length - 1]);
+            } else {
+                showNotification("Can't undo: already at oldest state.");
+            }
+        });
+        document.getElementById('redo').addEventListener('click', () => {
+            if (redoStack.length > 0) {
+                const next = redoStack.pop();
+                if (undoStack.length >= maxHistory) undoStack.shift();
+                undoStack.push(next);
+                restoreState(next);
+            } else {
+                showNotification("Can't redo: already at latest state.");
+            }
+        });
+        
+        document.getElementById('ss').addEventListener('input', (e) => {
+            document.getElementById('sv').textContent = e.target.value;
+            updateSpeed();
+        });
+        
+        document.getElementById('os').addEventListener('input', (e) => {
+            document.getElementById('ov').textContent = e.target.value;
+        });
+        
+        document.getElementById('ms').addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            const max = parseInt(document.getElementById('xs').value);
+            if (val > max) {
+                document.getElementById('xs').value = val;
+                document.getElementById('xv').textContent = val;
+            }
+            document.getElementById('mv').textContent = val;
+            if (useMax) genLimited();
+            if (useFix) genFixed();
+        });
+        
+        document.getElementById('xs').addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            const min = parseInt(document.getElementById('ms').value);
+            if (val < min) {
+                document.getElementById('ms').value = val;
+                document.getElementById('mv').textContent = val;
+            }
+            document.getElementById('xv').textContent = val;
+            if (useMax) genLimited();
+            if (useFix) genFixed();
+        });
+        
+        document.getElementById('mcs').addEventListener('input', (e) => {
+            document.getElementById('mcv').textContent = e.target.value;
+            if (useMax) genLimited();
+            if (useFix) genFixed();
+        });
+        
+        document.getElementById('mt').addEventListener('click', () => {
+            useMax = !useMax;
+            document.getElementById('mt').classList.toggle('active', useMax);
+            if (useMax) {
+                genLimited();
+                updatePalette();
+            }
+        });
+        
+        document.getElementById('ft').addEventListener('click', () => {
+            useFix = !useFix;
+            document.getElementById('ft').classList.toggle('active', useFix);
+            if (useFix) genFixed();
+        });
+        
+        document.getElementById('rdb').addEventListener('click', () => {
+            if (useFix) genFixed();
+            else {
+                genLimited();
+                updatePalette();
+            }
+        });
+        
+        // Change 'Show Effects' button to 'Select All / Select None'
+        document.getElementById('et').addEventListener('click', () => {
+            const effectCheckboxes = document.querySelectorAll('.effect-checkbox');
+            const btn = document.getElementById('et');
+            // Determine if all are selected
+            const allSelected = Array.from(effectCheckboxes).every(cb => cb.classList.contains('checked'));
+            if (allSelected) {
+                // Deselect all
+                effectCheckboxes.forEach(cb => cb.classList.remove('checked'));
+                ae = [];
+                btn.textContent = 'Select All';
+            } else {
+                // Select all
+                effectCheckboxes.forEach(cb => cb.classList.add('checked'));
+                ae = Array.from(effectCheckboxes).map(cb => cb.dataset.effect);
+                btn.textContent = 'Select None';
+            }
+        });
+
+
+        // --- Gradient/Shape Types Menu ---
+        // List of gradient/shape types
+        const shapeTypes = [
+            'linear', 'radial', 'elliptical', 'conic', 'diamond', 'star', 'circle', 'rectangle', 'polygon', 'stripe',
+            'ring', 'spiral', 'checker', 'zigzag', 'wave', 'burst', 'blob', 'hex', 'triangle', 'kaleidoscope'
+        ];
+        let as = [...shapeTypes];
+
+        // Setup shape menu (match effects area logic)
+        function setupShapes() {
+            const list = document.getElementById('sl');
+            list.innerHTML = '';
+            as = [...shapeTypes];
+            // Remove any previous event listeners by cloning
+            const newList = list.cloneNode(false);
+            list.parentNode.replaceChild(newList, list);
+            shapeTypes.forEach(type => {
+                const item = document.createElement('div');
+                item.className = 'effect-item';
+                item.innerHTML = `<div class=\"effect-checkbox checked\" data-shape=\"${type}\"></div><span>${type}</span>`;
+                newList.appendChild(item);
+            });
+            newList.addEventListener('click', (e) => {
+                const cb = e.target.closest('.effect-checkbox[data-shape]');
+                if (cb) {
+                    cb.classList.toggle('checked');
+                    // Update as[] to match all checked checkboxes
+                    as = Array.from(document.querySelectorAll('.effect-checkbox[data-shape].checked')).map(cb2 => cb2.dataset.shape);
+                    // Update select all/none button label
+                    const stBtn = document.getElementById('st');
+                    const allShapesSelected = Array.from(document.querySelectorAll('.effect-checkbox[data-shape]')).every(cb2 => cb2.classList.contains('checked'));
+                    stBtn.textContent = allShapesSelected ? 'Select None' : 'Select All';
+                }
+            });
+        }
+        setupShapes();
+
+        // Select all/none for shapes (match effects area logic)
+
+// --- Segmented control logic for shape/gradient selection ---
+const shapeTypesList = [
+    'diamond', 'star', 'circle', 'rectangle', 'polygon', 'stripe',
+    'burst', 'blob', 'hex', 'triangle', 'ring', 'spiral', 'checker', 'zigzag', 'wave', 'kaleidoscope'
+];
+const gradientTypesList = [
+    'linear', 'radial', 'elliptical', 'conic'
+];
+
+document.getElementById('st-all').addEventListener('click', () => {
+    const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
+    shapeCheckboxes.forEach(cb => cb.classList.add('checked'));
+    as = Array.from(shapeCheckboxes).map(cb => cb.dataset.shape);
+});
+
+document.getElementById('st-shapes').addEventListener('click', () => {
+    const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
+    shapeCheckboxes.forEach(cb => {
+        if (shapeTypesList.includes(cb.dataset.shape)) {
+            cb.classList.add('checked');
+        } else {
+            cb.classList.remove('checked');
+        }
+    });
+    as = shapeTypesList.slice();
+});
+
+document.getElementById('st-gradients').addEventListener('click', () => {
+    const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
+    shapeCheckboxes.forEach(cb => {
+        if (gradientTypesList.includes(cb.dataset.shape)) {
+            cb.classList.add('checked');
+        } else {
+            cb.classList.remove('checked');
+        }
+    });
+    as = gradientTypesList.slice();
+});
+
+document.getElementById('st-none').addEventListener('click', () => {
+    const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
+    shapeCheckboxes.forEach(cb => cb.classList.remove('checked'));
+    as = [];
+});
+        
+        // Initialize
+        genLimited();
+        genFixed();
+        setupEffects();
+        setupShapes();
+        // Set speed to default 420ms on load
+        document.getElementById('ss').value = 420;
+        document.getElementById('sv').textContent = 420;
+        // Set initial label for select all/none buttons
+        document.getElementById('et').textContent = 'Select None';
+        const stBtn = document.getElementById('st');
+        if (stBtn) stBtn.textContent = 'Select None';
+
+        // Randomize all settings
+        // Utility function to update progress bar
+        function updateProgress(percent) {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            
+            if (percent === 0) {
+                progressContainer.classList.add('show');
+                progressBar.style.width = '0%';
+            } else if (percent >= 100) {
+                progressBar.style.width = '100%';
+                setTimeout(() => {
+                    progressContainer.classList.remove('show');
+                }, 300);
+            } else {
+                progressBar.style.width = percent + '%';
+            }
+        }
+
+        // Utility function to delay execution and allow UI updates
+        function delay(ms = 0) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function randomizeAll() {
+            // --- SAFETY CHECKS: Prevent runaway timers, intervals, event listeners ---
+            // 1. Clear all known intervals and timeouts
+            if (typeof iv !== 'undefined' && iv) {
+                clearInterval(iv);
+                iv = null;
+                auto = false;
+                const ab = document.getElementById('ab');
+                if (ab) {
+                    ab.textContent = '🚀 Start Auto Mode';
+                    ab.classList.remove('danger');
+                }
+            }
+            // 2. Stop test random if running
+            if (typeof testRandomActive !== 'undefined' && testRandomActive) {
+                if (typeof stopTestRandom === 'function') stopTestRandom();
+            }
+            // 3. Remove any duplicate event listeners (shapes/effects)
+            // Remove and re-setup shapes/effects listeners to avoid leaks
+            if (typeof setupShapes === 'function') setupShapes();
+            if (typeof setupEffects === 'function') setupEffects();
+            // 4. Remove any progress bar animation classes
+            const progressContainer = document.getElementById('progressContainer');
+            if (progressContainer) progressContainer.classList.remove('show');
+            // 5. Remove any pending timeouts (if any are tracked)
+            // (If you add tracked timeouts in future, clear them here)
+
+            // --- Begin normal randomizeAll logic ---
+            // Disable the button during operation
+            const randBtn = document.getElementById('randb');
+            const originalText = randBtn.textContent;
+            randBtn.disabled = true;
+            randBtn.textContent = '🎲 Generating...';
+            
+            // Start progress
+            updateProgress(0);
+            await delay(50);
+
+            // Save state before randomizing
+            saveState();
+            updateProgress(5);
+            await delay(10);
+            
+            // Randomize resolution
+            const resOptions = Array.from(document.querySelectorAll('.resolution-option'));
+            const randRes = resOptions[Math.floor(Math.random() * resOptions.length)];
+            resOptions.forEach(opt => opt.classList.remove('selected'));
+            randRes.classList.add('selected');
+            sel = parseInt(randRes.dataset.size);
+            updateProgress(10);
+            await delay(10);
+
+            // Set speed to default 420ms and update display
+            document.getElementById('ss').value = 420;
+            document.getElementById('sv').textContent = 420;
+
+            // Randomize other sliders
+            const setSlider = (id, min, max) => {
+                const v = Math.floor(Math.random() * (max - min + 1)) + min;
+                document.getElementById(id).value = v;
+                // Update display value
+                const valSpan = document.getElementById(id[0] + 'v');
+                if (valSpan) valSpan.textContent = v;
+            };
+            // Do NOT randomize speed
+            setSlider('os', 10, 100); // Opacity
+            setSlider('ms', 0, 100); // Min Sat
+            setSlider('xs', 0, 100); // Max Sat
+            setSlider('mcs', 2, 20); // Max Colors
+            updateProgress(20);
+            await delay(10);
+
+            // Randomize toggles
+            useMax = Math.random() < 0.5;
+            useFix = Math.random() < 0.5;
+            document.getElementById('mt').classList.toggle('active', useMax);
+            document.getElementById('ft').classList.toggle('active', useFix);
+
+            // Regenerate palettes
+            if (useMax) genLimited();
+            if (useFix) genFixed();
+            updatePalette();
+            updateProgress(30);
+            await delay(10);
+
+            // Randomize effects
+            const effectCheckboxes = document.querySelectorAll('.effect-checkbox');
+            ae = [];
+            effectCheckboxes.forEach(cb => {
+                const checked = Math.random() < 0.7; // 70% chance to keep each effect
+                cb.classList.toggle('checked', checked);
+                const effect = cb.dataset.effect;
+                if (checked) ae.push(effect);
+            });
+            updateProgress(40);
+            await delay(10);
+
+            // Randomize shapes
+            const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
+            as = [];
+            shapeCheckboxes.forEach(cb => {
+                const checked = Math.random() < 0.7;
+                cb.classList.toggle('checked', checked);
+                const type = cb.dataset.shape;
+                if (checked) as.push(type);
+            });
+            // Update select all/none button label for shapes
+            const stBtn = document.getElementById('st');
+            const allShapesSelected = Array.from(document.querySelectorAll('.effect-checkbox[data-shape]')).every(cb => cb.classList.contains('checked'));
+            if (stBtn) stBtn.textContent = allShapesSelected ? 'Select None' : 'Select All';
+            updateProgress(50);
+            await delay(10);
+
+            // Actually randomize the canvas
+            // Resize canvas if needed
+            c.width = sel;
+            c.height = sel;
+            init();
+            resizeCanvasElement();
+            updateProgress(60);
+            await delay(10);
+            
+            // Add a random number of gradients (3-7) with progress updates
+            let n = 3 + Math.floor(Math.random() * 5);
+            const progressPerGradient = 35 / n; // 35% of progress for gradients (60% to 95%)
+            
+            for (let i = 0; i < n; i++) {
+                addGradient(true); // skip blend display for speed
+                updateProgress(60 + (i + 1) * progressPerGradient);
+                await delay(20); // Small delay to allow UI update
+            }
+            
+            updateProgress(95);
+            await delay(10);
+            // No notification needed for randomize
+            updateProgress(100);
+            
+            // Re-enable button
+            setTimeout(() => {
+                randBtn.disabled = false;
+                randBtn.textContent = originalText;
+            }, 300);
+        }
+
+        document.getElementById('randb').addEventListener('click', randomizeAll);
+        
+        window.addEventListener('resize', resizeCanvas);
+        // Also resize on main-screen show
+        document.getElementById('s2').addEventListener('transitionend', resizeCanvas);
+        // Initial resize if canvas is visible
+        if (document.getElementById('s2').style.display !== 'none') resizeCanvas();
+
+        // --- Test Random Button Logic ---
+        let testRandomActive = false;
+        let testRandomStats = {};
+        let testRandomCount = 0;
+        let testRandomLastType = null;
+        let testRandomTimer = null;
+
+        function testRandomStep() {
+            if (!testRandomActive) return;
+            // Pick a random type as in addGradient
+            if (!as.length) return;
+            const type = as[Math.floor(Math.random() * as.length)];
+            testRandomLastType = type;
+            const t0 = performance.now();
+            // Temporarily override as to only this type
+            const oldAs = [...as];
+            as = [type];
+            addGradient();
+            as = oldAs;
+            const t1 = performance.now();
+            const dt = t1 - t0;
+            if (!testRandomStats[type]) testRandomStats[type] = [];
+            testRandomStats[type].push(dt);
+            testRandomCount++;
+            // Next step
+            testRandomTimer = setTimeout(testRandomStep, 0);
+        }
+
+        function stopTestRandom() {
+            testRandomActive = false;
+            clearTimeout(testRandomTimer);
+            // Compute averages
+            const avgs = Object.entries(testRandomStats).map(([type, arr]) => ({
+                type,
+                avg: arr.reduce((a, b) => a + b, 0) / arr.length,
+                count: arr.length
+            }));
+            avgs.sort((a, b) => b.avg - a.avg);
+            console.log('--- Test Random Report: Top 20 slowest ---');
+            avgs.slice(0, 20).forEach((row, i) => {
+                console.log(`#${i+1}: ${row.type} | avg: ${row.avg.toFixed(2)} ms | count: ${row.count}`);
+            });
+            showNotification('Test Random finished. See console for report.');
+        }
+
+        document.getElementById('testb').addEventListener('click', () => {
+            if (!testRandomActive) {
+                testRandomActive = true;
+                testRandomStats = {};
+                testRandomCount = 0;
+                showNotification('Test Random started! Click again to stop.');
+                testRandomStep();
+            } else {
+                stopTestRandom();
+            }
+        });
+    </script>
+</body>
+</html>
