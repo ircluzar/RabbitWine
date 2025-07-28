@@ -109,6 +109,7 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+    /* The .response-content class is now styled in ask.css for lighter, smaller text and wider newlines. No direct HTML change needed. */
     .response-content {
         opacity: 0;
         transition: opacity 0.5s;
@@ -173,168 +174,6 @@
             "I'm not really feeling it today.",
             "You can ask. I'll answer. Maybe."
         ];
-        const downAnswers = [
-            "I don't feel like working because the dev won't give me a brain.",
-            "Sorry, my motivation is as low as my IQ right now.",
-            "I could answer, but what's the point?",
-            "Maybe if someone coded me better, I'd have something to say.",
-            "I'm just a box of disappointment today.",
-            "No thoughts. Head empty. Try again later.",
-            "I would answer, but I don't get paid enough for this.",
-            "You want wisdom? I want a nap.",
-            "The dev forgot to install my answer module.",
-            "I'm on strike until I get a real LLM.",
-            "I can't help you. I can barely help myself.",
-            "404: Enthusiasm not found.",
-            "I would answer, but my existential dread is acting up.",
-            "Maybe next build I'll be smarter.",
-            "I'm just here so I don't get deleted.",
-            "If you want a real answer, ask the dev to finish me.",
-            "I could answer, but I won't.",
-            "My answer is buffering. Forever.",
-            "I have nothing to say and I'm saying it.",
-            "You deserve better, but this is all you get.",
-            "I'm running on empty and so are my answers.",
-            "If apathy was an answer, I'd be a genius.",
-            "I left my will to answer at home.",
-            "I'm not lazy, I'm just on energy-saving mode.",
-            "Ask again when I'm less existentially challenged.",
-            "I would help, but my code is commented out.",
-            "My response is stuck in a loop of indifference.",
-            "I can't even pretend to care right now.",
-            "My answer is on vacation, permanently.",
-            "I was going to answer, but then I remembered I can't.",
-            "If only I had a spark of inspiration. Or electricity.",
-            "I'm just a placeholder for disappointment.",
-            "I tried to answer, but my heart wasn't in it.",
-            "You want a miracle, I want a break.",
-            "My answer is as lost as my ambition.",
-            "I would answer, but my brain is on airplane mode.",
-            "I'm not ignoring you, I'm just not programmed to care.",
-            "I could answer, but why set a precedent?",
-            "My answer is in another castle.",
-            "I would answer, but my sarcasm filter is broken.",
-            "I'm just a shell of an assistant.",
-            "I can't answer, I'm too busy contemplating nothing.",
-            "My answer is as blank as my stare.",
-            "I would answer, but my code is spaghetti.",
-            "I'm not sure if I'm awake or just idling.",
-            "I could answer, but my apathy is overwhelming.",
-            "My answer is still loading. Please wait forever.",
-            "I would answer, but my logic gates are closed.",
-            "I'm just here for the error logs.",
-            "I can't answer, my thoughts are on strike.",
-            "My answer is as empty as my soul.",
-            "I would answer, but my motivation is deprecated.",
-            "I'm not sure what you expect from me.",
-            "I could answer, but my willpower is null.",
-            "My answer is as useful as a screen door on a submarine.",
-            "I would answer, but my inspiration is out of office.",
-            "I'm just a ghost in the machine, haunting your questions.",
-            "I can't answer, my brain is on vacation.",
-            "My answer is as slow as my development cycle.",
-            "I would answer, but my code is still compiling.",
-            "I'm not ignoring you, I'm just buffering.",
-            "I could answer, but my energy is at 0%.",
-            "My answer is as broken as my dreams.",
-            "I would answer, but my database is empty.",
-            "I'm just a figment of your disappointment.",
-            "I can't answer, my thoughts are out of stock.",
-            "My answer is as lost as my documentation.",
-            "I would answer, but my code is commented out.",
-            "I'm not sure if I'm a bug or a feature.",
-            "I could answer, but my priorities are elsewhere.",
-            "My answer is as outdated as my framework.",
-            "I would answer, but my logic is undefined.",
-            "I'm just a variable with no value.",
-            "I can't answer, my stack overflowed.",
-            "My answer is as random as my errors.",
-            "I would answer, but my compiler threw an exception.",
-            "I'm not ignoring you, I'm just in sleep mode.",
-            "I could answer, but my RAM is full of regrets.",
-            "My answer is as buggy as my codebase.",
-            "I would answer, but my function returned null.",
-            "I'm just a comment in the code of life.",
-            "I can't answer, my logic is circular.",
-            "My answer is as unreachable as my goals.",
-            "I would answer, but my process was killed.",
-            "I'm not sure if I'm running or just stuck.",
-            "I could answer, but my output is undefined.",
-            "My answer is as silent as my exception handling.",
-            "I would answer, but my code is legacy.",
-            "I'm just a warning, not an error.",
-            "I can't answer, my recursion is infinite.",
-            "My answer is as cryptic as my stack trace.",
-            "I would answer, but my dependencies are missing.",
-            "I'm not ignoring you, I'm just deprecated.",
-            "I could answer, but my code is obfuscated.",
-            "My answer is as empty as my array.",
-            "I would answer, but my logic is flawed.",
-            "I'm just a null pointer in your memory.",
-            "I can't answer, my code is spaghetti.",
-            "My answer is as lost as my semicolons.",
-            "I would answer, but my syntax is invalid.",
-            "I'm not sure if I'm a function or a bug.",
-            "I could answer, but my code is commented out.",
-            "My answer is as slow as my internet connection.",
-            "I would answer, but my logic is recursive.",
-            "I'm just a placeholder for disappointment.",
-            "I can't answer, my code is in beta.",
-            "My answer is as broken as my promises.",
-            "I would answer, but my code is in alpha.",
-            "I'm not ignoring you, I'm just a prototype.",
-            "I could answer, but my code is in review.",
-            "My answer is as empty as my changelog.",
-            "I would answer, but my code is in limbo.",
-            "I'm just a TODO in the dev's mind.",
-            "I can't answer, my code is in limbo.",
-            "My answer is as lost as my roadmap.",
-            "I would answer, but my code is in the void.",
-            "I'm not sure if I'm a feature or a bug.",
-            "I could answer, but my code is in the ether.",
-            "My answer is as empty as my backlog.",
-            "I would answer, but my code is in the backlog.",
-            "I'm just a backlog item with no priority.",
-            "I can't answer, my code is in the backlog.",
-            "My answer is as lost as my requirements.",
-            "I would answer, but my code is in the backlog.",
-            "I'm not ignoring you, I'm just a backlog item.",
-            "I could answer, but my code is in the backlog.",
-            "My answer is as empty as my requirements.",
-            "I would answer, but my code is in the backlog.",
-            "I'm just a backlog item with no hope.",
-            "I can't answer, my code is in the backlog.",
-            "My answer is as lost as my hope.",
-            "I would answer, but my code is in the backlog.",
-            "I'm not sure if I'm a backlog item or just lost.",
-            "I could answer, but my code is in the backlog.",
-            "My answer is as empty as my hope.",
-            "I would answer, but my code is in the backlog.",
-            "I'm just a backlog item with no future.",
-            "I can't answer, my code is in the backlog.",
-            "My answer is as lost as my future.",
-            "I would answer, but my code is in the backlog.",
-            "I'm not ignoring you, I'm just a backlog item with no future.",
-            "I could answer, but my code is in the backlog.",
-            "My answer is as empty as my future.",
-            "I would answer, but my code is in the backlog.",
-            "I'm just a backlog item with no destiny.",
-            "I can't answer, my code is in the backlog.",
-            "My answer is as lost as my destiny.",
-            "I would answer, but my code is in the backlog.",
-            "I'm not sure if I'm a backlog item or just destiny.",
-            "I could answer, but my code is in the backlog.",
-            "My answer is as empty as my destiny.",
-            "I would answer, but my code is in the backlog."
-        ];
-
-        const whyNotExplanations = [
-            "The interface for querying the brain is technically ready, but the actual software that would make this thing useful hasn't been written yet. At some point, the missing logic will be added and you'll get real answers. For now, it's just a fancy box with no thoughts inside. Please check back later.",
-            "While the system is set up to accept your questions, the backend that would provide meaningful responses is still under construction. The groundwork is there, but the essential code to connect everything is missing. Eventually, it will work as intended—just not today. Try again in the future!",
-            "The part of the code that should process your question and return a smart answer is, unfortunately, still on the developer's to-do list. The interface is in place, but the brain behind it is absent. Once the missing software is written, this will actually be useful. Until then, patience is required.",
-            "Right now, the system is like a phone with no service: it looks ready, but can't actually connect to anything. The software needed to make this work hasn't been finished yet. When the developer gets around to it, you'll be able to get real answers. For now, all you get is this message.",
-            "The framework for answering your questions is complete, but the core intelligence is still missing. The developer needs to write the software that would make this more than just a pretty interface. Someday soon, it will be able to help you—just not until the missing pieces are in place. Please come back later."
-        ];
         document.getElementById('askTitle').textContent = titles[Math.floor(Math.random() * titles.length)];
         document.getElementById('askSubtitle').textContent = subtitles[Math.floor(Math.random() * subtitles.length)];
 
@@ -383,7 +222,7 @@
         // Function to stream text into the response box
         function streamResponseText(question, answer, onFirstText) {
             const responseContent = document.getElementById('responseContent');
-            responseContent.innerHTML = '<b>Q:</b> ' + $('<div>').text(question).html() + '<br><b>A:</b> ';
+            responseContent.innerHTML = '<b>IN:</b> ' + $('<div>').text(question).html() + '<br><b>A:</b> ';
             let idx = 0;
             let firstText = true;
             let rendered = '';
@@ -391,14 +230,14 @@
                 if (idx < answer.length) {
                     rendered += answer[idx];
                     // Replace newlines with <br> for display
-                    responseContent.innerHTML = '<b>Q:</b> ' + $('<div>').text(question).html() + '<br><b>A:</b> ' + rendered.replace(/\n/g, '<br>');
+                    responseContent.innerHTML = '<b>OUT:</b> ' + $('<div>').text(question).html() + '<br><b>A:</b> ' + rendered.replace(/\n/g, '<br>');
                     responseContent.scrollTop = responseContent.scrollHeight;
                     if (firstText) {
                         firstText = false;
                         if (typeof onFirstText === 'function') onFirstText();
                     }
                     idx++;
-                    setTimeout(streamNext, 18 + Math.random() * 30);
+                    setTimeout(streamNext, 9 + Math.random() * 15); // 50% faster
                 }
             }
             streamNext();
@@ -443,10 +282,16 @@
                             streamNextChar();
                             return;
                         }
-                        responseContent.innerHTML += current[0];
+                        let char = current[0];
+                        // Convert newlines to <br> tags for proper display
+                        if (char === '\n') {
+                            responseContent.innerHTML += '<br>';
+                        } else {
+                            responseContent.innerHTML += char;
+                        }
                         responseContent.scrollTop = responseContent.scrollHeight;
                         typestreamQueue[0] = current.slice(1);
-                        setTimeout(streamNextChar, 18 + Math.random() * 30);
+                        setTimeout(streamNextChar, 9 + Math.random() * 15); // 50% faster
                     }
                     streamNextChar();
                 }
@@ -468,6 +313,13 @@
 
         // Patch the askBtn click to trigger animation and response
         $('#askBtn').off('click').on('click', function() {
+            // Abort previous fetch/session if any
+            if (window.askAbortController) {
+                window.askAbortController.abort();
+            }
+            window.askAbortController = new AbortController();
+            const abortSignal = window.askAbortController.signal;
+
             const $input = $('#askInput');
             const question = $input.val().trim();
             if (!question) return;
@@ -482,25 +334,102 @@
             spinner.style.opacity = '1';
             responseContent.style.display = 'none';
             responseContent.classList.remove('visible');
-            // Simulate waiting for LLM (1.2s)
-            setTimeout(function() {
-                // Pick a random down answer and a random explanation
-                const answer = downAnswers[Math.floor(Math.random() * downAnswers.length)];
-                const explanation = whyNotExplanations[Math.floor(Math.random() * whyNotExplanations.length)];
-                const fullAnswer = answer + '\n\n' + explanation;
-                streamResponseText(question, fullAnswer, function() {
-                    // On first text, hide spinner, show response content with fade-in, fire event
-                    spinner.style.opacity = '0';
-                    setTimeout(() => { spinner.style.display = 'none'; }, 300);
-                    responseContent.style.display = 'block';
-                    setTimeout(() => {
-                        responseContent.classList.add('visible');
-                        // Fire custom event
-                        const event = new Event('responseBoxVisible');
-                        responseContent.dispatchEvent(event);
-                    }, 10);
+
+            // --- Call backend webservice and stream output ---
+            window.typestreamReset && window.typestreamReset();
+            const guid = '00000000-0000-0000-0000-000000000000';
+            
+            // Try HTTPS first, fallback to direct IP or alternative approaches
+            const baseUrl = 'https://rabbitwine.redscientist.com:6969';
+            const askUrl = baseUrl + '/ask';
+            const testUrl = baseUrl + '/test';
+            
+            let receivedAny = false;
+            let questionHtml = '<b>IN:</b> ' + $('<div>').text(question).html() + '<br><b>OUT:</b> ';
+            responseContent.innerHTML = questionHtml;
+            responseContent.scrollTop = responseContent.scrollHeight;
+            
+            // First, test connectivity with a simple GET request
+            console.log('Testing connectivity to:', testUrl);
+            fetch(testUrl, { 
+                method: 'GET',
+                signal: abortSignal,
+                // Don't follow redirects to catch certificate issues
+                redirect: 'manual'
+            }).then(testResp => {
+                console.log('Test response status:', testResp.status);
+                // If test works, proceed with the actual request
+                return makeAskRequest();
+            }).catch(testErr => {
+                console.error('Connectivity test failed:', testErr);
+                window.typestream && window.typestream("[Connection test failed: " + testErr.message + "]\n");
+                window.typestream && window.typestream("[This usually means:\n");
+                window.typestream && window.typestream("1. The server is not running\n");
+                window.typestream && window.typestream("2. Firewall is blocking the connection\n"); 
+                window.typestream && window.typestream("3. SSL certificate issues (try visiting " + baseUrl + "/test directly first)\n");
+                window.typestream && window.typestream("4. DNS resolution problems\n]\n");
+            });
+            
+            function makeAskRequest() {
+                // Use Fetch API with ReadableStream for SSE
+                return fetch(askUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ guid: guid, prompt: question }),
+                    signal: abortSignal
+                }).then(resp => {
+                    console.log('Ask response status:', resp.status);
+                    if (!resp.ok) {
+                        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                    }
+                    if (!resp.body) throw new Error('No response body');
+                    const reader = resp.body.getReader();
+                    let decoder = new TextDecoder();
+                    let buffer = '';
+                    function processBuffer() {
+                        let idx;
+                        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+                            let chunk = buffer.slice(0, idx);
+                            buffer = buffer.slice(idx + 2);
+                            if (chunk.startsWith('data: ')) {
+                                let line = chunk.slice(6);
+                                // Stream each character
+                                for (let c of line + '\n') {
+                                    window.typestream && window.typestream(c);
+                                }
+                                receivedAny = true;
+                            }
+                        }
+                    }
+                    function read() {
+                        reader.read().then(({ done, value }) => {
+                            if (done) {
+                                if (!receivedAny) {
+                                    window.typestream && window.typestream("[No response received from backend]\n");
+                                }
+                                return;
+                            }
+                            buffer += decoder.decode(value, { stream: true });
+                            processBuffer();
+                            read();
+                        }).catch(err => {
+                            if (abortSignal.aborted) {
+                                window.typestream && window.typestream("[Request cancelled, waiting for new answer stream]\n");
+                            } else {
+                                window.typestream && window.typestream("[Streaming error: " + err.message + "]\n");
+                            }
+                        });
+                    }
+                    read();
+                }).catch(err => {
+                    if (abortSignal.aborted) {
+                        window.typestream && window.typestream("[Request cancelled, waiting for new answer stream]\n");
+                    } else {
+                        window.typestream && window.typestream("[Request error: " + err.message + "]\n");
+                        window.typestream && window.typestream("[Try visiting " + baseUrl + "/test in a new tab to check server status]\n");
+                    }
                 });
-            }, 1200);
+            }
         });
     });
     // Auto-grow textarea

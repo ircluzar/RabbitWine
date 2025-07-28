@@ -163,6 +163,28 @@ html, body {
     justify-content: flex-start;
     padding-top: 32px;
 }
+.response-content {
+    opacity: 0;
+    transition: opacity 0.5s;
+    min-height: 40px;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 10+ */
+    font-size: 0.97em; /* slightly smaller */
+    font-weight: 300; /* lighter */
+    color: #d6d6e7; /* lighter gray */
+    background: none;
+    white-space: pre-line; /* interpret newlines */
+    line-height: 2.1; /* wider line spacing */
+}
+.response-content br {
+    line-height: 2.4;
+    margin-bottom: 0.7em;
+    display: block;
+    content: " ";
+}
 @keyframes fadeInUp {
     from {
         opacity: 0;
@@ -187,5 +209,30 @@ html, body {
     }
     .ask-title {
         font-size: 1.3rem;
+    }
+}
+@media (min-width: 601px) {
+    .ask-main {
+        max-width: 900px;
+        padding: 0 32px 48px 32px;
+    }
+    .ask-header {
+        width: 100%;
+        padding: 2.2rem 1.5rem 1.2rem 1.5rem;
+    }
+    .ask-row {
+        width: 100%;
+    }
+    #askInput {
+        font-size: 1.25rem;
+        padding: 20px 28px;
+    }
+    .response-area {
+        padding: 32px 28px;
+        font-size: 1.22em;
+    }
+    .response-content {
+        font-size: 1.08em;
+        line-height: 2.3;
     }
 }
