@@ -119,6 +119,20 @@ This document describes the design principles, UI standards, and aesthetic guide
 
 ---
 
+## Changelog (July 2025)
+
+- Scroll App: Enhanced drag-and-drop for completed tasks, unified vertical spacing, and improved expiration logic for archived tasks.
+- Modals: New reusable modal system for alerts, confirmations, and input dialogs across all apps.
+- Sticker Packs: All packs now require a `config.json` for configuration; legacy formats deprecated.
+- Performance: Faster load times and smoother UI transitions.
+- Accessibility: Improved keyboard navigation and focus management in modals and controls.
+- Mobile: More responsive layouts and touch-friendly controls.
+- UI: Modernized panels and layouts using CSS Grid and flexbox.
+
+See the README for a summary of features and recent changes.
+
+---
+
 ## Deprecated/Removed Features
 
 - No longer uses legacy sticker pack formats; all packs require a `config.json`

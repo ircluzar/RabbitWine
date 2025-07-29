@@ -1,0 +1,55 @@
+/* realities.css - Camera app styles, extends ask.css and mainmenu.css aesthetics */
+:root {
+    --bg-primary: #1a1626;
+    --bg-secondary: #2d2738;
+    --bg-accent: #3a3447;
+    --text-primary: #e2e2e2;
+    --text-accent: #a0a0a0;
+    --accent-purple: #ccbcfc;
+    --accent-hover: #b8a8f8;
+    --border-color: #444;
+    --glow-color: rgba(204, 188, 252, 0.3);
+}
+html, body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    min-width: 100vw;
+    overflow: hidden !important;
+}
+.background-animation {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+.realities-main {
+    z-index: 2;
+}
+.camera-card {
+    backdrop-filter: blur(8px);
+    animation: fadeInUp 1s ease-out 0.2s both;
+}
+.camera-btn {
+    box-shadow: 0 2px 8px var(--glow-color);
+    filter: drop-shadow(0 0 2px #fff);
+}
+.gallery img {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.gallery img:hover {
+    transform: scale(1.08);
+    box-shadow: 0 8px 32px rgba(204, 188, 252, 0.18);
+    border-color: var(--accent-purple);
+}
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

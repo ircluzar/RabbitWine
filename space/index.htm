@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space – Memory Manager</title>
+    <link rel="stylesheet" href="../mainmenu.css">
+    <link rel="stylesheet" href="../modals.css">
+    <link rel="stylesheet" href="space.css">
+    <link rel="icon" type="image/png" href="../favicon.png">
+    <script src="../memory.js"></script>
+    <script src="../modals.js"></script>
+    <script src="../stars.js"></script>
+    <!-- CDN for JSONEditor (for better object editing) -->
+    <link href="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.js"></script>
+
+</head>
+<body>
+    <!-- Removed background-animation to prevent layout conflict with stars.js -->
+    <div class="background-animation" id="backgroundAnimation"></div>
+    <div class="space-container">
+        <div class="space-header">
+            <span class="space-title">Space <span style="font-size:1.1rem;font-weight:400;color:var(--accent-purple)">– Memory Manager</span></span>
+            <div class="space-header-buttons">
+                <button class="space-download-btn" id="downloadDbBtn">Download DB</button>
+                <button class="space-reset-btn" id="resetAllBtn">Reset All</button>
+            </div>
+        </div>
+        <div class="space-meta" id="metaReport"></div>
+        <div class="space-ns-list" id="namespaceList"></div>
+        <div class="space-add-entry">
+            <button id="addEntryBtn" style="display:none;">+ Add Entry</button>
+        </div>
+        <div class="table-container">
+            <table class="space-entries-table" id="entriesTable" style="display:none;">
+                <thead>
+                    <tr><th>Key</th><th>Type</th><th>Value</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="noEntriesMsg" style="display:none;color:var(--text-accent);text-align:center;margin:2em 0;">No entries in this namespace.</div>
+    </div>
+    <script>
+    // --- UI State ---
+    let selectedNS = null;
+    let editor = null;
+
+    // --- Base Workflow: Ensure at least one namespace exists ---
+    function ensureBaseNamespace() {
+        const nsList = memory.listNamespaces();
+        if (!nsList.length) {
+            // Create 'Space' namespace and register 'Created' = true
+            memory.write('Space', 'Created', true);
+            // Update metadata after creation
+            updateMetaReport();
+        }
+    }
+
+    function updateMetaReport() {
+        const meta = memory.getMetadata();
+        let html = `<b>Last Access:</b> ${meta.lastAccess ? new Date(meta.lastAccess).toLocaleString() : '–'}<br>`;
+        html += `<b>Last Write:</b> ${meta.lastWrite ? new Date(meta.lastWrite).toLocaleString() : '–'}<br>`;
+        html += `<b>Namespaces:</b> ${memory.listNamespaces().length}`;
+        document.getElementById('metaReport').innerHTML = html;
+    }
+
+    function renderNamespaces() {
+        const nsList = memory.listNamespaces();
+        const nsDiv = document.getElementById('namespaceList');
+        nsDiv.innerHTML = '';
+        if (!nsList.length) {
+            nsDiv.innerHTML = '<span style="color:var(--text-accent)">No namespaces found.</span>';
+            document.getElementById('addEntryBtn').style.display = 'none';
+            document.querySelector('.table-container').style.display = 'none';
+            document.getElementById('noEntriesMsg').style.display = 'block';
+            return;
+        }
+        nsList.forEach(ns => {
+            const btn = document.createElement('button');
+            btn.className = 'space-ns-btn' + (selectedNS === ns ? ' selected' : '');
+            btn.textContent = ns;
+            btn.onclick = () => { selectedNS = ns; renderNamespaces(); renderEntries(); };
+            nsDiv.appendChild(btn);
+        });
+        document.getElementById('addEntryBtn').style.display = selectedNS ? '' : 'none';
+    }
+
+    function renderEntries() {
+        const entriesTable = document.getElementById('entriesTable');
+        if (!selectedNS) {
+            document.querySelector('.table-container').style.display = 'none';
+            entriesTable.style.display = 'none';
+            document.getElementById('noEntriesMsg').style.display = 'none';
+            return;
+        }
+        const keys = memory.keys(selectedNS);
+        const tbody = entriesTable.querySelector('tbody');
+        tbody.innerHTML = '';
+        if (!keys.length) {
+            document.querySelector('.table-container').style.display = 'none';
+            entriesTable.style.display = 'none';
+            document.getElementById('noEntriesMsg').style.display = 'block';
+            return;
+        }
+        document.querySelector('.table-container').style.display = '';
+        entriesTable.style.display = '';
+        document.getElementById('noEntriesMsg').style.display = 'none';
+        keys.forEach(key => {
+            const tr = document.createElement('tr');
+            const val = memory.read(selectedNS, key);
+            let valStr, typeStr;
+            try {
+                if (val === null) {
+                    typeStr = 'null';
+                    valStr = 'null';
+                } else if (typeof val === 'boolean') {
+                    typeStr = 'bool';
+                    valStr = String(val);
+                } else if (typeof val === 'number') {
+                    typeStr = 'number';
+                    valStr = String(val);
+                } else if (typeof val === 'string') {
+                    typeStr = 'string';
+                    valStr = val;
+                } else if (typeof val === 'object') {
+                    typeStr = Array.isArray(val) ? 'array' : 'json';
+                    valStr = JSON.stringify(val, null, 2);
+                } else {
+                    typeStr = typeof val;
+                    valStr = String(val);
+                }
+            } catch { typeStr = 'unknown'; valStr = '[unserializable]'; }
+            tr.innerHTML = `<td>${key}</td><td>${typeStr}</td><td style="max-width:320px;white-space:pre-wrap;word-break:break-all;">${valStr.length > 120 ? valStr.slice(0,120)+'…' : valStr}</td><td class="space-entry-actions"></td>`;
+            const actions = tr.querySelector('.space-entry-actions');
+            // Edit
+            const editBtn = document.createElement('button');
+            editBtn.textContent = 'Edit';
+            editBtn.onclick = () => editEntry(key, val);
+            actions.appendChild(editBtn);
+            // Delete
+            const delBtn = document.createElement('button');
+            delBtn.textContent = 'Delete';
+            delBtn.onclick = () => deleteEntry(key);
+            actions.appendChild(delBtn);
+            tbody.appendChild(tr);
+        });
+    }
+
+    function editEntry(key, value) {
+        let container = document.createElement('div');
+        container.style = 'min-width:350px;max-width:550px;';
+        let isObjectOrArray = (value && typeof value === 'object');
+        let inputElem = null;
+        let getValue;
+        if (!isObjectOrArray) {
+            // Primitive: string, number, boolean, null
+            if (typeof value === 'string') {
+                inputElem = document.createElement('textarea');
+                inputElem.value = value;
+                inputElem.style = 'width:100%;height:120px;resize:vertical;';
+                container.appendChild(inputElem);
+                getValue = () => inputElem.value;
+            } else if (typeof value === 'number') {
+                // Styled number input with +/- buttons
+                let wrap = document.createElement('div');
+                wrap.style = 'display:flex;align-items:center;gap:8px;';
+                let minusBtn = document.createElement('button');
+                minusBtn.textContent = '-';
+                minusBtn.type = 'button';
+                minusBtn.className = 'space-number-btn';
+                inputElem = document.createElement('input');
+                inputElem.type = 'number';
+                inputElem.value = value;
+                inputElem.className = '';
+                inputElem.style = 'width:100%;';
+                let plusBtn = document.createElement('button');
+                plusBtn.textContent = '+';
+                plusBtn.type = 'button';
+                plusBtn.className = 'space-number-btn';
+                minusBtn.onclick = () => { inputElem.value = String(Number(inputElem.value||0)-1); };
+                plusBtn.onclick = () => { inputElem.value = String(Number(inputElem.value||0)+1); };
+                wrap.appendChild(minusBtn);
+                wrap.appendChild(inputElem);
+                wrap.appendChild(plusBtn);
+                container.appendChild(wrap);
+                getValue = () => {
+                    let n = Number(inputElem.value);
+                    if (isNaN(n)) throw new Error('Value must be a number');
+                    return n;
+                };
+            } else if (typeof value === 'boolean') {
+                // Styled radio buttons for bool
+                let wrap = document.createElement('div');
+                wrap.className = 'space-bool-radio-wrap';
+                wrap.style = 'display:flex;gap:24px;align-items:center;margin:8px 0;';
+                let trueLabel = document.createElement('label');
+                let trueRadio = document.createElement('input');
+                trueRadio.type = 'radio';
+                trueRadio.name = 'boolval';
+                trueRadio.value = 'true';
+                trueRadio.checked = value === true;
+                trueLabel.appendChild(trueRadio);
+                let trueSpan = document.createElement('span');
+                trueSpan.textContent = 'True';
+                trueLabel.appendChild(trueSpan);
+                let falseLabel = document.createElement('label');
+                let falseRadio = document.createElement('input');
+                falseRadio.type = 'radio';
+                falseRadio.name = 'boolval';
+                falseRadio.value = 'false';
+                falseRadio.checked = value === false;
+                falseLabel.appendChild(falseRadio);
+                let falseSpan = document.createElement('span');
+                falseSpan.textContent = 'False';
+                falseLabel.appendChild(falseSpan);
+                wrap.appendChild(trueLabel);
+                wrap.appendChild(falseLabel);
+                container.appendChild(wrap);
+                inputElem = [trueRadio, falseRadio];
+                getValue = () => {
+                    if (inputElem[0].checked) return true;
+                    if (inputElem[1].checked) return false;
+                    throw new Error('Select true or false');
+                };
+            } else if (value === null) {
+                inputElem = document.createElement('input');
+                inputElem.type = 'text';
+                inputElem.value = '';
+                inputElem.style = 'width:100%;';
+                container.appendChild(inputElem);
+                getValue = () => {
+                    let v = inputElem.value;
+                    if (v.trim() === '' || v.toLowerCase() === 'null') return null;
+                    return v;
+                };
+            } else {
+                inputElem = document.createElement('input');
+                inputElem.type = 'text';
+                inputElem.value = String(value);
+                inputElem.style = 'width:100%;';
+                container.appendChild(inputElem);
+                getValue = () => inputElem.value;
+            }
+        } else {
+            // Object or array: use JSONEditor
+            let editorDiv = document.createElement('div');
+            editorDiv.style = 'height:250px;';
+            container.appendChild(editorDiv);
+            if (editor) {
+                try { editor.destroy(); } catch (e) {}
+                editor = null;
+            }
+            let isTree = (value && typeof value === 'object');
+            let mode = isTree ? 'tree' : 'code';
+            editor = new JSONEditor(editorDiv, {
+                mode: mode,
+                modes: ['tree', 'code', 'text'],
+                mainMenuBar: true,
+                navigationBar: false,
+                statusBar: false,
+                search: true,
+                history: true,
+                onError: function (err) { 
+                    window.Modals.alert('Error: ' + err.toString()); 
+                }
+            });
+            editor.set(value);
+            getValue = () => editor.get();
+        }
+        window.Modals.open({
+            title: `Edit Entry: ${key}`,
+            content: container,
+            confirmText: 'Save',
+            cancelText: 'Cancel',
+            showCancel: true,
+            onConfirm: () => {
+                let newVal;
+                try {
+                    newVal = getValue();
+                } catch (e) {
+                    window.Modals.alert('Invalid value: ' + e.message);
+                    return false;
+                }
+                memory.write(selectedNS, key, newVal);
+                updateMetaReport();
+                renderEntries();
+            }
+        });
+    }
+
+    function deleteEntry(key) {
+        window.Modals.confirm(`Delete the following entry ? <b>${key}</b>`, 'Delete Entry', 'Delete', 'Cancel').then(ok => {
+            if (ok) {
+                memory.remove(selectedNS, key);
+                updateMetaReport();
+                renderEntries();
+            }
+        });
+    }
+
+    document.getElementById('addEntryBtn').onclick = function() {
+        let container = document.createElement('div');
+        container.style = 'min-width:350px;max-width:550px;';
+        let keyInput = document.createElement('input');
+        keyInput.type = 'text';
+        keyInput.placeholder = 'Enter key name...';
+        keyInput.style = 'width:100%;margin-bottom:16px;';
+        // Type selector
+        let typeSelect = document.createElement('select');
+        typeSelect.style = 'width:100%;margin-bottom:16px;';
+        ['string','number','bool','json','array'].forEach(t => {
+            let opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+            typeSelect.appendChild(opt);
+        });
+        container.appendChild(keyInput);
+        container.appendChild(typeSelect);
+        // Dynamic value input area
+        let valueArea = document.createElement('div');
+        container.appendChild(valueArea);
+        let jsonEditor = null;
+        let inputElem = null;
+        function renderValueInput(type) {
+            valueArea.innerHTML = '';
+            if (jsonEditor) { try { jsonEditor.destroy(); } catch(e){} jsonEditor = null; }
+        if (type === 'string') {
+                inputElem = document.createElement('textarea');
+                inputElem.style = 'width:100%;height:120px;resize:vertical;';
+                valueArea.appendChild(inputElem);
+            } else if (type === 'number') {
+                let wrap = document.createElement('div');
+                wrap.style = 'display:flex;align-items:center;gap:8px;';
+                inputElem = document.createElement('input');
+                inputElem.type = 'number';
+                inputElem.value = '0';
+                inputElem.style = 'width:100%;';
+                let minusBtn = document.createElement('button');
+                minusBtn.textContent = '-';
+                minusBtn.type = 'button';
+            minusBtn.className = 'space-number-btn';
+                let plusBtn = document.createElement('button');
+                plusBtn.textContent = '+';
+                plusBtn.type = 'button';
+            plusBtn.className = 'space-number-btn';
+                minusBtn.onclick = () => { inputElem.value = String(Number(inputElem.value||0)-1); };
+                plusBtn.onclick = () => { inputElem.value = String(Number(inputElem.value||0)+1); };
+                wrap.appendChild(minusBtn);
+                wrap.appendChild(inputElem);
+                wrap.appendChild(plusBtn);
+                valueArea.appendChild(wrap);
+            } else if (type === 'bool') {
+                let wrap = document.createElement('div');
+                wrap.style = 'display:flex;gap:24px;align-items:center;margin:8px 0;';
+                let trueLabel = document.createElement('label');
+                let trueRadio = document.createElement('input');
+                trueRadio.type = 'radio';
+                trueRadio.name = 'boolval';
+                trueRadio.value = 'true';
+                trueRadio.style = 'accent-color:var(--accent-purple);margin-right:6px;';
+                trueLabel.appendChild(trueRadio);
+                trueLabel.appendChild(document.createTextNode('True'));
+                let falseLabel = document.createElement('label');
+                let falseRadio = document.createElement('input');
+                falseRadio.type = 'radio';
+                falseRadio.name = 'boolval';
+                falseRadio.value = 'false';
+                falseRadio.style = 'accent-color:var(--accent-purple);margin-right:6px;';
+                falseLabel.appendChild(falseRadio);
+                falseLabel.appendChild(document.createTextNode('False'));
+                wrap.appendChild(trueLabel);
+                wrap.appendChild(falseLabel);
+                valueArea.appendChild(wrap);
+                inputElem = [trueRadio, falseRadio];
+            } else if (type === 'json') {
+                let editorDiv = document.createElement('div');
+                editorDiv.style = 'height:200px;';
+                valueArea.appendChild(editorDiv);
+                jsonEditor = new JSONEditor(editorDiv, {
+                    mode: 'tree',
+                    modes: ['tree', 'code', 'text'],
+                    mainMenuBar: true,
+                    navigationBar: false,
+                    statusBar: false,
+                    search: true,
+                    history: true,
+                    onError: function (err) { window.Modals.alert('Error: ' + err.toString()); }
+                });
+                jsonEditor.set({});
+            } else if (type === 'array') {
+                let editorDiv = document.createElement('div');
+                editorDiv.style = 'height:200px;';
+                valueArea.appendChild(editorDiv);
+                jsonEditor = new JSONEditor(editorDiv, {
+                    mode: 'tree',
+                    modes: ['tree', 'code', 'text'],
+                    mainMenuBar: true,
+                    navigationBar: false,
+                    statusBar: false,
+                    search: true,
+                    history: true,
+                    onError: function (err) { window.Modals.alert('Error: ' + err.toString()); }
+                });
+                jsonEditor.set([]);
+            }
+        }
+        renderValueInput(typeSelect.value);
+        typeSelect.onchange = () => renderValueInput(typeSelect.value);
+        window.Modals.open({
+            title: 'Add New Entry',
+            content: container,
+            confirmText: 'Add Entry',
+            cancelText: 'Cancel',
+            showCancel: true,
+            onConfirm: () => {
+                let key = keyInput.value.trim();
+                if (!key) { window.Modals.alert('Key name is required.'); return false; }
+                if (memory.read(selectedNS, key) !== undefined) { window.Modals.alert('A key with this name already exists.'); return false; }
+                let val;
+                let type = typeSelect.value;
+                try {
+                    if (type === 'string') {
+                        let v = inputElem.value;
+                        // Auto-detect JSON in string
+                        try { val = JSON.parse(v); type = 'json'; } catch { val = v; }
+                    } else if (type === 'number') {
+                        val = Number(inputElem.value);
+                        if (isNaN(val)) throw new Error('Value must be a number');
+                    } else if (type === 'bool') {
+                        val = inputElem[0].checked ? true : (inputElem[1].checked ? false : null);
+                        if (val === null) throw new Error('Select true or false');
+                    } else if (type === 'json') {
+                        val = jsonEditor.get();
+                    } else if (type === 'array') {
+                        val = jsonEditor.get();
+                    }
+                } catch (e) { window.Modals.alert('Invalid value: ' + e.message); return false; }
+                memory.write(selectedNS, key, val);
+                updateMetaReport();
+                renderEntries();
+            }
+        });
+        setTimeout(() => keyInput.focus(), 100);
+    };
+
+    document.getElementById('resetAllBtn').onclick = function() {
+        window.Modals.inputBox({
+            message: "Type 'bnnuy' to confirm reset of ALL memory. This cannot be undone.",
+            title: 'Reset All Memory',
+            confirmText: 'Reset',
+            cancelText: 'Cancel',
+            placeholder: 'Type bnnuy',
+            validate: undefined // Remove inline validation, handle after confirm
+        }).then(val => {
+            if (val === undefined || val === null) {
+                // User cancelled, do nothing
+                return;
+            }
+            if (val === 'bnnuy') {
+                memory.resetAll();
+                updateMetaReport();
+                renderNamespaces();
+                renderEntries();
+                window.Modals.alert('All memory has been reset.');
+            } else {
+                window.Modals.alert('bnnuy not typed correctly');
+            }
+        });
+    };
+
+    // Download DB button handler
+    document.getElementById('downloadDbBtn').onclick = function() {
+        let blob = memory.exportBlob ? memory.exportBlob() : null;
+        if (!blob) {
+            window.Modals.alert('Export not supported in this environment.');
+            return;
+        }
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        let timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        a.download = `memory-db-${timestamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    };
+
+    // Initial render
+    ensureBaseNamespace();
+    updateMetaReport();
+    renderNamespaces();
+    renderEntries();
+    </script>
+</body>
+</html>

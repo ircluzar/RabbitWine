@@ -1,0 +1,160 @@
+/*
+ * memory.js - Centralized Save Data System for Rabbitwine Apps
+ *
+ * Overview:
+ * This library provides a unified, namespaced storage system for all apps on the domain, allowing them to share and manage save data (blobs, objects, etc.) in a consistent way. Data is segmented by namespaces (one per app or feature), and each namespace tracks its own version number, incremented on every change. A global metadata namespace tracks last access and last write times for the entire system. Helper functions are provided for reading, writing, clearing, and resetting data, as well as updating and retrieving metadata.
+ *
+ * Key Features:
+ * - Namespaced storage: Each app or feature gets its own namespace, preventing data collisions.
+ * - Versioning: Each namespace has a version number that increments on every write.
+ * - Metadata: Global metadata (last access, last write) is tracked in a reserved namespace.
+ * - Helper functions: Easy read, write, clear, reset, and metadata update operations.
+ * - Uses localStorage for persistence, with JSON serialization.
+ *
+ * Usage Example:
+ *   memory.write('scroll', 'tasks', [...]);
+ *   const tasks = memory.read('scroll', 'tasks');
+ *   memory.clearNamespace('scroll');
+ *   memory.resetAll();
+ *   memory.updateMetadata();
+ *   const meta = memory.getMetadata();
+ */
+
+const MEMORY_PREFIX = 'memjs_';
+const META_NAMESPACE = '__meta__';
+
+const memory = {
+    // Read a value from a namespace (returns undefined if not found)
+    read(namespace, key) {
+        const ns = this._getNamespace(namespace);
+        return ns && key in ns.data ? ns.data[key] : undefined;
+    },
+
+    // Write a value to a namespace (increments version, updates metadata)
+    write(namespace, key, value) {
+        const ns = this._getNamespace(namespace, true);
+        ns.data[key] = value;
+        ns.version = (ns.version || 0) + 1;
+        this._saveNamespace(namespace, ns);
+        this.updateMetadata(true); // Mark as write operation
+    },
+
+    // Remove a key from a namespace (increments version)
+    remove(namespace, key) {
+        const ns = this._getNamespace(namespace);
+        if (ns && key in ns.data) {
+            delete ns.data[key];
+            ns.version = (ns.version || 0) + 1;
+            this._saveNamespace(namespace, ns);
+            this.updateMetadata(true); // Mark as write operation
+        }
+    },
+
+    // Get the current version number for a namespace
+    getVersion(namespace) {
+        const ns = this._getNamespace(namespace);
+        return ns ? ns.version || 0 : 0;
+    },
+
+    // Clear all data in a namespace (resets version)
+    clearNamespace(namespace) {
+        this._saveNamespace(namespace, {version: 0, data: {}});
+        this.updateMetadata(true); // Mark as write operation
+    },
+
+    // Reset all memory (all namespaces, including metadata)
+    resetAll() {
+        for (let k in localStorage) {
+            if (k.startsWith(MEMORY_PREFIX)) localStorage.removeItem(k);
+        }
+    },
+
+    // Get all keys in a namespace
+    keys(namespace) {
+        const ns = this._getNamespace(namespace);
+        return ns ? Object.keys(ns.data) : [];
+    },
+
+    // Get all namespaces currently in use
+    listNamespaces() {
+        const out = [];
+        for (let k in localStorage) {
+            if (k.startsWith(MEMORY_PREFIX) && k !== MEMORY_PREFIX + META_NAMESPACE) {
+                out.push(k.slice(MEMORY_PREFIX.length));
+            }
+        }
+        return out;
+    },
+
+    // --- Metadata ---
+    updateMetadata(isWrite = false) {
+        const now = Date.now();
+        let meta = this._getNamespace(META_NAMESPACE, true);
+        // Update lastAccess for all operations
+        meta.lastAccess = now;
+        // Update lastWrite only for write operations
+        if (isWrite) {
+            meta.lastWrite = now;
+        }
+        this._saveNamespace(META_NAMESPACE, meta);
+    },
+
+    getMetadata() {
+        return this._getNamespace(META_NAMESPACE) || {};
+    },
+
+    // Export all memory data as a blob for download
+    exportBlob() {
+        const exportData = {};
+        for (let k in localStorage) {
+            if (k.startsWith(MEMORY_PREFIX)) {
+                const namespace = k.slice(MEMORY_PREFIX.length);
+                try {
+                    exportData[namespace] = JSON.parse(localStorage.getItem(k));
+                } catch (e) {
+                    exportData[namespace] = localStorage.getItem(k);
+                }
+            }
+        }
+        const jsonString = JSON.stringify(exportData, null, 2);
+        return new Blob([jsonString], { type: 'application/json' });
+    },
+
+    // --- Internal helpers ---
+    _getNamespace(namespace, createIfMissing = false) {
+        let raw = localStorage.getItem(MEMORY_PREFIX + namespace);
+        let ns;
+        try {
+            ns = raw ? JSON.parse(raw) : null;
+        } catch { ns = null; }
+        if (!ns && createIfMissing) {
+            ns = {version: 0, data: {}};
+        }
+        return ns;
+    },
+    _saveNamespace(namespace, ns) {
+        localStorage.setItem(MEMORY_PREFIX + namespace, JSON.stringify(ns));
+    }
+};
+
+// Export for global use
+window.memory = memory;
+
+// Patch for memory.read and memory.write to update metadata
+if (typeof memory === 'object') {
+  // Patch read
+  const origRead = memory.read;
+  memory.read = function(ns, key) {
+    const result = origRead.apply(this, arguments);
+    this.updateMetadata(false); // Update lastAccess only
+    return result;
+  };
+  
+  // Patch write
+  const origWrite = memory.write;
+  memory.write = function(ns, key, value) {
+    const result = origWrite.apply(this, arguments);
+    // No need to call updateMetadata here since write() already calls it with isWrite=true
+    return result;
+  };
+}

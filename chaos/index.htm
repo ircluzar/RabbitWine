@@ -239,7 +239,7 @@
         const c = document.getElementById('c');
         const ctx = c.getContext('2d');
         const bd = document.getElementById('bd');
-        let sel = 256, iv = null, auto = false, fc = [], lc = [], useMax = false, useFix = false, ae = [];
+        let sel = 256, pendingSel = 256, iv = null, auto = false, fc = [], lc = [], useMax = false, useFix = false, ae = [];
         // Undo/Redo stacks
         let undoStack = [], redoStack = [], maxHistory = 10;
         // Expanded effects list (50+)
@@ -277,13 +277,14 @@
             } catch (e) {}
         }
 
-        // Restore canvas from a dataURL
-        function restoreState(dataURL) {
+        // Restore canvas from a dataURL, with optional callback after draw
+        function restoreState(dataURL, callback) {
             let img = new window.Image();
             img.onload = function() {
                 ctx.clearRect(0, 0, c.width, c.height);
                 ctx.drawImage(img, 0, 0, c.width, c.height);
                 updateHistoryQueue();
+                if (typeof callback === 'function') callback();
             };
             img.src = dataURL;
         }
@@ -366,7 +367,9 @@
 
         // Enhanced gradient generator
         const addGradient = (skip = false) => {
-            saveState();
+            // Save state ONLY AFTER generating a new layer, so only the new state is added
+            // ...existing code for generating the new layer...
+            setTimeout(() => saveState(), 0); // Save the new state after the layer is applied
 
             // --- Use selected shape/gradient type ---
             if (!as.length) return; // nothing selected
@@ -1370,6 +1373,7 @@
         };
         
         const createCanvas = () => {
+            sel = pendingSel;
             c.width = sel;
             c.height = sel;
             init();
@@ -1414,17 +1418,79 @@
         
         // Event listeners
         document.querySelectorAll('.resolution-option').forEach(opt => {
-            opt.addEventListener('click', () => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent event bubbling to parent elements
                 document.querySelector('.resolution-option.selected').classList.remove('selected');
                 opt.classList.add('selected');
-                sel = parseInt(opt.dataset.size);
+                pendingSel = parseInt(opt.dataset.size);
             });
         });
         
         document.getElementById('cb').addEventListener('click', createCanvas);
-        document.getElementById('mb').addEventListener('click', () => addGradient());
-        // Allow clicking the canvas to add a new layer
-        document.getElementById('c').addEventListener('click', () => addGradient());
+        // --- Undo/Redo/Retry Layer Logic and Retry Button Integration ---
+        // Patch addGradient to always save state BEFORE adding a new layer, unless retrying
+
+        let retrying = false;
+        if (typeof addGradient === 'function' && !addGradient.__patchedForUndo) {
+            const origAddGradient = addGradient;
+            function patchedAddGradient(...args) {
+                if (!retrying && typeof saveState === 'function') saveState();
+                return origAddGradient.apply(this, args);
+            }
+            patchedAddGradient.__patchedForUndo = true;
+            window.addGradient = patchedAddGradient;
+        }
+        // Add Layer button
+        document.getElementById('mb').removeEventListener('click', addGradient);
+        document.getElementById('mb').addEventListener('click', addGradient);
+        // Canvas click
+        document.getElementById('c').removeEventListener('click', addGradient);
+        document.getElementById('c').addEventListener('click', addGradient);
+
+        // --- Add Retry Layer Button ---
+        let retryBtn = document.getElementById('retryb');
+        const addLayerBtn = document.getElementById('mb');
+        if (!retryBtn && addLayerBtn) {
+            retryBtn = document.createElement('button');
+            retryBtn.id = 'retryb';
+            retryBtn.className = 'btn small';
+            retryBtn.textContent = '🔁 Retry Layer';
+            addLayerBtn.parentNode.insertBefore(retryBtn, addLayerBtn.nextSibling);
+        }
+        // Retry logic: Undo last layer, then add a new one, but do NOT stack retries in undo pile
+        if (retryBtn) {
+            retryBtn.addEventListener('click', () => {
+                if (typeof undoStack === 'undefined' || typeof restoreState !== 'function' || typeof addGradient !== 'function') return;
+                if (undoStack.length <= 1) return; // Don't allow retry if only initial state
+                retrying = true;
+                // Pop the last state (current layer)
+                const lastState = undoStack.pop();
+                // Restore to previous state (now top of stack)
+                const prevState = undoStack[undoStack.length - 1];
+                if (prevState) {
+                    restoreState(prevState, () => {
+                        // Add a new layer (will push new state)
+                        addGradient();
+                        retrying = false;
+                        // Clear redo stack, as with normal new actions
+                        redoStack = [];
+                        updateHistoryQueue();
+                    });
+                } else {
+                    retrying = false;
+                }
+            });
+        }
+        // Patch saveState to skip saving if retrying
+        if (typeof saveState === 'function' && !saveState.__patchedForRetry) {
+            const origSaveState = saveState;
+            function patchedSaveState(...args) {
+                if (retrying) return;
+                return origSaveState.apply(this, args);
+            }
+            patchedSaveState.__patchedForRetry = true;
+            window.saveState = patchedSaveState;
+        }
         document.getElementById('ab').addEventListener('click', toggleAuto);
         document.getElementById('db').addEventListener('click', download);
         // Reset button with confirmation
@@ -1700,15 +1766,6 @@ document.getElementById('st-none').addEventListener('click', () => {
             // Save state before randomizing
             saveState();
             updateProgress(5);
-            await delay(10);
-            
-            // Randomize resolution
-            const resOptions = Array.from(document.querySelectorAll('.resolution-option'));
-            const randRes = resOptions[Math.floor(Math.random() * resOptions.length)];
-            resOptions.forEach(opt => opt.classList.remove('selected'));
-            randRes.classList.add('selected');
-            sel = parseInt(randRes.dataset.size);
-            updateProgress(10);
             await delay(10);
 
             // Set speed to default 420ms and update display
