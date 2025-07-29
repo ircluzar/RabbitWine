@@ -24,6 +24,70 @@ const MEMORY_PREFIX = 'memjs_';
 const META_NAMESPACE = '__meta__';
 
 const memory = {
+    // Helper to infer MIME type from file extension
+    _inferMimeType(filename) {
+        if (!filename) return 'application/octet-stream';
+        const ext = filename.split('.').pop().toLowerCase();
+        const mimeMap = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'svg': 'image/svg+xml',
+            'bmp': 'image/bmp',
+            'ico': 'image/x-icon',
+            'pdf': 'application/pdf',
+            'txt': 'text/plain',
+            'json': 'application/json',
+            'xml': 'application/xml',
+            'html': 'text/html',
+            'css': 'text/css',
+            'js': 'application/javascript',
+            'mp3': 'audio/mpeg',
+            'mp4': 'video/mp4',
+            'avi': 'video/x-msvideo',
+            'mov': 'video/quicktime',
+            'wav': 'audio/wav',
+            'zip': 'application/zip',
+            'rar': 'application/x-rar-compressed',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls': 'application/vnd.ms-excel',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        };
+        return mimeMap[ext] || 'application/octet-stream';
+    },
+
+    // Write a Blob (any file/data) to a namespace (base64-encoded)
+    async writeBlob(namespace, key, blob, filename) {
+        // Convert Blob to base64 string
+        const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+        this.write(namespace, key, base64);
+        // Store file metadata (filename and size)
+        this.write(namespace, key + '_filemeta', {
+            name: filename || (blob.name || 'unnamed'),
+            size: blob.size
+        });
+    },
+
+    // Read a Blob from a namespace (returns Blob or undefined)
+    readBlob(namespace, key, mimeType = 'application/octet-stream') {
+        const base64 = this.read(namespace, key);
+        if (!base64) return undefined;
+        // Convert base64 string back to Blob
+        const byteString = atob(base64);
+        const byteArray = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+            byteArray[i] = byteString.charCodeAt(i);
+        }
+        return new Blob([byteArray], { type: mimeType });
+    },
     // Read a value from a namespace (returns undefined if not found)
     read(namespace, key) {
         const ns = this._getNamespace(namespace);
@@ -149,12 +213,27 @@ if (typeof memory === 'object') {
     this.updateMetadata(false); // Update lastAccess only
     return result;
   };
-  
+
   // Patch write
   const origWrite = memory.write;
   memory.write = function(ns, key, value) {
     const result = origWrite.apply(this, arguments);
     // No need to call updateMetadata here since write() already calls it with isWrite=true
+    return result;
+  };
+
+  // Patch writeBlob to update metadata
+  const origWriteBlob = memory.writeBlob;
+  memory.writeBlob = async function(ns, key, blob) {
+    await origWriteBlob.apply(this, arguments);
+    // writeBlob calls write, which already updates metadata
+  };
+
+  // Patch readBlob to update metadata
+  const origReadBlob = memory.readBlob;
+  memory.readBlob = function(ns, key, mimeType) {
+    const result = origReadBlob.apply(this, arguments);
+    this.updateMetadata(false); // Update lastAccess only
     return result;
   };
 }

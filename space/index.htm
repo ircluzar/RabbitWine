@@ -108,42 +108,62 @@
         entriesTable.style.display = '';
         document.getElementById('noEntriesMsg').style.display = 'none';
         keys.forEach(key => {
+            // Skip displaying _filemeta keys
+            if (key.endsWith('_filemeta')) return;
             const tr = document.createElement('tr');
-            const val = memory.read(selectedNS, key);
-            let valStr, typeStr;
-            try {
-                if (val === null) {
-                    typeStr = 'null';
-                    valStr = 'null';
-                } else if (typeof val === 'boolean') {
-                    typeStr = 'bool';
-                    valStr = String(val);
-                } else if (typeof val === 'number') {
-                    typeStr = 'number';
-                    valStr = String(val);
-                } else if (typeof val === 'string') {
-                    typeStr = 'string';
-                    valStr = val;
-                } else if (typeof val === 'object') {
-                    typeStr = Array.isArray(val) ? 'array' : 'json';
-                    valStr = JSON.stringify(val, null, 2);
-                } else {
-                    typeStr = typeof val;
-                    valStr = String(val);
-                }
-            } catch { typeStr = 'unknown'; valStr = '[unserializable]'; }
-            tr.innerHTML = `<td>${key}</td><td>${typeStr}</td><td style="max-width:320px;white-space:pre-wrap;word-break:break-all;">${valStr.length > 120 ? valStr.slice(0,120)+'…' : valStr}</td><td class="space-entry-actions"></td>`;
-            const actions = tr.querySelector('.space-entry-actions');
+            let val = memory.read(selectedNS, key);
+            let typeStr, valStr;
+            let filemeta = memory.read(selectedNS, key + '_filemeta');
+            // Detect if this is a blob by presence of filemeta
+            if (filemeta) {
+                typeStr = 'file';
+                // Always show file name and size, no image preview
+                valStr = `<span style="font-size:0.9em;">${filemeta.name} (${(filemeta.size/1024).toFixed(1)} KB)</span>`;
+            } else {
+                try {
+                    if (val === null) {
+                        typeStr = 'null';
+                        valStr = 'null';
+                    } else if (typeof val === 'boolean') {
+                        typeStr = 'bool';
+                        valStr = String(val);
+                    } else if (typeof val === 'number') {
+                        typeStr = 'number';
+                        valStr = String(val);
+                    } else if (typeof val === 'string') {
+                        typeStr = 'string';
+                        valStr = val;
+                    } else if (typeof val === 'object') {
+                        typeStr = Array.isArray(val) ? 'array' : 'json';
+                        valStr = JSON.stringify(val, null, 2);
+                    } else {
+                        typeStr = typeof val;
+                        valStr = String(val);
+                    }
+                } catch { typeStr = 'unknown'; valStr = '[unserializable]'; }
+            }
+            // Create cells manually to ensure .space-entry-actions exists
+            let keyCell = tr.insertCell();
+            keyCell.textContent = key;
+            let typeCell = tr.insertCell();
+            typeCell.textContent = typeStr;
+            let valueCell = tr.insertCell();
+            valueCell.style.maxWidth = '320px';
+            valueCell.style.whiteSpace = 'pre-wrap';
+            valueCell.style.wordBreak = 'break-all';
+            valueCell.innerHTML = valStr && valStr.length > 120 ? valStr.slice(0,120)+'…' : valStr;
+            let actionsCell = tr.insertCell();
+            actionsCell.className = 'space-entry-actions';
             // Edit
             const editBtn = document.createElement('button');
             editBtn.textContent = 'Edit';
             editBtn.onclick = () => editEntry(key, val);
-            actions.appendChild(editBtn);
+            actionsCell.appendChild(editBtn);
             // Delete
             const delBtn = document.createElement('button');
             delBtn.textContent = 'Delete';
             delBtn.onclick = () => deleteEntry(key);
-            actions.appendChild(delBtn);
+            actionsCell.appendChild(delBtn);
             tbody.appendChild(tr);
         });
     }
@@ -154,8 +174,46 @@
         let isObjectOrArray = (value && typeof value === 'object');
         let inputElem = null;
         let getValue;
-        if (!isObjectOrArray) {
-            // Primitive: string, number, boolean, null
+        let filemeta = memory.read(selectedNS, key + '_filemeta');
+        if (filemeta) {
+            let infoDiv = document.createElement('div');
+            infoDiv.style = 'margin-bottom:12px;';
+            infoDiv.innerHTML = `<b>File:</b> ${filemeta.name} <span style='font-size:0.9em;'>(${(filemeta.size/1024).toFixed(1)} KB)</span>`;
+            container.appendChild(infoDiv);
+            let downloadBtn = document.createElement('button');
+            downloadBtn.textContent = 'Download File';
+            downloadBtn.style = 'margin-bottom:12px;';
+            downloadBtn.onclick = async function() {
+                let base64 = memory.read(selectedNS, key);
+                if (!base64) {
+                    window.Modals.alert('File data not found.');
+                    return;
+                }
+                function base64ToBlob(base64, mimeType) {
+                    const byteString = atob(base64);
+                    const byteArray = new Uint8Array(byteString.length);
+                    for (let i = 0; i < byteString.length; i++) {
+                        byteArray[i] = byteString.charCodeAt(i);
+                    }
+                    return new Blob([byteArray], { type: mimeType });
+                }
+                let mimeType = memory._inferMimeType(filemeta.name);
+                let blob = base64ToBlob(base64, mimeType);
+                let url = URL.createObjectURL(blob);
+                let a = document.createElement('a');
+                a.href = url;
+                a.download = filemeta.name;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            };
+            container.appendChild(downloadBtn);
+            inputElem = null;
+            getValue = undefined;
+        } else if (!isObjectOrArray) {
             if (typeof value === 'string') {
                 inputElem = document.createElement('textarea');
                 inputElem.value = value;
@@ -163,7 +221,6 @@
                 container.appendChild(inputElem);
                 getValue = () => inputElem.value;
             } else if (typeof value === 'number') {
-                // Styled number input with +/- buttons
                 let wrap = document.createElement('div');
                 wrap.style = 'display:flex;align-items:center;gap:8px;';
                 let minusBtn = document.createElement('button');
@@ -191,7 +248,6 @@
                     return n;
                 };
             } else if (typeof value === 'boolean') {
-                // Styled radio buttons for bool
                 let wrap = document.createElement('div');
                 wrap.className = 'space-bool-radio-wrap';
                 wrap.style = 'display:flex;gap:24px;align-items:center;margin:8px 0;';
@@ -244,7 +300,6 @@
                 getValue = () => inputElem.value;
             }
         } else {
-            // Object or array: use JSONEditor
             let editorDiv = document.createElement('div');
             editorDiv.style = 'height:250px;';
             container.appendChild(editorDiv);
@@ -294,6 +349,11 @@
         window.Modals.confirm(`Delete the following entry ? <b>${key}</b>`, 'Delete Entry', 'Delete', 'Cancel').then(ok => {
             if (ok) {
                 memory.remove(selectedNS, key);
+                // Also remove file metadata if it exists
+                let filemeta = memory.read(selectedNS, key + '_filemeta');
+                if (filemeta) {
+                    memory.remove(selectedNS, key + '_filemeta');
+                }
                 updateMetaReport();
                 renderEntries();
             }
@@ -310,7 +370,7 @@
         // Type selector
         let typeSelect = document.createElement('select');
         typeSelect.style = 'width:100%;margin-bottom:16px;';
-        ['string','number','bool','json','array'].forEach(t => {
+        ['string','number','bool','json','array','file'].forEach(t => {
             let opt = document.createElement('option');
             opt.value = t;
             opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
@@ -323,10 +383,11 @@
         container.appendChild(valueArea);
         let jsonEditor = null;
         let inputElem = null;
+        let fileElem = null;
         function renderValueInput(type) {
             valueArea.innerHTML = '';
             if (jsonEditor) { try { jsonEditor.destroy(); } catch(e){} jsonEditor = null; }
-        if (type === 'string') {
+            if (type === 'string') {
                 inputElem = document.createElement('textarea');
                 inputElem.style = 'width:100%;height:120px;resize:vertical;';
                 valueArea.appendChild(inputElem);
@@ -340,11 +401,11 @@
                 let minusBtn = document.createElement('button');
                 minusBtn.textContent = '-';
                 minusBtn.type = 'button';
-            minusBtn.className = 'space-number-btn';
+                minusBtn.className = 'space-number-btn';
                 let plusBtn = document.createElement('button');
                 plusBtn.textContent = '+';
                 plusBtn.type = 'button';
-            plusBtn.className = 'space-number-btn';
+                plusBtn.className = 'space-number-btn';
                 minusBtn.onclick = () => { inputElem.value = String(Number(inputElem.value||0)-1); };
                 plusBtn.onclick = () => { inputElem.value = String(Number(inputElem.value||0)+1); };
                 wrap.appendChild(minusBtn);
@@ -379,13 +440,6 @@
                 editorDiv.style = 'height:200px;';
                 valueArea.appendChild(editorDiv);
                 jsonEditor = new JSONEditor(editorDiv, {
-                    mode: 'tree',
-                    modes: ['tree', 'code', 'text'],
-                    mainMenuBar: true,
-                    navigationBar: false,
-                    statusBar: false,
-                    search: true,
-                    history: true,
                     onError: function (err) { window.Modals.alert('Error: ' + err.toString()); }
                 });
                 jsonEditor.set({});
@@ -394,16 +448,14 @@
                 editorDiv.style = 'height:200px;';
                 valueArea.appendChild(editorDiv);
                 jsonEditor = new JSONEditor(editorDiv, {
-                    mode: 'tree',
-                    modes: ['tree', 'code', 'text'],
-                    mainMenuBar: true,
-                    navigationBar: false,
-                    statusBar: false,
-                    search: true,
-                    history: true,
                     onError: function (err) { window.Modals.alert('Error: ' + err.toString()); }
                 });
                 jsonEditor.set([]);
+            } else if (type === 'file') {
+                fileElem = document.createElement('input');
+                fileElem.type = 'file';
+                fileElem.style = 'width:100%;margin-bottom:8px;';
+                valueArea.appendChild(fileElem);
             }
         }
         renderValueInput(typeSelect.value);
@@ -414,30 +466,64 @@
             confirmText: 'Add Entry',
             cancelText: 'Cancel',
             showCancel: true,
-            onConfirm: () => {
-                let key = keyInput.value.trim();
-                if (!key) { window.Modals.alert('Key name is required.'); return false; }
-                if (memory.read(selectedNS, key) !== undefined) { window.Modals.alert('A key with this name already exists.'); return false; }
-                let val;
-                let type = typeSelect.value;
-                try {
-                    if (type === 'string') {
-                        let v = inputElem.value;
-                        // Auto-detect JSON in string
-                        try { val = JSON.parse(v); type = 'json'; } catch { val = v; }
-                    } else if (type === 'number') {
-                        val = Number(inputElem.value);
-                        if (isNaN(val)) throw new Error('Value must be a number');
-                    } else if (type === 'bool') {
-                        val = inputElem[0].checked ? true : (inputElem[1].checked ? false : null);
-                        if (val === null) throw new Error('Select true or false');
-                    } else if (type === 'json') {
-                        val = jsonEditor.get();
-                    } else if (type === 'array') {
-                        val = jsonEditor.get();
+            onConfirm: async () => {
+                const key = keyInput.value.trim();
+                if (!key) {
+                    window.Modals.alert('Key name required');
+                    return false;
+                }
+                const type = typeSelect.value;
+                let value;
+                if (type === 'string') {
+                    value = inputElem.value;
+                    memory.write(selectedNS, key, value);
+                } else if (type === 'number') {
+                    value = Number(inputElem.value);
+                    if (isNaN(value)) {
+                        window.Modals.alert('Value must be a number');
+                        return false;
                     }
-                } catch (e) { window.Modals.alert('Invalid value: ' + e.message); return false; }
-                memory.write(selectedNS, key, val);
+                    memory.write(selectedNS, key, value);
+                } else if (type === 'bool') {
+                    if (inputElem[0].checked) value = true;
+                    else if (inputElem[1].checked) value = false;
+                    else {
+                        window.Modals.alert('Select true or false');
+                        return false;
+                    }
+                    memory.write(selectedNS, key, value);
+                } else if (type === 'json') {
+                    try {
+                        value = jsonEditor.get();
+                    } catch (e) {
+                        window.Modals.alert('Invalid JSON');
+                        return false;
+                    }
+                    memory.write(selectedNS, key, value);
+                } else if (type === 'array') {
+                    try {
+                        value = jsonEditor.get();
+                        if (!Array.isArray(value)) throw new Error('Not an array');
+                    } catch (e) {
+                        window.Modals.alert('Invalid Array');
+                        return false;
+                    }
+                    memory.write(selectedNS, key, value);
+                } else if (type === 'file') {
+                    if (!fileElem.files || !fileElem.files[0]) {
+                        window.Modals.alert('Select a file');
+                        return false;
+                    }
+                    const file = fileElem.files[0];
+                    await memory.writeBlob(selectedNS, key, file);
+                    // Store file metadata with inferred MIME type for display
+                    const inferredType = memory._inferMimeType(file.name);
+                    memory.write(selectedNS, key + '_filemeta', {
+                        name: file.name,
+                        type: inferredType, // Use inferred type instead of file.type
+                        size: file.size
+                    });
+                }
                 updateMetaReport();
                 renderEntries();
             }
