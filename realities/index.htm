@@ -245,16 +245,26 @@
         }
         
         .gallery img {
-            width: calc((100vw - 28px) / 3) !important;
-            height: calc(((100vw - 28px) / 3) * 0.75) !important;
-            min-width: 75px !important;
-            min-height: 56px !important;
+            width: 100%;
             max-width: 105px !important;
-            max-height: 78px !important;
+            aspect-ratio: 4/3 !important;
+            height: auto !important;
+            min-width: 75px !important;
+            object-fit: cover;
+        }
+        
+        .viewfinder {
+            width: 100%;
+            max-width: calc(100vw - 40px);
+            aspect-ratio: 4/3 !important;
+            height: auto !important;
+            margin-bottom: 0.75rem;
         }
         
         .modal-image {
             max-width: 90vw;
+            aspect-ratio: 4/3;
+            height: auto;
             max-height: 50vh;
         }
     }

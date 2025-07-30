@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="objects.css?v5">
     <!-- Stars background aesthetics -->
     <link rel="stylesheet" href="../stars.css">
+    <script src="../memory.js"></script>
     <script src="../miniPlayer.js"></script>
     <style>
         /* The CSS transition is no longer strictly necessary for animate(), but can remain for other properties */
@@ -143,6 +144,23 @@ $(document).ready(function() {
             return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+RW1wdHk8L3RleHQ+Cjwvc3ZnPg==';
         }
         const tier = getObjTier(obj.level);
+        
+        // For realities tier, check if a saved reality exists from the Realities app
+        if (tier.name === 'realities') {
+            const realityId = tier.img(obj.imageNumber); // This gives us Math.floor(imageNumber / 100)
+            try {
+                // Check if there's a saved reality in the Realities namespace
+                const savedReality = window.memory.readBlob('Realities', realityId.toString(), 'image/jpeg');
+                if (savedReality) {
+                    // Return a blob URL for the saved reality image
+                    return URL.createObjectURL(savedReality);
+                }
+            } catch (e) {
+                // If memory access fails, fall back to default GIF
+                //console.warn('Failed to load saved reality:', e);
+            }
+        }
+        
         return `${tier.name}/${tier.img(obj.imageNumber)}.gif`;
     }
     
@@ -156,8 +174,8 @@ $(document).ready(function() {
         } catch (e) { return false; }
     }
     
-    function saveGame() { try { localStorage.setItem(CK, JSON.stringify(st)); } catch(e) {} }
-    function loadGame() { try { const sv = JSON.parse(localStorage.getItem(CK)); return valSave(sv) ? sv : null; } catch(e) { return null; } }
+    function saveGame() { try { window.memory.write('Objects', 'save', st); } catch(e) {} }
+    function loadGame() { try { const sv = window.memory.read('Objects', 'save'); return valSave(sv) ? sv : null; } catch(e) { return null; } }
     
     function playAud(fld, n, vol, isWav, loop = false) {
         if (st.isMuted) return;
