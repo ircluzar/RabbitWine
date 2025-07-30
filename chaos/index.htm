@@ -13,6 +13,7 @@
     <link rel="manifest" href="../manifest.json">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="../modals.css">
+    <script src="../memory.js"></script>
     <script src="../modals.js"></script>
     <style>
         .undo-redo-section {
@@ -77,21 +78,7 @@
 <body>
     <div class="background-animation" id="backgroundAnimation"></div>
     <div class="container">
-        <div id="s1" class="setup-screen" style="display: block;">
-            <h2>Select Canvas Resolution</h2>
-            <div class="resolution-grid">
-                <div class="resolution-option selected" data-size="256">256x256</div>
-                <div class="resolution-option" data-size="512">512x512</div>
-                <div class="resolution-option" data-size="1024">1024x1024</div>
-                <div class="resolution-option" data-size="2048">2048x2048</div>
-                <div class="resolution-option" data-size="4096">4096x4096</div>
-            </div>
-            <div style="display: flex; justify-content: center; margin-top: 1.2rem;">
-                <button id="cb" class="btn big-btn">Create Canvas</button>
-            </div>
-        </div>
-        
-        <div id="s2" class="main-screen" style="display: none;">
+        <div id="s2" class="main-screen" style="display: block;">
             <div class="button-row" style="margin-bottom: 1rem;">
                 <button id="randb" class="btn big-btn">🎲 Random Chaos</button>
                 <div id="progressContainer" class="progress-container">
@@ -111,15 +98,16 @@
             
             <canvas id="c"></canvas>
             <div class="button-row">
-                <button id="mb" class="btn">🎨 Apply a new Layer to Canvas</button>
+                <button id="mb" class="btn">🎨 Add new Layer</button>
                 <button id="ab" class="btn">🚀 Start Auto Mode</button>
                 <button id="db" class="btn small">💾 Download</button>
                 <button id="cbpb" class="btn small">📋 Copy to Clipboard</button>
                 <button id="rb" class="btn small danger">🔄 Restart</button>
+                <button id="toggleSettingsBtn" class="btn small">⚙️ Show Settings</button>
                 <button id="testb" class="btn small" style="display:none">🧪 Test Random</button>
             </div>
             
-            <div class="controls">
+            <div class="controls" id="settingsPanel" style="display: none;">
                 <div class="control-group">
                     <label class="control-label">Speed Control</label>
                     <div class="slider-container">
@@ -178,11 +166,11 @@
                 
                 <div class="control-group">
                     <label class="control-label">Gradient/Shape Types</label>
-                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
                         <button id="st-all" class="btn small">Select All</button>
+                        <button id="st-none" class="btn small">Select None</button>
                         <button id="st-shapes" class="btn small">All Shapes</button>
                         <button id="st-gradients" class="btn small">All Gradients</button>
-                        <button id="st-none" class="btn small">Select None</button>
                     </div>
                     <div id="sl" class="effects-list"></div>
                 </div>
@@ -225,9 +213,36 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            createFloatingElements();
-        });
+        document.addEventListener('DOMContentLoaded', async () => {
+    createFloatingElements();
+    // Always use 256x240 resolution
+    sel = 256;
+    c.width = 256;
+    c.height = 240;
+    init();
+    resizeCanvasElement();
+    // Initialize shapeTypes and 'as' before first layer
+    window.shapeTypes = [
+        'linear', 'radial', 'elliptical', 'conic', 'diamond', 'star', 'circle', 'rectangle', 'polygon', 'stripe',
+        'ring', 'spiral', 'checker', 'zigzag', 'wave', 'burst', 'blob', 'hex', 'triangle', 'kaleidoscope'
+    ];
+    window.as = [...window.shapeTypes];
+    
+    // Load settings from memory
+    const settingsLoaded = loadSettingsFromMemory();
+    
+    // Setup UI components
+    if (typeof setupShapes === 'function') setupShapes();
+    if (typeof setupEffects === 'function') setupEffects();
+    
+    // Try to load canvas from memory
+    const canvasLoaded = await loadCanvasFromMemory();
+    
+    // If no canvas was loaded from memory, apply first layer
+    if (!canvasLoaded) {
+        addGradient();
+    }
+});
 
         window.addEventListener('resize', () => {
             const container = document.getElementById('backgroundAnimation');
@@ -242,6 +257,137 @@
         let sel = 256, pendingSel = 256, iv = null, auto = false, fc = [], lc = [], useMax = false, useFix = false, ae = [];
         // Undo/Redo stacks
         let undoStack = [], redoStack = [], maxHistory = 10;
+
+        // Memory integration for Chaos app
+        const CHAOS_NAMESPACE = 'Chaos';
+
+        // Save current settings to memory
+        function saveSettingsToMemory() {
+            const settings = {
+                speed: document.getElementById('ss').value,
+                opacity: document.getElementById('os').value,
+                minSat: document.getElementById('ms').value,
+                maxSat: document.getElementById('xs').value,
+                maxColors: document.getElementById('mcs').value,
+                useMax: useMax,
+                useFix: useFix,
+                fixedColors: fc,
+                limitedColors: lc,
+                activeEffects: ae,
+                activeShapes: window.as || []
+            };
+            memory.write(CHAOS_NAMESPACE, 'settings_chaos', settings);
+        }
+
+        // Load settings from memory
+        function loadSettingsFromMemory() {
+            const settings = memory.read(CHAOS_NAMESPACE, 'settings_chaos');
+            if (!settings) return false;
+
+            // Apply settings to UI elements
+            if (settings.speed !== undefined) {
+                document.getElementById('ss').value = settings.speed;
+                document.getElementById('sv').textContent = settings.speed;
+            }
+            if (settings.opacity !== undefined) {
+                document.getElementById('os').value = settings.opacity;
+                document.getElementById('ov').textContent = settings.opacity;
+            }
+            if (settings.minSat !== undefined) {
+                document.getElementById('ms').value = settings.minSat;
+                document.getElementById('mv').textContent = settings.minSat;
+            }
+            if (settings.maxSat !== undefined) {
+                document.getElementById('xs').value = settings.maxSat;
+                document.getElementById('xv').textContent = settings.maxSat;
+            }
+            if (settings.maxColors !== undefined) {
+                document.getElementById('mcs').value = settings.maxColors;
+                document.getElementById('mcv').textContent = settings.maxColors;
+            }
+            
+            // Apply toggle states
+            if (settings.useMax !== undefined) {
+                useMax = settings.useMax;
+                document.getElementById('mt').classList.toggle('active', useMax);
+            }
+            if (settings.useFix !== undefined) {
+                useFix = settings.useFix;
+                document.getElementById('ft').classList.toggle('active', useFix);
+            }
+
+            // Restore color arrays
+            if (settings.fixedColors) fc = settings.fixedColors;
+            if (settings.limitedColors) lc = settings.limitedColors;
+            if (settings.activeEffects) ae = settings.activeEffects;
+            if (settings.activeShapes) window.as = settings.activeShapes;
+
+            // Update UI to reflect loaded settings
+            setTimeout(() => {
+                // Update effects checkboxes
+                if (settings.activeEffects) {
+                    const effectCheckboxes = document.querySelectorAll('.effect-checkbox[data-effect]');
+                    effectCheckboxes.forEach(cb => {
+                        const effect = cb.dataset.effect;
+                        cb.classList.toggle('checked', settings.activeEffects.includes(effect));
+                    });
+                }
+                
+                // Update shapes checkboxes
+                if (settings.activeShapes) {
+                    const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
+                    shapeCheckboxes.forEach(cb => {
+                        const shape = cb.dataset.shape;
+                        cb.classList.toggle('checked', settings.activeShapes.includes(shape));
+                    });
+                }
+                
+                // Update palette display
+                if (settings.fixedColors || settings.limitedColors) {
+                    updatePalette();
+                }
+            }, 100);
+
+            return true;
+        }
+
+        // Save current canvas as PNG to memory
+        async function saveCanvasToMemory() {
+            try {
+                const canvas = document.getElementById('c');
+                canvas.toBlob(async (blob) => {
+                    if (blob) {
+                        await memory.writeBlob(CHAOS_NAMESPACE, 'current_image', blob, 'chaos.png');
+                    }
+                }, 'image/png');
+            } catch (e) {
+                console.warn('Failed to save canvas to memory:', e);
+            }
+        }
+
+        // Load canvas from memory
+        async function loadCanvasFromMemory() {
+            try {
+                const imageBlob = memory.readBlob(CHAOS_NAMESPACE, 'current_image', 'image/png');
+                if (imageBlob) {
+                    const img = new Image();
+                    return new Promise((resolve) => {
+                        img.onload = () => {
+                            ctx.clearRect(0, 0, c.width, c.height);
+                            ctx.drawImage(img, 0, 0, c.width, c.height);
+                            // Add the restored image to the undo stack so we can return to it after edits
+                            saveState();
+                            resolve(true);
+                        };
+                        img.onerror = () => resolve(false);
+                        img.src = URL.createObjectURL(imageBlob);
+                    });
+                }
+            } catch (e) {
+                console.warn('Failed to load canvas from memory:', e);
+            }
+            return false;
+        }
         // Expanded effects list (50+)
         const fx = [
             // Standard blend modes
@@ -261,7 +407,10 @@
         ];
         // Resize canvas to fit container, keeping square aspect
         function resizeCanvasElement() {
-            c.style.width = '100%';
+            c.style.width = '';
+            c.style.height = '';
+            c.style.aspectRatio = '256 / 240';
+            c.style.maxWidth = '100%';
             c.style.height = 'auto';
         }
         const init = () => { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, c.width, c.height); };
@@ -284,6 +433,8 @@
                 ctx.clearRect(0, 0, c.width, c.height);
                 ctx.drawImage(img, 0, 0, c.width, c.height);
                 updateHistoryQueue();
+                // Save canvas to memory when state is restored
+                setTimeout(() => saveCanvasToMemory(), 10);
                 if (typeof callback === 'function') callback();
             };
             img.src = dataURL;
@@ -1269,6 +1420,9 @@
 
             ctx.restore();
             // No blend notification
+            
+            // Save canvas to memory after each layer
+            setTimeout(() => saveCanvasToMemory(), 10);
         };
         
         const genLimited = () => {
@@ -1340,7 +1494,7 @@
         
         const download = () => {
             const link = document.createElement('a');
-            link.download = `chaos-${sel}x${sel}-${Date.now()}.png`;
+            link.download = `chaos-${Date.now()}.png`;
             link.href = c.toDataURL();
             link.click();
             showNotification('Download started!');
@@ -1363,26 +1517,29 @@
         };
         
         const restart = () => {
-            if (auto) toggleAuto();
-            document.getElementById('s1').style.display = 'block';
-            document.getElementById('s2').style.display = 'none';
-            // Clear undo/redo stacks
-            undoStack = [];
-            redoStack = [];
-            updateHistoryQueue();
+    if (auto) toggleAuto();
+    // Clear undo/redo stacks
+    undoStack = [];
+    redoStack = [];
+    updateHistoryQueue();
+    // Reset to blank canvas, do NOT apply first layer
+    sel = 256;
+    c.width = 256;
+    c.height = 240;
+    init();
+    resizeCanvasElement();
         };
         
         const createCanvas = () => {
-            sel = pendingSel;
-            c.width = sel;
-            c.height = sel;
-            init();
-            resizeCanvasElement();
-            document.getElementById('s1').style.display = 'none';
-            document.getElementById('s2').style.display = 'block';
-            // Save initial blank state
-            undoStack = [];
-            redoStack = [];
+sel = 256;
+c.width = 256;
+c.height = 240;
+init();
+resizeCanvasElement();
+// Save initial blank state
+undoStack = [];
+redoStack = [];
+addGradient();
             saveState();
         };
         // Responsive resize
@@ -1412,21 +1569,14 @@
                     } else {
                         ae = ae.filter(e => e !== effect);
                     }
+                    
+                    // Save settings when effects are changed
+                    saveSettingsToMemory();
                 }
             });
         };
         
-        // Event listeners
-        document.querySelectorAll('.resolution-option').forEach(opt => {
-            opt.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent event bubbling to parent elements
-                document.querySelector('.resolution-option.selected').classList.remove('selected');
-                opt.classList.add('selected');
-                pendingSel = parseInt(opt.dataset.size);
-            });
-        });
-        
-        document.getElementById('cb').addEventListener('click', createCanvas);
+        // Event listeners for main screen only
         // --- Undo/Redo/Retry Layer Logic and Retry Button Integration ---
         // Patch addGradient to always save state BEFORE adding a new layer, unless retrying
 
@@ -1454,7 +1604,7 @@
             retryBtn = document.createElement('button');
             retryBtn.id = 'retryb';
             retryBtn.className = 'btn small';
-            retryBtn.textContent = '🔁 Retry Layer';
+            retryBtn.textContent = '🔁 Retry';
             addLayerBtn.parentNode.insertBefore(retryBtn, addLayerBtn.nextSibling);
         }
         // Retry logic: Undo last layer, then add a new one, but do NOT stack retries in undo pile
@@ -1500,6 +1650,21 @@
             });
         });
         document.getElementById('cbpb').addEventListener('click', copyToClipboard);
+        
+        // Toggle Settings button
+        document.getElementById('toggleSettingsBtn').addEventListener('click', () => {
+            const settingsPanel = document.getElementById('settingsPanel');
+            const toggleBtn = document.getElementById('toggleSettingsBtn');
+            
+            if (settingsPanel.style.display === 'none') {
+                settingsPanel.style.display = 'block';
+                toggleBtn.textContent = '⚙️ Hide Settings';
+            } else {
+                settingsPanel.style.display = 'none';
+                toggleBtn.textContent = '⚙️ Show Settings';
+            }
+        });
+        
         // Undo/Redo event listeners
         document.getElementById('undo').addEventListener('click', () => {
             if (undoStack.length > 1) {
@@ -1525,10 +1690,12 @@
         document.getElementById('ss').addEventListener('input', (e) => {
             document.getElementById('sv').textContent = e.target.value;
             updateSpeed();
+            saveSettingsToMemory();
         });
         
         document.getElementById('os').addEventListener('input', (e) => {
             document.getElementById('ov').textContent = e.target.value;
+            saveSettingsToMemory();
         });
         
         document.getElementById('ms').addEventListener('input', (e) => {
@@ -1541,6 +1708,7 @@
             document.getElementById('mv').textContent = val;
             if (useMax) genLimited();
             if (useFix) genFixed();
+            saveSettingsToMemory();
         });
         
         document.getElementById('xs').addEventListener('input', (e) => {
@@ -1553,12 +1721,14 @@
             document.getElementById('xv').textContent = val;
             if (useMax) genLimited();
             if (useFix) genFixed();
+            saveSettingsToMemory();
         });
         
         document.getElementById('mcs').addEventListener('input', (e) => {
             document.getElementById('mcv').textContent = e.target.value;
             if (useMax) genLimited();
             if (useFix) genFixed();
+            saveSettingsToMemory();
         });
         
         document.getElementById('mt').addEventListener('click', () => {
@@ -1568,12 +1738,14 @@
                 genLimited();
                 updatePalette();
             }
+            saveSettingsToMemory();
         });
         
         document.getElementById('ft').addEventListener('click', () => {
             useFix = !useFix;
             document.getElementById('ft').classList.toggle('active', useFix);
             if (useFix) genFixed();
+            saveSettingsToMemory();
         });
         
         document.getElementById('rdb').addEventListener('click', () => {
@@ -1582,6 +1754,7 @@
                 genLimited();
                 updatePalette();
             }
+            saveSettingsToMemory();
         });
         
         // Change 'Show Effects' button to 'Select All / Select None'
@@ -1601,6 +1774,7 @@
                 ae = Array.from(effectCheckboxes).map(cb => cb.dataset.effect);
                 btn.textContent = 'Select None';
             }
+            saveSettingsToMemory();
         });
 
 
@@ -1636,6 +1810,9 @@
                     const stBtn = document.getElementById('st');
                     const allShapesSelected = Array.from(document.querySelectorAll('.effect-checkbox[data-shape]')).every(cb2 => cb2.classList.contains('checked'));
                     stBtn.textContent = allShapesSelected ? 'Select None' : 'Select All';
+                    
+                    // Save settings when shapes are changed
+                    saveSettingsToMemory();
                 }
             });
         }
@@ -1656,6 +1833,7 @@ document.getElementById('st-all').addEventListener('click', () => {
     const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
     shapeCheckboxes.forEach(cb => cb.classList.add('checked'));
     as = Array.from(shapeCheckboxes).map(cb => cb.dataset.shape);
+    saveSettingsToMemory();
 });
 
 document.getElementById('st-shapes').addEventListener('click', () => {
@@ -1668,6 +1846,7 @@ document.getElementById('st-shapes').addEventListener('click', () => {
         }
     });
     as = shapeTypesList.slice();
+    saveSettingsToMemory();
 });
 
 document.getElementById('st-gradients').addEventListener('click', () => {
@@ -1680,12 +1859,14 @@ document.getElementById('st-gradients').addEventListener('click', () => {
         }
     });
     as = gradientTypesList.slice();
+    saveSettingsToMemory();
 });
 
 document.getElementById('st-none').addEventListener('click', () => {
     const shapeCheckboxes = document.querySelectorAll('.effect-checkbox[data-shape]');
     shapeCheckboxes.forEach(cb => cb.classList.remove('checked'));
     as = [];
+    saveSettingsToMemory();
 });
         
         // Initialize
@@ -1852,6 +2033,9 @@ document.getElementById('st-none').addEventListener('click', () => {
             await delay(10);
             // No notification needed for randomize
             updateProgress(100);
+            
+            // Save randomized settings to memory
+            saveSettingsToMemory();
             
             // Re-enable button
             setTimeout(() => {

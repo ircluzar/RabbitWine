@@ -10,7 +10,11 @@
     <link rel="stylesheet" href="../modals.css">
     <script src="../modals.js"></script>
     <script src="../miniPlayer.js"></script>
+    <script src="../memory.js"></script>
     <style>
+        body {
+            overflow-x: hidden; /* Prevent horizontal scrollbar */
+        }
         .layer-controls {
             display: flex;
             gap: 8px;
@@ -57,6 +61,10 @@
         .brush-shape-btn:hover {
             background: var(--button-hover);
         }
+        .btn.active {
+            background: var(--button-active);
+            border-color: var(--success-color);
+        }
         .color-picker-popup {
             position: fixed;
             top: 50%;
@@ -97,6 +105,188 @@
             border: 2px solid var(--success-color);
         }
         .hex-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            height: 40px;
+            box-sizing: border-box;
+        }
+        .palette-cog {
+            border: 2px dashed var(--border-color);
+            background: rgba(42, 36, 56, 0.6);
+            transition: all 0.2s;
+        }
+        .palette-cog:hover {
+            border-color: var(--success-color);
+            background: rgba(139, 92, 246, 0.1);
+        }
+        .preset-color.selected {
+            border: 3px solid #FF8C00 !important;
+            transform: scale(1.1);
+        }
+        .color-spectrum-modal {
+            max-width: 320px;
+            padding: 20px;
+        }
+        .spectrum-container {
+            position: relative;
+            width: 280px;
+            height: 200px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            cursor: crosshair;
+            border: 2px solid var(--border-color);
+        }
+        .spectrum-canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 6px;
+        }
+        .spectrum-cursor {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border: 2px solid white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        }
+        .spectrum-preview {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .spectrum-color-preview {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            border: 2px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .spectrum-hex-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: monospace;
+        }
+        .pick-color-btn {
+            padding: 8px 16px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 40px;
+            box-sizing: border-box;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .pick-color-btn:hover {
+            background: var(--button-hover);
+            border-color: var(--success-color);
+        }
+        @media (max-width: 480px) {
+            .color-spectrum-modal {
+                max-width: 95vw;
+                padding: 16px;
+            }
+            .spectrum-container {
+                width: 100%;
+                height: 180px;
+            }
+            .spectrum-preview {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .spectrum-color-preview {
+                width: 100%;
+                height: 40px;
+            }
+        }
+        .palette-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+        }
+        .palette-menu-btn {
+            padding: 12px 16px;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .palette-menu-btn:hover:not(.disabled) {
+            background: var(--button-hover);
+        }
+        .palette-menu-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .removable-palette-colors {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+        .removable-color {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .removable-color:hover {
+            border: 2px solid #dc3545;
+            transform: scale(0.9);
+        }
+        .removable-color::after {
+            content: '×';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .removable-color:hover::after {
+            opacity: 1;
+        }
+        .file-input {
             width: 100%;
             padding: 8px;
             background: var(--button-bg);
@@ -123,6 +313,103 @@
             font-size: 12px;
             color: var(--text-accent);
             margin-top: 4px;
+        }
+        .sticker-gallery {
+            background: rgba(42, 36, 56, 0.82);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            z-index: 2;
+            backdrop-filter: blur(8px) saturate(1.2);
+            -webkit-backdrop-filter: blur(8px) saturate(1.2);
+            box-shadow: 0 2px 8px rgba(204,188,252,0.07);
+        }
+        @media (max-width: 768px) {
+            .sticker-gallery {
+                padding: 16px;
+            }
+        }
+        .sticker-gallery-title {
+            font-size: 16px; /* Match the size of Color Palette label */
+            color: var(--text-primary); /* Match the color of Color Palette label */
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .sticker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            justify-content: center;
+            justify-items: center;
+        }
+        .sticker-item {
+            width: 150px;
+            height: 140px; /* 256x240 aspect ratio scaled down by factor of 1.7 */
+            object-fit: contain;
+            border-radius: 8px;
+            border: 1.5px solid var(--border-color);
+            background: #222;
+            box-shadow: 0 2px 8px rgba(204,188,252,0.07);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s ease-in-out;
+            image-rendering: pixelated;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .sticker-item.sticker-fade-in {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .sticker-item:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 16px rgba(204,188,252,0.15);
+        }
+        .modal-sticker {
+            max-width: 100%;
+            max-height: 60vh;
+            border-radius: 12px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 4px 24px rgba(204,188,252,0.13);
+            image-rendering: pixelated;
+        }
+        .modal-delete-btn {
+            background: linear-gradient(90deg, #dc3545 60%, #c82333 100%) !important;
+            color: white !important;
+            font-weight: 600 !important;
+            padding: 12px 24px !important;
+            border-radius: 8px !important;
+            font-size: 16px !important;
+            min-width: 120px !important;
+            transition: background 0.18s, transform 0.12s, box-shadow 0.18s !important;
+        }
+        .modal-delete-btn:hover, .modal-delete-btn:focus {
+            background: linear-gradient(90deg, #e74c5a 60%, #dc3545 100%) !important;
+            transform: translateY(-1px) scale(1.03) !important;
+            box-shadow: 0 4px 16px rgba(220, 53, 69, 0.3) !important;
+        }
+        .save-sticker-btn {
+            background: linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%) !important;
+            border: 1px solid #8b5cf6 !important;
+            color: white !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2) !important;
+            transition: all 0.2s ease !important;
+        }
+        .save-sticker-btn:hover {
+            background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%) !important;
+            transform: translateY(-1px) scale(1.02) !important;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
+        }
+        @media (max-width: 600px) {
+            .sticker-grid {
+                grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+                gap: 6px;
+            }
+            .sticker-item {
+                width: 85px;
+                height: 80px; /* 256x240 aspect ratio scaled down by factor of 3 */
+            }
         }
     </style>
 </head>
@@ -174,6 +461,8 @@
                                 <div class="undo-controls">
                                     <button class="btn" id="undoBtn" disabled>Undo</button>
                                     <button class="btn" id="redoBtn" disabled>Redo</button>
+                                    <span style="display:inline-block; width:12px;"></span>
+                                    <button class="btn" id="chaosBtn" title="Toggle Chaos Background">Chaos</button>
                                 </div>
                             </div>
                         </div>
@@ -189,10 +478,11 @@
         <div class="panel">
             <div class="footer">
                 <div class="footer-main">
-                    <button class="btn primary" id="dl">Download</button>
-                    <button class="btn" id="gifBtn">Gif</button>
-                    <button class="btn" id="clip">Copy to Clipboard</button>
-                    <button class="btn" id="clearBtn">Clear</button>
+                    <button class="btn primary" id="dl">📥 Png</button>
+                    <button class="btn" id="gifBtn">📥 Gif</button>
+                    <button class="btn save-sticker-btn" id="saveSticker">💾 Save Sticker</button>
+                    <button class="btn" id="clip">📋 Copy to Clipboard</button>
+                    <button class="btn" id="clearBtn">🗑️ Clear</button>
                 </div>
                 <div class="music-controls">
                     <button class="music-btn" id="musicMute">🔇</button>
@@ -200,6 +490,12 @@
                     <button class="music-btn" id="musicHigh">🔊</button>
                 </div>
             </div>
+        </div>
+        
+        <!-- Sticker Gallery -->
+        <div class="sticker-gallery">
+            <div class="sticker-gallery-title">Saved Stickers</div>
+            <div class="sticker-grid" id="stickerGallery"></div>
         </div>
     </div>
 
@@ -210,20 +506,35 @@
     <!-- gif.js library for GIF export (worker path set in code) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
     <script>
-        const W = 256, H = 240, MAX_COL = 16;
+        const W = 256, H = 240, MAX_COL = 21;
         const TRANS = [204, 188, 252];
         
         let pal = [[0,0,0], [255,255,255], TRANS];
         let selCol = 0, brushSz = 4, drawing = false;
-        let brushShape = 'square'; // 'square' or 'round'
+        let brushShape = 'round'; // 'square' or 'round'
         let currentLayer = 'fg'; // 'bg', 'mid', 'fg'
         let bgColor = [204, 188, 252]; // Background layer color
+        let chaosMode = false; // Whether chaos background is active
+        let chaosBackground = null; // Stores the chaos background image
         
         // Layer data - each layer has its own pixel data
         let layers = {
             mid: Array.from({length: H}, () => Array(W).fill(2)), // Midground
             fg: Array.from({length: H}, () => Array(W).fill(2))   // Foreground
         };
+        // --- Palette persistence ---
+        const PALETTE_NAMESPACE = 'Editor';
+        const PALETTE_KEY = 'custom_palette';
+        function loadPalette() {
+            const saved = memory.read(PALETTE_NAMESPACE, PALETTE_KEY);
+            if (saved && Array.isArray(saved) && saved.length > 0) {
+                pal = saved;
+            }
+        }
+        function savePalette() {
+            memory.write(PALETTE_NAMESPACE, PALETTE_KEY, pal);
+        }
+        loadPalette();
         
         let lastPos = null;
         let undoStack = [];
@@ -234,6 +545,10 @@
         const cvs = $('#cvs')[0];
         const ctx = cvs.getContext('2d');
         const bgMusic = $('#bgMusic')[0];
+
+        // Memory management constants for stickers
+        const STICKER_NAMESPACE = 'Editor';
+        const MAX_STICKERS = 40;
 
         // Preset colors for the color picker
         const presetColors = [
@@ -317,6 +632,443 @@
             if (hex.length === 3) hex = hex.split('').map(x=>x+x).join('');
             return [0,1,2].map(i=>parseInt(hex.substr(i*2,2),16));
         };
+
+        // Sticker management functions
+        function loadExistingStickers() {
+            const gallery = document.getElementById('stickerGallery');
+            gallery.innerHTML = '';
+            
+            const keys = memory.keys(STICKER_NAMESPACE);
+            const stickerKeys = keys.filter(key => key.startsWith('sticker_') && !key.endsWith('_filemeta'));
+            
+            // Sort by timestamp (newest first)
+            stickerKeys.sort((a, b) => {
+                const timestampA = parseInt(a.split('_')[1]);
+                const timestampB = parseInt(b.split('_')[1]);
+                return timestampB - timestampA;
+            });
+            
+            stickerKeys.forEach((key, index) => {
+                const dataUrl = memory.read(STICKER_NAMESPACE, key);
+                if (dataUrl) {
+                    const stickerId = key;
+                    const img = document.createElement('img');
+                    img.src = dataUrl;
+                    img.className = 'sticker-item';
+                    img.dataset.stickerId = stickerId;
+                    img.addEventListener('click', function() {
+                        openStickerModal(dataUrl, stickerId);
+                    });
+                    gallery.appendChild(img);
+                    
+                    // Staggered fade-in animation for existing stickers
+                    setTimeout(() => {
+                        img.classList.add('sticker-fade-in');
+                    }, index * 50 + 100);
+                }
+            });
+        }
+
+        function getNextStickerId() {
+            return 'sticker_' + Date.now();
+        }
+
+        function getStickerCount() {
+            const keys = memory.keys(STICKER_NAMESPACE);
+            return keys.filter(key => key.startsWith('sticker_') && !key.endsWith('_filemeta')).length;
+        }
+
+        function addStickerToGallery(dataUrl, stickerId) {
+            const gallery = document.getElementById('stickerGallery');
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = 'sticker-item';
+            img.dataset.stickerId = stickerId;
+            img.addEventListener('click', function() {
+                openStickerModal(dataUrl, stickerId);
+            });
+            gallery.prepend(img);
+            
+            // Trigger fade-in animation
+            setTimeout(() => {
+                img.classList.add('sticker-fade-in');
+            }, 50);
+        }
+
+        function saveCurrentDrawing() {
+            if (getStickerCount() >= MAX_STICKERS) {
+                showMaxStickersModal();
+                return;
+            }
+
+            const stickerId = getNextStickerId();
+            const filename = stickerId + '.gif';
+            
+            // Export as GIF and save to memory
+            if (typeof window.GIF !== 'function') {
+                hint('GIF export not available. Saving as PNG instead.');
+                // Fallback to PNG if GIF not available
+                const dataUrl = expImg().toDataURL('image/png');
+                memory.write(STICKER_NAMESPACE, stickerId, dataUrl);
+                memory.write(STICKER_NAMESPACE, stickerId + '_filemeta', {
+                    name: filename,
+                    timestamp: Date.now()
+                });
+                addStickerToGallery(dataUrl, stickerId);
+                hint('Sticker saved!');
+                return;
+            }
+
+            // Export as GIF
+            const exportCanvas = expImg();
+            
+            // Configure GIF settings based on chaos mode
+            const gifSettings = {
+                workers: 2,
+                quality: 1,
+                width: W,
+                height: H,
+                workerScript: 'gif.worker.js'
+            };
+            
+            // Only set transparency when NOT in chaos mode
+            if (!chaosMode) {
+                gifSettings.transparent = 0xff00ff; // Pure magenta
+            }
+            
+            const gif = new window.GIF(gifSettings);
+            
+            try {
+                gif.addFrame(exportCanvas, {copy: true, delay: 100});
+            } catch (e) {
+                hint('GIF export failed, saving as PNG: ' + e.message);
+                const dataUrl = expImg().toDataURL('image/png');
+                memory.write(STICKER_NAMESPACE, stickerId, dataUrl);
+                memory.write(STICKER_NAMESPACE, stickerId + '_filemeta', {
+                    name: filename,
+                    timestamp: Date.now()
+                });
+                addStickerToGallery(dataUrl, stickerId);
+                hint('Sticker saved as PNG!');
+                return;
+            }
+            
+            hint('Saving sticker...');
+            gif.on('finished', function(blob) {
+                if (!blob) {
+                    hint('Sticker save failed.');
+                    return;
+                }
+                
+                // Convert blob to data URL and save
+                const reader = new FileReader();
+                reader.onload = function() {
+                    const dataUrl = reader.result;
+                    memory.write(STICKER_NAMESPACE, stickerId, dataUrl);
+                    memory.write(STICKER_NAMESPACE, stickerId + '_filemeta', {
+                        name: filename,
+                        timestamp: Date.now()
+                    });
+                    addStickerToGallery(dataUrl, stickerId);
+                    hint('Sticker saved!');
+                };
+                reader.readAsDataURL(blob);
+            });
+            
+            gif.on('abort', function() {
+                hint('Sticker save aborted.');
+            });
+            
+            gif.on('error', function(err) {
+                hint('Sticker save error: ' + err);
+            });
+            
+            gif.render();
+        }
+
+        function deleteSticker(stickerId) {
+            const confirmContent = document.createElement('div');
+            confirmContent.style.cssText = 'text-align: center; padding: 20px;';
+            confirmContent.innerHTML = `
+                <p style="margin-bottom: 20px; color: var(--text-primary); font-size: 16px;">
+                    Are you sure you want to delete this sticker? This action cannot be undone.
+                </p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button id="confirmDeleteSticker" class="modal-delete-btn">Delete</button>
+                    <button id="cancelDeleteSticker" class="btn">Cancel</button>
+                </div>
+            `;
+
+            Modals.open({
+                title: 'Delete Sticker',
+                content: confirmContent,
+                closeOnOverlay: true
+            });
+
+            document.getElementById('confirmDeleteSticker').onclick = function() {
+                memory.remove(STICKER_NAMESPACE, stickerId);
+                memory.remove(STICKER_NAMESPACE, stickerId + '_filemeta');
+                
+                const stickerElement = document.querySelector(`[data-sticker-id="${stickerId}"]`);
+                if (stickerElement) {
+                    stickerElement.remove();
+                }
+                
+                Modals.close();
+                hint('Sticker deleted!');
+            };
+
+            document.getElementById('cancelDeleteSticker').onclick = function() {
+                Modals.close();
+            };
+        }
+
+        function openStickerModal(dataUrl, stickerId) {
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = 'text-align: center; padding: 20px;';
+            modalContent.innerHTML = `
+                <img src="${dataUrl}" class="modal-sticker" alt="Sticker">
+                <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: center;">
+                    <button id="importSticker" class="btn primary">Import</button>
+                    <button id="downloadSticker" class="btn">Download</button>
+                    <button id="deleteStickerBtn" class="modal-delete-btn">Delete</button>
+                </div>
+            `;
+
+            Modals.open({
+                title: 'Sticker',
+                content: modalContent,
+                closeOnOverlay: true
+            });
+
+            document.getElementById('importSticker').onclick = function() {
+                Modals.close();
+                importSticker(dataUrl);
+            };
+
+            document.getElementById('downloadSticker').onclick = function() {
+                downloadSticker(dataUrl, stickerId);
+            };
+
+            document.getElementById('deleteStickerBtn').onclick = function() {
+                Modals.close();
+                deleteSticker(stickerId);
+            };
+        }
+
+        function downloadSticker(dataUrl, stickerId) {
+            const meta = memory.read(STICKER_NAMESPACE, stickerId + '_filemeta');
+            const filename = meta ? meta.name : stickerId + '.gif';
+            
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            hint('Sticker downloaded!');
+        }
+
+        function importSticker(dataUrl) {
+            saveUndo();
+            hint('Importing sticker...');
+            
+            // Clear mid and fg layers
+            layers.mid = Array.from({length: H}, () => Array(W).fill(2));
+            layers.fg = Array.from({length: H}, () => Array(W).fill(2));
+            
+            // Set background to transparent color
+            bgColor = [...TRANS];
+            updBgColorIndicator();
+            
+            // Create image to load the sticker
+            const img = new Image();
+            img.onload = function() {
+                // Create temporary canvas to get pixel data
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = W;
+                tempCanvas.height = H;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Draw the image scaled to canvas size
+                tempCtx.drawImage(img, 0, 0, W, H);
+                
+                // Get pixel data
+                const imageData = tempCtx.getImageData(0, 0, W, H);
+                const data = imageData.data;
+                
+                // First pass: collect unique colors from the image
+                const uniqueColors = new Map(); // rgb string -> [r,g,b] array
+                let colorCount = 0;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const a = data[i + 3];
+                    
+                    // Skip transparent pixels
+                    if (a < 128) continue;
+                    
+                    const rgbKey = `${r},${g},${b}`;
+                    if (!uniqueColors.has(rgbKey)) {
+                        const rgb = [r, g, b];
+                        
+                        // Check if this color already exists in the current palette
+                        const existsInPalette = pal.some(palColor => 
+                            palColor[0] === rgb[0] && palColor[1] === rgb[1] && palColor[2] === rgb[2]
+                        );
+                        
+                        if (!existsInPalette) {
+                            uniqueColors.set(rgbKey, rgb);
+                            colorCount++;
+                            
+                            // Stop collecting if we reach 16 new colors
+                            if (colorCount >= 16) break;
+                        }
+                    }
+                }
+                
+                // Add the unique colors to the palette (up to MAX_COL limit)
+                let addedColors = 0;
+                for (const [rgbKey, rgb] of uniqueColors) {
+                    if (pal.length < MAX_COL) {
+                        pal.push([...rgb]);
+                        addedColors++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (addedColors > 0) {
+                    savePalette();
+                    updPal();
+                }
+                
+                // Second pass: convert pixels to layer data
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const i = (y * W + x) * 4;
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const a = data[i + 3];
+                        
+                        // If pixel is transparent, use transparent color index
+                        if (a < 128) {
+                            layers.mid[y][x] = 2; // TRANS color index
+                        } else {
+                            // Find closest color in current palette
+                            const rgb = [r, g, b];
+                            let colorIndex = findClosestColorInPalette(rgb);
+                            layers.mid[y][x] = colorIndex;
+                        }
+                    }
+                }
+                
+                // Switch to foreground layer
+                currentLayer = 'fg';
+                updLayerButtons();
+                
+                // Redraw canvas
+                redraw();
+                
+                // Show appropriate message based on colors added
+                if (addedColors > 0) {
+                    hint(`Sticker imported! Added ${addedColors} new color${addedColors > 1 ? 's' : ''} to palette.`);
+                } else {
+                    hint('Sticker imported using existing palette colors!');
+                }
+            };
+            
+            img.onerror = function() {
+                hint('Failed to import sticker');
+            };
+            
+            img.src = dataUrl;
+        }
+
+        function findClosestColorInPalette(rgb) {
+            // Find the closest color in the current palette
+            let closestIndex = 0;
+            let closestDistance = Infinity;
+            
+            for (let i = 0; i < pal.length; i++) {
+                const palColor = pal[i];
+                const distance = Math.sqrt(
+                    Math.pow(rgb[0] - palColor[0], 2) +
+                    Math.pow(rgb[1] - palColor[1], 2) +
+                    Math.pow(rgb[2] - palColor[2], 2)
+                );
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestIndex = i;
+                }
+            }
+            
+            return closestIndex;
+        }
+
+        function findOrAddColorToPalette(rgb) {
+            // First check if color already exists in palette
+            for (let i = 0; i < pal.length; i++) {
+                const palColor = pal[i];
+                if (palColor[0] === rgb[0] && palColor[1] === rgb[1] && palColor[2] === rgb[2]) {
+                    return i;
+                }
+            }
+            
+            // If palette has space, add the new color
+            if (pal.length < MAX_COL) {
+                pal.push([...rgb]);
+                savePalette();
+                updPal();
+                return pal.length - 1;
+            }
+            
+            // If palette is full, find closest color
+            let closestIndex = 0;
+            let closestDistance = Infinity;
+            
+            for (let i = 0; i < pal.length; i++) {
+                const palColor = pal[i];
+                const distance = Math.sqrt(
+                    Math.pow(rgb[0] - palColor[0], 2) +
+                    Math.pow(rgb[1] - palColor[1], 2) +
+                    Math.pow(rgb[2] - palColor[2], 2)
+                );
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestIndex = i;
+                }
+            }
+            
+            return closestIndex;
+        }
+
+        function showMaxStickersModal() {
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = 'text-align: center; padding: 20px;';
+            modalContent.innerHTML = `
+                <p style="margin-bottom: 20px; color: var(--text-primary); font-size: 16px;">
+                    You've reached the maximum number of saved stickers (${MAX_STICKERS}). 
+                    Please delete some stickers before saving new ones.
+                </p>
+                <button id="closeMaxStickersModal" class="btn primary">OK</button>
+            `;
+
+            Modals.open({
+                title: 'Storage Full',
+                content: modalContent,
+                closeOnOverlay: true
+            });
+
+            document.getElementById('closeMaxStickersModal').onclick = function() {
+                Modals.close();
+            };
+        }
 
         const hint = msg => {
             const $h = $('#hint');
@@ -434,6 +1186,59 @@
             $('#bgColorIndicator').css('background-color', rgb2hex(bgColor));
         };
 
+        const updChaosBtn = () => {
+            const btn = $('#chaosBtn');
+            if (chaosMode) {
+                btn.addClass('active').text('Chaos ON');
+            } else {
+                btn.removeClass('active').text('Chaos');
+            }
+        };
+
+        const toggleChaosMode = async () => {
+            if (!chaosMode) {
+                // Turning chaos ON - load chaos background
+                try {
+                    const chaosBlob = memory.readBlob('Chaos', 'current_image', 'image/png');
+                    if (!chaosBlob) {
+                        hint('No chaos background found. Create one in the Chaos app first!');
+                        return;
+                    }
+                    
+                    // Load chaos background as image
+                    const chaosDataUrl = URL.createObjectURL(chaosBlob);
+                    const img = new Image();
+                    
+                    img.onload = function() {
+                        chaosBackground = img;
+                        chaosMode = true;
+                        updChaosBtn();
+                        redraw();
+                        hint('Chaos background activated!');
+                        URL.revokeObjectURL(chaosDataUrl);
+                    };
+                    
+                    img.onerror = function() {
+                        hint('Failed to load chaos background');
+                        URL.revokeObjectURL(chaosDataUrl);
+                    };
+                    
+                    img.src = chaosDataUrl;
+                    
+                } catch (e) {
+                    hint('Error loading chaos background: ' + e.message);
+                }
+            } else {
+                // Turning chaos OFF - restore color background (keep current bgColor)
+                chaosMode = false;
+                chaosBackground = null;
+                updChaosBtn();
+                updBgColorIndicator();
+                redraw();
+                hint('Color background restored!');
+            }
+        };
+
         const updBrushShape = () => {
             $('.brush-shape-btn').removeClass('active');
             $('#brush' + brushShape.charAt(0).toUpperCase() + brushShape.slice(1)).addClass('active');
@@ -445,9 +1250,8 @@
                 const sel = selCol === i ? ' selected' : '';
                 html += `<div class="palette-color${sel}" style="background:${rgb2hex(rgb)}" data-idx="${i}"></div>`;
             });
-            if (pal.length < MAX_COL) {
-                html += '<div class="palette-add">➕</div>';
-            }
+            // Always show the cog button
+            html += '<div class="palette-add palette-cog">⚙️</div>';
             $('#pal').html(html);
         };
 
@@ -457,8 +1261,13 @@
             const content = document.createElement('div');
             content.innerHTML = `
                 <div style="margin-bottom:10px;">Choose Color</div>
-                <div class="preset-colors" id="modalPresetColors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
-                <input type="text" class="hex-input" id="modalHexInput" placeholder="#888888" style="width:120px;">
+                <div class="preset-colors" id="modalPresetColors" style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-bottom:10px;justify-content:center;"></div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <input type="text" class="hex-input" id="modalHexInput" placeholder="#888888">
+                    <button class="pick-color-btn" id="pickColorBtn">
+                        <span>💧</span> Pick
+                    </button>
+                </div>
             `;
             // Fill preset colors
             const presetDiv = content.querySelector('#modalPresetColors');
@@ -466,16 +1275,22 @@
                 const swatch = document.createElement('div');
                 swatch.className = 'preset-color';
                 swatch.style.backgroundColor = color;
-                swatch.style.width = '28px';
-                swatch.style.height = '28px';
-                swatch.style.borderRadius = '6px';
-                swatch.style.border = '2px solid #4a4458';
-                swatch.style.cursor = 'pointer';
                 swatch.onclick = () => {
+                    // Remove previous selection
+                    presetDiv.querySelectorAll('.preset-color').forEach(el => el.classList.remove('selected'));
+                    // Add selection to clicked color
+                    swatch.classList.add('selected');
                     content.querySelector('#modalHexInput').value = color;
                 };
                 presetDiv.appendChild(swatch);
             });
+            
+            // Add Pick button event listener
+            content.querySelector('#pickColorBtn').onclick = () => {
+                window.Modals.close();
+                showColorSpectrumModal(onConfirm, onCancel);
+            };
+            
             // Open modal
             window.Modals.open({
                 title: 'Add Color',
@@ -495,6 +1310,462 @@
             });
         }
 
+        function showColorSpectrumModal(onConfirm, onCancel) {
+            const content = document.createElement('div');
+            content.className = 'color-spectrum-modal';
+            content.innerHTML = `
+                <div style="margin-bottom: 16px; text-align: center; color: var(--text-primary); font-size: 16px;">
+                    Pick a Color
+                </div>
+                <div class="spectrum-container" id="spectrumContainer">
+                    <canvas class="spectrum-canvas" id="spectrumCanvas"></canvas>
+                    <div class="spectrum-cursor" id="spectrumCursor"></div>
+                </div>
+                <div class="spectrum-preview">
+                    <div class="spectrum-color-preview" id="colorPreview"></div>
+                    <input type="text" class="spectrum-hex-input" id="spectrumHexInput" value="#ff0000">
+                </div>
+            `;
+
+            window.Modals.open({
+                title: 'Color Spectrum',
+                content,
+                confirmText: 'OK',
+                cancelText: 'Cancel',
+                onConfirm: function() {
+                    const val = content.querySelector('#spectrumHexInput').value.trim();
+                    if (/^#([0-9a-fA-F]{6})$/.test(val)) {
+                        onConfirm(val);
+                    } else {
+                        window.Modals.alert('Please enter a valid hex color (e.g. #aabbcc)', 'Invalid Color');
+                        return false;
+                    }
+                },
+                onCancel
+            });
+
+            // Initialize the color spectrum after modal is open
+            setTimeout(() => {
+                initColorSpectrum(content);
+            }, 100);
+        }
+
+        function initColorSpectrum(container) {
+            const canvas = container.querySelector('#spectrumCanvas');
+            const cursor = container.querySelector('#spectrumCursor');
+            const preview = container.querySelector('#colorPreview');
+            const hexInput = container.querySelector('#spectrumHexInput');
+            
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.getBoundingClientRect();
+            
+            // Set canvas size to match display size
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            // Create color spectrum
+            function drawSpectrum() {
+                const width = canvas.width;
+                const height = canvas.height;
+                
+                // Create gradient from left to right (hue)
+                const hueGradient = ctx.createLinearGradient(0, 0, width, 0);
+                hueGradient.addColorStop(0, '#ff0000');
+                hueGradient.addColorStop(1/6, '#ffff00');
+                hueGradient.addColorStop(2/6, '#00ff00');
+                hueGradient.addColorStop(3/6, '#00ffff');
+                hueGradient.addColorStop(4/6, '#0000ff');
+                hueGradient.addColorStop(5/6, '#ff00ff');
+                hueGradient.addColorStop(1, '#ff0000');
+                
+                ctx.fillStyle = hueGradient;
+                ctx.fillRect(0, 0, width, height);
+                
+                // Create gradient from top to bottom (saturation and lightness)
+                const satGradient = ctx.createLinearGradient(0, 0, 0, height);
+                satGradient.addColorStop(0, 'rgba(255,255,255,1)');
+                satGradient.addColorStop(0.5, 'rgba(255,255,255,0)');
+                satGradient.addColorStop(0.5, 'rgba(0,0,0,0)');
+                satGradient.addColorStop(1, 'rgba(0,0,0,1)');
+                
+                ctx.fillStyle = satGradient;
+                ctx.fillRect(0, 0, width, height);
+            }
+            
+            drawSpectrum();
+            
+            let currentColor = '#ff0000';
+            let cursorX = 0;
+            let cursorY = 0;
+            
+            function updateColor(x, y) {
+                // Clamp coordinates
+                x = Math.max(0, Math.min(canvas.width - 1, x));
+                y = Math.max(0, Math.min(canvas.height - 1, y));
+                
+                // Get pixel color from canvas
+                const imageData = ctx.getImageData(x, y, 1, 1);
+                const [r, g, b] = imageData.data;
+                
+                currentColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                
+                // Update preview and input
+                preview.style.backgroundColor = currentColor;
+                hexInput.value = currentColor;
+                
+                // Update cursor position
+                cursorX = x;
+                cursorY = y;
+                cursor.style.left = x + 'px';
+                cursor.style.top = y + 'px';
+            }
+            
+            function getEventPos(e) {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                
+                return {
+                    x: (clientX - rect.left) * (canvas.width / rect.width),
+                    y: (clientY - rect.top) * (canvas.height / rect.height)
+                };
+            }
+            
+            let isMouseDown = false;
+            
+            // Mouse events
+            canvas.addEventListener('mousedown', (e) => {
+                isMouseDown = true;
+                const pos = getEventPos(e);
+                updateColor(pos.x, pos.y);
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (isMouseDown) {
+                    const pos = getEventPos(e);
+                    updateColor(pos.x, pos.y);
+                }
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+            
+            // Touch events
+            canvas.addEventListener('touchstart', (e) => {
+                const pos = getEventPos(e);
+                updateColor(pos.x, pos.y);
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('touchmove', (e) => {
+                const pos = getEventPos(e);
+                updateColor(pos.x, pos.y);
+                e.preventDefault();
+            });
+            
+            // Hex input change
+            hexInput.addEventListener('input', (e) => {
+                const value = e.target.value;
+                if (/^#([0-9a-fA-F]{6})$/.test(value)) {
+                    preview.style.backgroundColor = value;
+                    currentColor = value;
+                }
+            });
+            
+            // Initialize with red color
+            updateColor(0, 0);
+        }
+
+        function showPaletteMenu() {
+            const content = document.createElement('div');
+            content.className = 'palette-menu';
+            
+            const customColors = pal.slice(3); // Skip the default colors (black, white, transparent)
+            const hasCustomColors = customColors.length > 0;
+            const isPaletteFull = pal.length >= MAX_COL;
+            
+            content.innerHTML = `
+                <button class="palette-menu-btn ${isPaletteFull ? 'disabled' : ''}" id="addColorBtn">
+                    <span>➕</span> Add a color
+                </button>
+                <button class="palette-menu-btn ${!hasCustomColors ? 'disabled' : ''}" id="removeColorBtn">
+                    <span>🗑️</span> Remove a color
+                </button>
+                <button class="palette-menu-btn ${!hasCustomColors ? 'disabled' : ''}" id="exportPaletteBtn">
+                    <span>📤</span> Export Palette
+                </button>
+                <button class="palette-menu-btn ${isPaletteFull ? 'disabled' : ''}" id="importPaletteBtn">
+                    <span>📥</span> Import Palette
+                </button>
+            `;
+
+            Modals.open({
+                title: 'Palette Options',
+                content: content,
+                closeOnOverlay: true,
+                confirmText: 'Close',
+                showCancel: false,
+                onConfirm: function() {
+                    // Just close the modal, no additional action needed
+                }
+            });
+
+            // Add event listeners
+            document.getElementById('addColorBtn').onclick = function() {
+                if (!isPaletteFull) {
+                    Modals.close();
+                    showAddColorModal();
+                }
+            };
+
+            document.getElementById('removeColorBtn').onclick = function() {
+                if (hasCustomColors) {
+                    Modals.close();
+                    showRemoveColorModal();
+                }
+            };
+
+            document.getElementById('exportPaletteBtn').onclick = function() {
+                if (hasCustomColors) {
+                    Modals.close();
+                    exportPalette();
+                }
+            };
+
+            document.getElementById('importPaletteBtn').onclick = function() {
+                if (!isPaletteFull) {
+                    Modals.close();
+                    showImportPaletteModal();
+                }
+            };
+        }
+
+        function showAddColorModal() {
+            showColorPickerModal(
+                function(hexColor) {
+                    const newColor = hex2rgb(hexColor);
+                    pal.push(newColor);
+                    savePalette();
+                    updPal();
+                    hint('Color added!');
+                },
+                function() {
+                    // Cancel - do nothing
+                }
+            );
+        }
+
+        function showRemoveColorModal() {
+            const content = document.createElement('div');
+            const customColors = pal.slice(3); // Skip the default colors
+            
+            content.innerHTML = `
+                <div style="margin-bottom:10px;">Click a color to remove it</div>
+                <div class="removable-palette-colors" id="removableColors"></div>
+                <div style="margin-top: 15px; text-align: center;">
+                    <button class="modal-delete-btn" id="clearAllCustomColors" style="background-color: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                        Clear All Custom Colors
+                    </button>
+                </div>
+            `;
+            
+            const colorsDiv = content.querySelector('#removableColors');
+            
+            customColors.forEach((rgb, index) => {
+                const colorEl = document.createElement('div');
+                colorEl.className = 'removable-color';
+                colorEl.style.backgroundColor = rgb2hex(rgb);
+                colorEl.onclick = () => {
+                    // Remove the color (add 3 to account for default colors)
+                    pal.splice(index + 3, 1);
+                    savePalette();
+                    updPal();
+                    Modals.close();
+                    hint('Color removed!');
+                };
+                colorsDiv.appendChild(colorEl);
+            });
+
+            Modals.open({
+                title: 'Remove Color',
+                content: content,
+                closeOnOverlay: true
+            });
+
+            // Add event listener for clear all button
+            document.getElementById('clearAllCustomColors').onclick = function() {
+                Modals.close();
+                showClearAllColorsConfirm();
+            };
+        }
+
+        function showClearAllColorsConfirm() {
+            const confirmContent = document.createElement('div');
+            confirmContent.style.cssText = 'text-align: center; padding: 20px;';
+            confirmContent.innerHTML = `
+                <p style="margin-bottom: 20px; color: var(--text-primary); font-size: 16px;">
+                    Are you sure you want to delete all custom colors? This action cannot be undone.
+                </p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button id="confirmClearAll" class="modal-delete-btn">Delete All</button>
+                    <button id="cancelClearAll" class="btn">Cancel</button>
+                </div>
+            `;
+
+            Modals.open({
+                title: 'Clear All Custom Colors',
+                content: confirmContent,
+                closeOnOverlay: true
+            });
+
+            document.getElementById('confirmClearAll').onclick = function() {
+                // Keep only the first 3 default colors (black, white, transparent)
+                pal = pal.slice(0, 3);
+                savePalette();
+                updPal();
+                Modals.close();
+                hint('All custom colors deleted!');
+            };
+
+            document.getElementById('cancelClearAll').onclick = function() {
+                Modals.close();
+            };
+        }
+
+        function exportPalette() {
+            const customColors = pal.slice(3); // Skip the default colors
+            if (customColors.length === 0) {
+                hint('No custom colors to export!');
+                return;
+            }
+
+            // Create a canvas with 1px height and width equal to number of custom colors
+            const canvas = document.createElement('canvas');
+            canvas.width = customColors.length;
+            canvas.height = 1;
+            const ctx = canvas.getContext('2d');
+
+            // Draw each color as a single pixel
+            customColors.forEach((rgb, index) => {
+                ctx.fillStyle = rgb2hex(rgb);
+                ctx.fillRect(index, 0, 1, 1);
+            });
+
+            // Download the palette
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'palette.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                hint('Palette exported!');
+            }, 'image/png');
+        }
+
+        function showImportPaletteModal() {
+            const content = document.createElement('div');
+            content.innerHTML = `
+                <div style="margin-bottom:10px;">Select a palette PNG file (1px height)</div>
+                <input type="file" class="file-input" id="paletteFile" accept=".png,image/png">
+            `;
+
+            Modals.open({
+                title: 'Import Palette',
+                content: content,
+                confirmText: 'Import',
+                cancelText: 'Cancel',
+                onConfirm: function() {
+                    const fileInput = content.querySelector('#paletteFile');
+                    const file = fileInput.files[0];
+                    
+                    if (!file) {
+                        hint('Please select a file!');
+                        return;
+                    }
+
+                    if (!file.type.startsWith('image/png')) {
+                        hint('Please select a PNG file!');
+                        return;
+                    }
+
+                    importPalette(file);
+                },
+                onCancel: function() {
+                    // Cancel - do nothing
+                }
+            });
+        }
+
+        function importPalette(file) {
+            const img = new Image();
+            img.onload = function() {
+                // Check if the image is 1px height
+                if (img.height !== 1) {
+                    hint('Invalid palette file! Image must be 1px height.');
+                    return;
+                }
+
+                // Create a canvas to read pixel data
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                const data = imageData.data;
+
+                let importedCount = 0;
+                // Read each pixel as a color
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const alpha = data[i + 3];
+
+                    // Skip transparent pixels
+                    if (alpha < 128) continue;
+
+                    const newColor = [r, g, b];
+                    const hexColor = rgb2hex(newColor);
+
+                    // Check if color already exists in palette
+                    const exists = pal.some(existingColor => rgb2hex(existingColor) === hexColor);
+                    
+                    if (!exists && pal.length < MAX_COL) {
+                        pal.push(newColor);
+                        importedCount++;
+                    }
+                }
+
+                if (importedCount > 0) {
+                    savePalette();
+                    updPal();
+                    hint(`Imported ${importedCount} new colors!`);
+                } else {
+                    hint('No new colors found or palette is full!');
+                }
+            };
+
+            img.onerror = function() {
+                hint('Failed to load image!');
+            };
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
         const drawPx = (x, y, colIdx) => {
             if (x >= 0 && y >= 0 && x < W && y < H && currentLayer !== 'bg') {
                 layers[currentLayer][y][x] = colIdx;
@@ -502,9 +1773,15 @@
         };
 
         const redraw = () => {
-            // Clear canvas
-            ctx.fillStyle = rgb2hex(bgColor);
-            ctx.fillRect(0, 0, W, H);
+            // Clear canvas and draw background
+            if (chaosMode && chaosBackground) {
+                // Draw chaos background image
+                ctx.drawImage(chaosBackground, 0, 0, W, H);
+            } else {
+                // Draw solid color background
+                ctx.fillStyle = rgb2hex(bgColor);
+                ctx.fillRect(0, 0, W, H);
+            }
             
             // Draw midground layer
             for (let y = 0; y < H; y++) {
@@ -610,7 +1887,7 @@
             
             if (lastPos) {
                 drawLine(lastPos[0], lastPos[1], x, y);
-            } else {
+                } else {
                 paintBrush(x, y);
             }
             lastPos = [x, y];
@@ -622,14 +1899,34 @@
             expCvs.width = W;
             expCvs.height = H;
             const ectx = expCvs.getContext('2d');
+            
             const imgData = ectx.createImageData(W, H);
+
+            // Pre-process chaos background data if chaos mode is on
+            let chaosData = null;
+            if (chaosMode && chaosBackground) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = W;
+                tempCanvas.height = H;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(chaosBackground, 0, 0, W, H);
+                chaosData = tempCtx.getImageData(0, 0, W, H).data;
+            }
 
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
                     const i = (y*W + x)*4;
 
-                    // Start with background color
-                    let [r, g, b, a] = [...bgColor, 255];
+                    let [r, g, b, a] = [0, 0, 0, 255];
+                    
+                    // If chaos mode is on, treat chaos background as fully opaque
+                    if (chaosData) {
+                        // Get pixel from chaos background (assumed fully opaque)
+                        [r, g, b, a] = [chaosData[i], chaosData[i + 1], chaosData[i + 2], 255];
+                    } else {
+                        // Start with background color
+                        [r, g, b, a] = [...bgColor, 255];
+                    }
 
                     // Apply midground layer
                     const midIdx = layers.mid[y][x];
@@ -645,10 +1942,12 @@
                         [r, g, b] = fgColor;
                     }
 
-                    // If the final color is #ccbcfc (204,188,252), make it transparent
-                    if (r === 204 && g === 188 && b === 252) {
-                        a = 0;
+                    // Only apply transparency conversion when NOT in chaos mode
+                    if (!chaosData && r === 204 && g === 188 && b === 252) {
+                        // If the final color is #ccbcfc (204,188,252), make it pure magenta for transparency
+                        [r, g, b, a] = [255, 0, 255, 255]; // Pure magenta
                     }
+                    // In chaos mode, transparent pixels should show the chaos background (no conversion needed)
 
                     imgData.data[i] = r;
                     imgData.data[i+1] = g;
@@ -694,20 +1993,8 @@
 
 
 
-        $(document).on('click', '.palette-add', function() {
-            if (pal.length < MAX_COL) {
-                showColorPickerModal(function(hex) {
-                    // Add color to palette
-                    const rgb = [
-                        parseInt(hex.substr(1,2),16),
-                        parseInt(hex.substr(3,2),16),
-                        parseInt(hex.substr(5,2),16)
-                    ];
-                    pal.push(rgb);
-                    selCol = pal.length - 1;
-                    updPal();
-                });
-            }
+        $(document).on('click', '.palette-cog, .palette-add', function() {
+            showPaletteMenu();
         });
 
         $(document).on('click', '.preset-color', function() {
@@ -717,11 +2004,11 @@
 
         $('#confirmColorPicker').on('click', function() {
             const color = $('#hexInput').val();
-
             if (color) {
                 try {
                     pal.push(hex2rgb(color));
                     selCol = pal.length-1;
+                    savePalette();
                     updPal();
                 } catch (e) {
                     hint('Invalid color format!');
@@ -761,6 +2048,7 @@
 
         $('#undoBtn').on('click', undo);
         $('#redoBtn').on('click', redo);
+        $('#chaosBtn').on('click', toggleChaosMode);
         $('#clearBtn').on('click', clearAll);
 
         $('#musicMute').on('click', () => setMusicSt('mute'));
@@ -807,6 +2095,9 @@
             hint('Downloaded!');
         });
 
+        $('#saveSticker').click(() => {
+            saveCurrentDrawing();
+        });
 
         // Gif export button
         $('#gifBtn').click(() => {
@@ -814,23 +2105,26 @@
                 hint('GIF export not available. (gif.js not loaded)');
                 return;
             }
-            // Use an offscreen canvas to avoid tainting/copy issues
-            const exportCanvas = document.createElement('canvas');
-            exportCanvas.width = W;
-            exportCanvas.height = H;
-            const exportCtx = exportCanvas.getContext('2d');
-            exportCtx.drawImage(cvs, 0, 0);
-            // Set up gif.js with explicit worker path
-            const gif = new window.GIF({
+            // Use expImg() to get properly processed image data
+            const exportCanvas = expImg();
+            
+            // Configure GIF settings based on chaos mode
+            const gifSettings = {
                 workers: 2,
                 quality: 1,
                 width: W,
                 height: H,
-                transparent: 0xccbcfc, // 204,188,252
                 workerScript: 'gif.worker.js'
-            });
+            };
+            
+            // Only set transparency when NOT in chaos mode
+            if (!chaosMode) {
+                gifSettings.transparent = 0xff00ff; // Pure magenta
+            }
+            
+            const gif = new window.GIF(gifSettings);
             try {
-                gif.addFrame(exportCtx, {copy: true, delay: 100});
+                gif.addFrame(exportCanvas, {copy: true, delay: 100});
             } catch (e) {
                 hint('GIF export failed: ' + e.message);
                 return;
@@ -879,12 +2173,14 @@
             updLayerButtons();
             updBgColorIndicator();
             updBrushShape();
+            updChaosBtn();
             resizeCvs();
             redraw();
             updUndoBtn();
             updRedoBtn();
             saveUndo();
             setMusicSt('low');
+            loadExistingStickers(); // Load saved stickers
             
             // Handle orientation changes and window resizing
             $(window).on('resize orientationchange', function() {

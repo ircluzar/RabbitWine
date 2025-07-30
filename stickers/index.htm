@@ -38,6 +38,7 @@
     <meta name="apple-touch-fullscreen" content="yes">
     <meta name="format-detection" content="telephone=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="../memory.js"></script>
     <script src="../modals.js"></script>
     <title>Rabbit Wine</title>
     <link rel="stylesheet" href="styles.css">
@@ -160,14 +161,45 @@
 
     <script>
         $(document).ready(function() {
-            const CACHE = 'violetStickerSettings';
             
             let state = {
                 selectedStickerId: 1, currentType: 'girl', isFlipped: false, 
                 includeBg: false, stickerSize: '0.5', currentPreviewCanvas: null,
                 currentPreviewImage: null, stickerPackConfig: null,
-                currentPack: 'violet', knownPacks: []
+                currentPack: 'violet', knownPacks: [],
+                customStickers: [], customPackEnabled: false
             };
+            // Check for custom stickers in Editor namespace
+            function checkCustomStickers() {
+                try {
+                    if (window.memory && typeof memory.keys === 'function') {
+                        const keys = memory.keys('Editor') || [];
+                        const stickerKeys = keys.filter(key => key.startsWith('sticker_') && !key.endsWith('_filemeta'));
+                        if (stickerKeys.length > 0) {
+                            state.customStickers = stickerKeys.map(key => ({
+                                id: key,
+                                key: key  // Store only the key reference
+                            }));
+                            state.customPackEnabled = true;
+                        } else {
+                            state.customStickers = [];
+                            state.customPackEnabled = false;
+                        }
+                    }
+                } catch(e) {
+                    state.customStickers = [];
+                    state.customPackEnabled = false;
+                }
+            }
+            
+            // Helper function to get custom sticker data URL by reference
+            function getCustomStickerDataUrl(stickerRef) {
+                try {
+                    return memory.read('Editor', stickerRef.key);
+                } catch(e) {
+                    return '';
+                }
+            }
             
             const imageCache = {};
             
@@ -178,14 +210,13 @@
                         delete saveState.currentPreviewCanvas;
                         delete saveState.currentPreviewImage; 
                         delete saveState.stickerPackConfig;
-                        localStorage?.setItem(CACHE, JSON.stringify(saveState));
+                        memory.write('Stickers', 'settings_stickers', saveState);
                     } catch(e) {}
                 },
                 
                 load() {
                     try {
-                        const saved = localStorage?.getItem(CACHE);
-                        return saved ? JSON.parse(saved) : null;
+                        return memory.read('Stickers', 'settings_stickers') || null;
                     } catch(e) { return null; }
                 }
             };
@@ -229,15 +260,22 @@
                 },
                 
                 updateUI() {
+                    checkCustomStickers();
                     const $selection = $('#packSelection').empty();
-                    
                     // Add violet pack (always first)
                     const $violetBtn = $('<button>').addClass('pack-button')
                         .toggleClass('active', state.currentPack === 'violet')
                         .text('Violet')
                         .on('click', () => this.selectPack('violet'));
                     $selection.append($violetBtn);
-                    
+                    // Add Custom pack if enabled
+                    if (state.customPackEnabled) {
+                        const $customBtn = $('<button>').addClass('pack-button')
+                            .toggleClass('active', state.currentPack === 'custom')
+                            .text('Custom')
+                            .on('click', () => this.selectPack('custom'));
+                        $selection.append($customBtn);
+                    }
                     // Add known packs
                     state.knownPacks.forEach(pack => {
                         const $btn = $('<button>').addClass('pack-button')
@@ -246,14 +284,12 @@
                             .on('click', () => this.selectPack(pack));
                         $selection.append($btn);
                     });
-                    
                     // Add control buttons
                     const $addBtn = $('<button>').addClass('pack-button add-pack')
                         .text('+')
                         .on('click', () => this.showAddInput());
                     $selection.append($addBtn);
-                    
-                    if (state.currentPack !== 'violet') {
+                    if (state.currentPack !== 'violet' && state.currentPack !== 'custom') {
                         const $removeBtn = $('<button>')
                             .addClass('pack-button remove-pack')
                             .text('🗑')
@@ -316,11 +352,25 @@
             
             const stickerPack = {
                 async loadPack(packName) {
+                    if (packName === 'custom') {
+                        checkCustomStickers();
+                        // Custom pack config: one type 'Editor', count = number of stickers
+                        state.stickerPackConfig = {
+                            types: ['Editor'],
+                            count: state.customStickers.length
+                        };
+                        state.currentType = 'Editor';
+                        state.selectedStickerId = 1;
+                        ui.setupTypeButtons();
+                        ui.update();
+                        grid.load();
+                        preview.update();
+                        return;
+                    }
                     try {
                         const res = await fetch(`${packName}/config.json`);
                         const config = await res.json();
                         state.stickerPackConfig = config;
-                        
                         // Reset state for new pack
                         if (!config.types.includes(state.currentType)) {
                             state.currentType = config.types[0];
@@ -328,13 +378,11 @@
                         if (state.selectedStickerId > config.count) {
                             state.selectedStickerId = 1;
                         }
-                        
                         ui.setupTypeButtons();
                         ui.update();
                         grid.load();
                         preview.update();
                         this.preloadImages();
-                        
                     } catch(e) {
                         // Fallback to violet if pack fails to load
                         if (packName !== 'violet') {
@@ -347,6 +395,11 @@
                 },
                 
                 getPath(id, type) {
+                    if (state.currentPack === 'custom') {
+                        // Custom stickers: fetch data URL by reference
+                        const sticker = state.customStickers[id - 1];
+                        return sticker ? getCustomStickerDataUrl(sticker) : '';
+                    }
                     return `${state.currentPack}/sticker_${type}_${id}.png`;
                 },
                 
@@ -392,12 +445,22 @@
             const grid = {
                 load() {
                     const $grid = $('#stickerGrid').empty();
-                    for (let i = 1; i <= state.stickerPackConfig.count; i++) {
-                        const $item = $('<div>').addClass('sticker-item').toggleClass('selected', i === state.selectedStickerId);
-                        const $img = $('<img>').attr({src: stickerPack.getPath(i, state.currentType, state.includeBg), alt: `Sticker ${i}`})
+                    if (state.currentPack === 'custom') {
+                        state.customStickers.forEach((sticker, idx) => {
+                            const $item = $('<div>').addClass('sticker-item').toggleClass('selected', idx + 1 === state.selectedStickerId);
+                            const dataUrl = getCustomStickerDataUrl(sticker);
+                            const $img = $('<img>').attr({src: dataUrl, alt: `Custom Sticker ${idx + 1}`});
+                            $item.append($img).on('click', () => this.select(idx + 1));
+                            $grid.append($item);
+                        });
+                    } else {
+                        for (let i = 1; i <= state.stickerPackConfig.count; i++) {
+                            const $item = $('<div>').addClass('sticker-item').toggleClass('selected', i === state.selectedStickerId);
+                            const $img = $('<img>').attr({src: stickerPack.getPath(i, state.currentType, state.includeBg), alt: `Sticker ${i}`})
                                                .on('error', function() { $(this).css({opacity: '0.3', title: 'Not found'}); });
-                        $item.append($img).on('click', () => this.select(i));
-                        $grid.append($item);
+                            $item.append($img).on('click', () => this.select(i));
+                            $grid.append($item);
+                        }
                     }
                 },
                 

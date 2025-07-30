@@ -2,20 +2,30 @@
  * memory.js - Centralized Save Data System for Rabbitwine Apps
  *
  * Overview:
- * This library provides a unified, namespaced storage system for all apps on the domain, allowing them to share and manage save data (blobs, objects, etc.) in a consistent way. Data is segmented by namespaces (one per app or feature), and each namespace tracks its own version number, incremented on every change. A global metadata namespace tracks last access and last write times for the entire system. Helper functions are provided for reading, writing, clearing, and resetting data, as well as updating and retrieving metadata.
+ * Unified, namespaced storage for all apps/features, with versioning and metadata. Supports storing objects, blobs, and files using localStorage. Each namespace is isolated and tracks its own version. Global metadata tracks last access/write times.
  *
- * Key Features:
- * - Namespaced storage: Each app or feature gets its own namespace, preventing data collisions.
- * - Versioning: Each namespace has a version number that increments on every write.
- * - Metadata: Global metadata (last access, last write) is tracked in a reserved namespace.
- * - Helper functions: Easy read, write, clear, reset, and metadata update operations.
- * - Uses localStorage for persistence, with JSON serialization.
+ * Usage Examples:
+ *   // Store and retrieve simple data
+ *   memory.write('app', 'score', 42);
+ *   const score = memory.read('app', 'score');
  *
- * Usage Example:
- *   memory.write('scroll', 'tasks', [...]);
- *   const tasks = memory.read('scroll', 'tasks');
- *   memory.clearNamespace('scroll');
+ *   // Store and retrieve objects
+ *   memory.write('editor', 'settings', {theme:'dark'});
+ *   const settings = memory.read('editor', 'settings');
+ *
+ *   // Store and retrieve blobs/files
+ *   await memory.writeBlob('gallery', 'img1', blob, 'pic.png');
+ *   const imgBlob = memory.readBlob('gallery', 'img1', 'image/png');
+ *
+ *   // List keys and namespaces
+ *   memory.keys('editor'); // ['settings', ...]
+ *   memory.listNamespaces(); // ['app', 'editor', ...]
+ *
+ *   // Clear/reset
+ *   memory.clearNamespace('editor');
  *   memory.resetAll();
+ *
+ *   // Metadata
  *   memory.updateMetadata();
  *   const meta = memory.getMetadata();
  */

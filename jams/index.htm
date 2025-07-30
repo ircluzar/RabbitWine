@@ -1865,6 +1865,9 @@
             
             // Update media session for mobile notifications
             this.updateMediaSession();
+
+            // Update browser tab title
+            document.title = `${track.creator} - ${track.title}`;
         }
         
         play() {
@@ -1886,6 +1889,8 @@
             this.playPauseBtn.classList.add('play');
             this.updateMiniPlayer();
             this.updateMediaSession();
+            // Optionally restore default title when paused
+            document.title = 'Jams - Music Player';
         }
         
         togglePlayPause() {

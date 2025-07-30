@@ -117,8 +117,31 @@
             // Detect if this is a blob by presence of filemeta
             if (filemeta) {
                 typeStr = 'file';
-                // Always show file name and size, no image preview
-                valStr = `<span style="font-size:0.9em;">${filemeta.name} (${(filemeta.size/1024).toFixed(1)} KB)</span>`;
+                // Calculate file size if not stored or show fallback
+                let sizeText = 'Unknown size';
+                if (filemeta.size) {
+                    sizeText = `${(filemeta.size/1024).toFixed(1)} KB`;
+                } else {
+                    // Try to calculate size from stored data
+                    try {
+                        const data = memory.read(selectedNS, key);
+                        if (data && typeof data === 'string') {
+                            let sizeBytes;
+                            if (data.startsWith('data:')) {
+                                // Data URL: extract base64 part and calculate size
+                                const base64Part = data.split(',')[1];
+                                sizeBytes = Math.ceil(base64Part.length * 3 / 4);
+                            } else {
+                                // Pure base64
+                                sizeBytes = Math.ceil(data.length * 3 / 4);
+                            }
+                            sizeText = `${(sizeBytes/1024).toFixed(1)} KB`;
+                        }
+                    } catch (e) {
+                        // Keep default "Unknown size"
+                    }
+                }
+                valStr = `<span style="font-size:0.9em;">${filemeta.name} (${sizeText})</span>`;
             } else {
                 try {
                     if (val === null) {
@@ -144,7 +167,12 @@
             }
             // Create cells manually to ensure .space-entry-actions exists
             let keyCell = tr.insertCell();
-            keyCell.textContent = key;
+            // Format key with newline after underscore if present
+            if (key.includes('_')) {
+                keyCell.innerHTML = key.replace(/_/g, '_<br>');
+            } else {
+                keyCell.textContent = key;
+            }
             let typeCell = tr.insertCell();
             typeCell.textContent = typeStr;
             let valueCell = tr.insertCell();
@@ -176,30 +204,113 @@
         let getValue;
         let filemeta = memory.read(selectedNS, key + '_filemeta');
         if (filemeta) {
+            // Check for image/video extensions
+            const lowerName = filemeta.name.toLowerCase();
+            const isImage = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.png') || lowerName.endsWith('.gif');
+            const isVideo = lowerName.endsWith('.webm');
+            let previewElem = null;
+            if (isImage || isVideo) {
+                let data = memory.read(selectedNS, key);
+                let mimeType = memory._inferMimeType(filemeta.name);
+                let url = '';
+                if (data) {
+                    // Check if data is already a data URL or pure base64
+                    if (data.startsWith('data:')) {
+                        // It's a data URL, use it directly
+                        url = data;
+                    } else {
+                        // It's pure base64, create object URL
+                        function base64ToBlob(base64, mimeType) {
+                            const byteString = atob(base64);
+                            const byteArray = new Uint8Array(byteString.length);
+                            for (let i = 0; i < byteString.length; i++) {
+                                byteArray[i] = byteString.charCodeAt(i);
+                            }
+                            return new Blob([byteArray], { type: mimeType });
+                        }
+                        let blob = base64ToBlob(data, mimeType);
+                        url = URL.createObjectURL(blob);
+                    }
+                }
+                let previewWrap = document.createElement('div');
+                previewWrap.style = 'display:flex;justify-content:center;align-items:center;margin-bottom:16px;';
+                if (isImage) {
+                    previewElem = document.createElement('img');
+                    previewElem.src = url;
+                    previewElem.alt = filemeta.name;
+                    previewElem.style = 'max-width:96%;max-height:220px;object-fit:contain;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.08);background:#222;';
+                } else if (isVideo) {
+                    previewElem = document.createElement('video');
+                    previewElem.src = url;
+                    previewElem.controls = true;
+                    previewElem.style = 'max-width:96%;max-height:220px;border-radius:8px;background:#222;';
+                }
+                previewWrap.appendChild(previewElem);
+                container.appendChild(previewWrap);
+                // Clean up object URL when modal closes (only if we created one)
+                if (!data.startsWith('data:')) {
+                    window.Modals._onClose = function() {
+                        if (url) URL.revokeObjectURL(url);
+                    };
+                }
+            }
             let infoDiv = document.createElement('div');
-            infoDiv.style = 'margin-bottom:12px;';
-            infoDiv.innerHTML = `<b>File:</b> ${filemeta.name} <span style='font-size:0.9em;'>(${(filemeta.size/1024).toFixed(1)} KB)</span>`;
+            infoDiv.style = 'margin-bottom:12px;text-align:center;';
+            // Calculate file size if not stored or show fallback
+            let sizeText = 'Unknown size';
+            if (filemeta.size) {
+                sizeText = `${(filemeta.size/1024).toFixed(1)} KB`;
+            } else {
+                // Try to calculate size from stored data
+                try {
+                    const data = memory.read(selectedNS, key);
+                    if (data && typeof data === 'string') {
+                        let sizeBytes;
+                        if (data.startsWith('data:')) {
+                            // Data URL: extract base64 part and calculate size
+                            const base64Part = data.split(',')[1];
+                            sizeBytes = Math.ceil(base64Part.length * 3 / 4);
+                        } else {
+                            // Pure base64
+                            sizeBytes = Math.ceil(data.length * 3 / 4);
+                        }
+                        sizeText = `${(sizeBytes/1024).toFixed(1)} KB`;
+                    }
+                } catch (e) {
+                    // Keep default "Unknown size"
+                }
+            }
+            infoDiv.innerHTML = `<b>File:</b> ${filemeta.name} <span style='font-size:0.9em;'>(${sizeText})</span>`;
             container.appendChild(infoDiv);
             let downloadBtn = document.createElement('button');
             downloadBtn.textContent = 'Download File';
-            downloadBtn.style = 'margin-bottom:12px;';
+            downloadBtn.style = 'margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;';
             downloadBtn.onclick = async function() {
-                let base64 = memory.read(selectedNS, key);
-                if (!base64) {
+                let data = memory.read(selectedNS, key);
+                if (!data) {
                     window.Modals.alert('File data not found.');
                     return;
                 }
-                function base64ToBlob(base64, mimeType) {
-                    const byteString = atob(base64);
-                    const byteArray = new Uint8Array(byteString.length);
-                    for (let i = 0; i < byteString.length; i++) {
-                        byteArray[i] = byteString.charCodeAt(i);
+                
+                let url;
+                if (data.startsWith('data:')) {
+                    // It's a data URL, use it directly
+                    url = data;
+                } else {
+                    // It's pure base64, create object URL
+                    function base64ToBlob(base64, mimeType) {
+                        const byteString = atob(base64);
+                        const byteArray = new Uint8Array(byteString.length);
+                        for (let i = 0; i < byteString.length; i++) {
+                            byteArray[i] = byteString.charCodeAt(i);
+                        }
+                        return new Blob([byteArray], { type: mimeType });
                     }
-                    return new Blob([byteArray], { type: mimeType });
+                    let mimeType = memory._inferMimeType(filemeta.name);
+                    let blob = base64ToBlob(data, mimeType);
+                    url = URL.createObjectURL(blob);
                 }
-                let mimeType = memory._inferMimeType(filemeta.name);
-                let blob = base64ToBlob(base64, mimeType);
-                let url = URL.createObjectURL(blob);
+                
                 let a = document.createElement('a');
                 a.href = url;
                 a.download = filemeta.name;
@@ -207,7 +318,9 @@
                 a.click();
                 setTimeout(() => {
                     document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
+                    if (!data.startsWith('data:')) {
+                        URL.revokeObjectURL(url);
+                    }
                 }, 100);
             };
             container.appendChild(downloadBtn);

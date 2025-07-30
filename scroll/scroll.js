@@ -1,10 +1,12 @@
 // Scroll Todo App - Main Logic (Optimized & Cleaned)
-// Uses stickers app localStorage patterns and aesthetic
+// Uses memory.js for centralized data storage
 
-const STORAGE_KEYS = {
-    activeTasks: 'scroll_active_tasks',
-    completedTasks: 'scroll_completed_tasks',
-    appState: 'scroll_app_state'
+const SCROLL_NAMESPACE = 'Scroll';
+const MEMORY_KEYS = {
+    activeTasks: 'activeTasks',
+    completedTasks: 'completedTasks',
+    editMode: 'editMode',
+    completedTasksVisible: 'completedTasksVisible'
 };
 
 let activeTasks = [];
@@ -13,28 +15,57 @@ let editMode = false;
 let completedTasksVisible = false;
 let expirationTimer = null;
 
-function saveToLocalStorage() {
+function saveToMemory() {
     try {
-        localStorage.setItem(STORAGE_KEYS.activeTasks, JSON.stringify(activeTasks));
-        localStorage.setItem(STORAGE_KEYS.completedTasks, JSON.stringify(completedTasks));
-        localStorage.setItem(STORAGE_KEYS.appState, JSON.stringify({editMode, completedTasksVisible}));
-    } catch {}
+        memory.write(SCROLL_NAMESPACE, MEMORY_KEYS.activeTasks, activeTasks);
+        memory.write(SCROLL_NAMESPACE, MEMORY_KEYS.completedTasks, completedTasks);
+        memory.write(SCROLL_NAMESPACE, MEMORY_KEYS.editMode, editMode);
+        memory.write(SCROLL_NAMESPACE, MEMORY_KEYS.completedTasksVisible, completedTasksVisible);
+    } catch (e) {
+        console.warn('Failed to save to memory:', e);
+    }
 }
 
-function loadFromLocalStorage() {
+function loadFromMemory() {
     try {
-        activeTasks = JSON.parse(localStorage.getItem(STORAGE_KEYS.activeTasks)) || [];
-    } catch { activeTasks = []; }
-    try {
-        completedTasks = JSON.parse(localStorage.getItem(STORAGE_KEYS.completedTasks)) || [];
-    } catch { completedTasks = []; }
-    try {
-        const state = JSON.parse(localStorage.getItem(STORAGE_KEYS.appState));
-        if (state) {
-            editMode = !!state.editMode;
-            completedTasksVisible = !!state.completedTasksVisible;
+        // Check if data exists in memory.js
+        activeTasks = memory.read(SCROLL_NAMESPACE, MEMORY_KEYS.activeTasks);
+        completedTasks = memory.read(SCROLL_NAMESPACE, MEMORY_KEYS.completedTasks);
+        editMode = memory.read(SCROLL_NAMESPACE, MEMORY_KEYS.editMode);
+        completedTasksVisible = memory.read(SCROLL_NAMESPACE, MEMORY_KEYS.completedTasksVisible);
+
+        // If no data in memory.js, try to migrate from old localStorage
+        if (!activeTasks && !completedTasks) {
+            console.log('Migrating data from localStorage to memory.js...');
+            try {
+                const oldActiveTasks = JSON.parse(localStorage.getItem('scroll_active_tasks') || '[]');
+                const oldCompletedTasks = JSON.parse(localStorage.getItem('scroll_completed_tasks') || '[]');
+                const oldState = JSON.parse(localStorage.getItem('scroll_app_state') || '{}');
+                if (oldActiveTasks.length > 0 || oldCompletedTasks.length > 0) {
+                    activeTasks = oldActiveTasks;
+                    completedTasks = oldCompletedTasks;
+                    editMode = oldState.editMode || false;
+                    completedTasksVisible = oldState.completedTasksVisible || false;
+                    saveToMemory();
+                }
+            } catch (migrationError) {
+                console.warn('Failed to migrate from localStorage:', migrationError);
+            }
         }
-    } catch {}
+
+        // Use data from memory.js or set defaults
+        activeTasks = Array.isArray(activeTasks) ? activeTasks : [];
+        completedTasks = Array.isArray(completedTasks) ? completedTasks : [];
+        editMode = typeof editMode === 'boolean' ? editMode : false;
+        completedTasksVisible = typeof completedTasksVisible === 'boolean' ? completedTasksVisible : false;
+    } catch (e) {
+        console.warn('Failed to load from memory:', e);
+        // Fallback to defaults
+        activeTasks = [];
+        completedTasks = [];
+        editMode = false;
+        completedTasksVisible = false;
+    }
 }
 
 function renderActiveTasks() {
@@ -60,7 +91,7 @@ function renderActiveTasks() {
                 task.checkedAt = Date.now();
                 task.expireAfterMs = 5000;
                 renderActiveTasks();
-                saveToLocalStorage();
+                saveToMemory();
             });
             $li.append($checkbox, $text, $deleteBtn, $completeBtn);
         } else {
@@ -92,6 +123,8 @@ function renderCompletedTasks() {
         $list.append($li);
     }
     if (editMode) enableCompletedDragAndDrop();
+}
+
 // Permanently delete a completed (archived) task
 function deleteCompletedTask(taskId) {
     window.Modals.confirm('Delete this completed task permanently?', 'Delete Completed Task', 'Delete', 'Cancel').then(confirmed => {
@@ -100,10 +133,9 @@ function deleteCompletedTask(taskId) {
         if (idx !== -1) {
             completedTasks.splice(idx, 1);
             renderCompletedTasks();
-            saveToLocalStorage();
+            saveToMemory();
         }
     });
-}
 }
 // Drag-and-drop for completed (archived) tasks
 function enableCompletedDragAndDrop() {
@@ -211,7 +243,7 @@ function reorderCompletedTasksByIndex(draggedId, toIdx) {
     if (fromIdx < toIdx && toIdx < completedTasks.length + 1) toIdx--;
     completedTasks.splice(toIdx, 0, task);
     renderCompletedTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function reorderCompletedTasks(draggedId, targetId) {
@@ -222,7 +254,7 @@ function reorderCompletedTasks(draggedId, targetId) {
     const [task] = completedTasks.splice(fromIdx, 1);
     completedTasks.splice(toIdx, 0, task);
     renderCompletedTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function addTask() {
@@ -234,7 +266,7 @@ function addTask() {
     $input.val('');
     $input[0].style.height = 'auto'; // Reset height after adding
     renderActiveTasks();
-    saveToLocalStorage();
+    saveToMemory();
     $input.focus();
 }
 
@@ -245,7 +277,7 @@ function toggleTaskChecked(taskId) {
     task.checkedAt = task.checked ? Date.now() : null;
     if (!task.checked) delete task.expireAfterMs;
     renderActiveTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function checkExpiredTasks() {
@@ -256,9 +288,12 @@ function checkExpiredTasks() {
         if (t.checked && t.checkedAt) {
             const expireMs = t.expireAfterMs || 30 * 60 * 1000;
             if (now - t.checkedAt > expireMs) {
-                t.completedAt = now;
-                completedTasks.unshift({...t});
-                if (completedTasks.length > 50) completedTasks.pop();
+                // Move to completedTasks, but ensure no duplicate IDs
+                if (!completedTasks.some(ct => ct.id === t.id)) {
+                    const completedTask = { ...t, completedAt: now, checked: true };
+                    completedTasks.unshift(completedTask);
+                    if (completedTasks.length > 50) completedTasks.pop();
+                }
                 activeTasks.splice(i, 1);
                 changed = true;
             }
@@ -267,7 +302,7 @@ function checkExpiredTasks() {
     if (changed) {
         renderActiveTasks();
         renderCompletedTasks();
-        saveToLocalStorage();
+        saveToMemory();
     }
 }
 
@@ -276,7 +311,7 @@ function showCompletedSection(show) {
     $('#completedSection').toggleClass('show', show).toggleClass('hide', !show);
     // Change emoji to indicate state
     $('#showCompletedBtn').html(show ? '🚫' : '✅');
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function restoreTask(taskId) {
@@ -286,7 +321,7 @@ function restoreTask(taskId) {
     activeTasks.unshift({...t, checked: false, checkedAt: null, completedAt: null});
     renderActiveTasks();
     renderCompletedTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function toggleEditMode() {
@@ -294,7 +329,7 @@ function toggleEditMode() {
     $('#editModeBtn').html(editMode ? '🛠️' : '✏️');
     $('.scroll-main').toggleClass('edit-mode', editMode);
     renderActiveTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function deleteTask(taskId) {
@@ -304,7 +339,7 @@ function deleteTask(taskId) {
         if (idx !== -1) {
             activeTasks.splice(idx, 1);
             renderActiveTasks();
-            saveToLocalStorage();
+            saveToMemory();
         }
     });
 }
@@ -434,7 +469,7 @@ function reorderTasksByIndex(draggedId, toIdx) {
     if (fromIdx < toIdx && toIdx < activeTasks.length + 1) toIdx--;
     activeTasks.splice(toIdx, 0, task);
     renderActiveTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function reorderTasks(draggedId, targetId) {
@@ -445,7 +480,7 @@ function reorderTasks(draggedId, targetId) {
     const [task] = activeTasks.splice(fromIdx, 1);
     activeTasks.splice(toIdx, 0, task);
     renderActiveTasks();
-    saveToLocalStorage();
+    saveToMemory();
 }
 
 function startExpirationTimer() {
@@ -459,7 +494,7 @@ function stopExpirationTimer() {
 }
 
 function initApp() {
-    loadFromLocalStorage();
+    loadFromMemory();
     checkExpiredTasks();
     renderActiveTasks();
     renderCompletedTasks();

@@ -313,9 +313,109 @@
         </div>
         <div class="gallery" id="gallery"></div>
     </div>
+    <script src="../memory.js"></script>
     <script src="../modals.js"></script>
     <script src="../stars.js"></script>
     <script>
+    // Memory management constants
+    const NAMESPACE = 'Realities';
+    const MAX_REALITIES = 40;
+
+    // Load existing realities from memory on startup
+    function loadExistingRealities() {
+        const gallery = document.getElementById('gallery');
+        gallery.innerHTML = '';
+        for (let i = 1; i <= MAX_REALITIES; i++) {
+            // Try to load blob from memory
+            const blob = memory.readBlob(NAMESPACE, i.toString(), 'image/jpeg');
+            if (blob) {
+                const url = URL.createObjectURL(blob);
+                addImageToGallery(url, i);
+            }
+        }
+    }
+
+    // Find next available reality ID
+    function getNextRealityId() {
+        for (let i = 1; i <= MAX_REALITIES; i++) {
+            if (!memory.read(NAMESPACE, i.toString())) {
+                return i;
+            }
+        }
+        return null; // No available slots
+    }
+
+    // Get count of existing realities
+    function getRealityCount() {
+        let count = 0;
+        for (let i = 1; i <= MAX_REALITIES; i++) {
+            if (memory.read(NAMESPACE, i.toString())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // Add image to gallery with ID for tracking
+    function addImageToGallery(dataUrl, realityId) {
+        const gallery = document.getElementById('gallery');
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.width = 560;
+        img.height = 420;
+        img.dataset.realityId = realityId; // Store ID for deletion
+        img.className = 'gallery-image-fade-in';
+        img.addEventListener('click', function() {
+            openImageModal(dataUrl, realityId);
+        });
+        gallery.prepend(img);
+        
+        // Trigger fade-in animation
+        setTimeout(() => {
+            img.classList.add('visible');
+        }, 50);
+    }
+
+    // Delete reality with confirmation
+    function deleteReality(realityId) {
+        // Show confirmation modal
+        const confirmContent = document.createElement('div');
+        confirmContent.style.cssText = 'text-align: center; padding: 20px;';
+        confirmContent.innerHTML = `
+            <h3 style="color: var(--text-primary); margin-bottom: 20px;">Delete Reality?</h3>
+            <p style="color: var(--text-accent); margin-bottom: 30px;">This action cannot be undone.</p>
+            <div style="display: flex; gap: 15px; justify-content: center;">
+                <button id="confirmDelete" style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">Delete</button>
+                <button id="cancelDelete" style="background: var(--bg-accent); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 6px; cursor: pointer;">Cancel</button>
+            </div>
+        `;
+
+        Modals.open({
+            content: confirmContent,
+            closeOnOverlay: true
+        });
+
+        // Handle confirmation
+        document.getElementById('confirmDelete').onclick = function() {
+            // Remove from memory
+            memory.remove(NAMESPACE, realityId.toString());
+            
+            // Remove from gallery
+            const img = document.querySelector(`img[data-reality-id="${realityId}"]`);
+            if (img) {
+                img.remove();
+            }
+            
+            Modals.close();
+            
+            // Close the main image modal if it's open
+            setTimeout(() => Modals.close(), 100);
+        };
+
+        document.getElementById('cancelDelete').onclick = function() {
+            Modals.close();
+        };
+    }
     // Import button logic
     const importBtn = document.getElementById('importBtn');
     const importInput = document.getElementById('importInput');
@@ -327,6 +427,13 @@
 
     importInput.onchange = function(e) {
         if (!importInput.files || !importInput.files[0]) return;
+        
+        // Check if we've reached the maximum
+        if (getRealityCount() >= MAX_REALITIES) {
+            showMaxRealitiesModal();
+            return;
+        }
+        
         const file = importInput.files[0];
         const reader = new FileReader();
         reader.onload = function(ev) {
@@ -370,17 +477,19 @@
                 const newImgData = new ImageData(dataCopy, 560, 420);
                 compressedCtx.putImageData(newImgData, 0, 0);
                 const dataUrl = compressedCanvas.toDataURL('image/jpeg', 0.420);
-                const galleryImg = document.createElement('img');
-                galleryImg.src = dataUrl;
-                galleryImg.width = 560;
-                galleryImg.height = 420;
-                galleryImg.addEventListener('click', function() {
-                    openImageModal(dataUrl);
-                });
-                gallery.prepend(galleryImg);
+                
+                // Save to memory and add to gallery
+                const realityId = getNextRealityId();
+                if (realityId) {
+                    memory.write(NAMESPACE, realityId.toString(), dataUrl);
+                    addImageToGallery(dataUrl, realityId);
+                }
             };
             img.onerror = function() {
-                alert('Could not load image.');
+                Modals.open({
+                    content: 'Could not load image.',
+                    closeOnOverlay: true
+                });
             };
             img.src = ev.target.result;
         };
@@ -457,8 +566,8 @@
             stream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = stream;
             
-            // Show/hide camera switch button based on available cameras
-            switchCameraBtn.style.display = availableCameras.length > 1 ? 'block' : 'none';
+            // Always show the switch camera button
+            switchCameraBtn.style.display = 'block';
             
         } catch (e) {
             console.warn('Could not access camera with facingMode:', currentFacingMode);
@@ -467,7 +576,7 @@
                 const fallbackConstraints = { video: { width: 560, height: 420 } };
                 stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
                 video.srcObject = stream;
-                switchCameraBtn.style.display = 'none'; // Hide switch button on fallback
+                switchCameraBtn.style.display = 'block'; // Always show switch button, even on fallback
             } catch (fallbackError) {
                 alert('Could not access camera: ' + fallbackError.message);
             }
@@ -683,48 +792,49 @@
     // Capture current frame and compress to exactly 69 colors
     function captureAndCompressFrame() {
         try {
+            // Check if we've reached the maximum
+            if (getRealityCount() >= MAX_REALITIES) {
+                showMaxRealitiesModal();
+                snapBtn.disabled = false;
+                snapBtn.textContent = '◉';
+                snapBtn.style.opacity = '1';
+                return;
+            }
+
             // Get current viewfinder image data
             const imgData = viewfinderCtx.getImageData(0, 0, 560, 420);
             const data = new Uint8ClampedArray(imgData.data);
-            
+
             // Generate a palette with exactly 69 colors
             const palette69 = generate69ColorPalette(data);
-            
+
             // Quantize the image to use only these 69 colors
             quantizeTo69Colors(data, palette69);
-            
+
             // Create a new canvas with the quantized image
             const compressedCanvas = document.createElement('canvas');
             compressedCanvas.width = 560;
             compressedCanvas.height = 420;
             const compressedCtx = compressedCanvas.getContext('2d');
-            
+
             // Put the quantized image data
             const newImgData = new ImageData(data, 560, 420);
             compressedCtx.putImageData(newImgData, 0, 0);
-            
-            // Convert to data URL with high compression for limited colors
-            // Use lower quality JPEG for smaller file size, then convert back to maintain the quantized look
-            const dataUrl = compressedCanvas.toDataURL('image/jpeg', 0.420); // 70% quality for smaller size
-            
-            // Create image element for gallery
-            const img = document.createElement('img');
-            img.src = dataUrl;
-            img.width = 560;
-            img.height = 420;
-            
-            // Add click handler to open in modal
-            img.addEventListener('click', function() {
-                openImageModal(dataUrl);
-            });
-            
-            gallery.prepend(img);
-            
-            // Reset button
-            snapBtn.disabled = false;
-            snapBtn.textContent = '◉';
-            snapBtn.style.opacity = '1';
-            
+
+            // Convert to blob (JPEG)
+            compressedCanvas.toBlob(async (blob) => {
+                const realityId = getNextRealityId();
+                if (realityId && blob) {
+                    const filename = `reality_${realityId}.jpg`;
+                    await memory.writeBlob(NAMESPACE, realityId.toString(), blob, filename);
+                    const url = URL.createObjectURL(blob);
+                    addImageToGallery(url, realityId);
+                }
+                // Reset button
+                snapBtn.disabled = false;
+                snapBtn.textContent = '◉';
+                snapBtn.style.opacity = '1';
+            }, 'image/jpeg', 0.42);
         } catch (error) {
             console.error('Capture error:', error);
             // Reset button on error
@@ -822,8 +932,8 @@
         }
     }
 
-    // Function to open image in modal with download button
-    function openImageModal(imageUrl) {
+    // Function to open image in modal with download and delete buttons
+    function openImageModal(imageUrl, realityId) {
         const modalImage = document.createElement('img');
         modalImage.src = imageUrl;
         modalImage.className = 'modal-image';
@@ -836,16 +946,46 @@
             downloadImage(imageUrl);
         };
 
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = '🗑️ Delete Reality';
+        deleteBtn.style.cssText = `
+            background: linear-gradient(90deg, #dc3545 60%, #c82333 100%) !important;
+            color: white !important;
+            font-weight: 600 !important;
+            padding: 12px 24px !important;
+            border-radius: 8px !important;
+            font-size: 16px !important;
+            min-width: 120px !important;
+            border: none !important;
+            cursor: pointer !important;
+            transition: background 0.18s, transform 0.12s, box-shadow 0.18s !important;
+        `;
+        deleteBtn.onmouseover = function() {
+            this.style.background = 'linear-gradient(90deg, #e4606d 60%, #dc3545 100%) !important';
+            this.style.transform = 'translateY(-1px) scale(1.03) !important';
+            this.style.boxShadow = '0 4px 16px rgba(220, 53, 69, 0.3) !important';
+        };
+        deleteBtn.onmouseout = function() {
+            this.style.background = 'linear-gradient(90deg, #dc3545 60%, #c82333 100%) !important';
+            this.style.transform = 'none !important';
+            this.style.boxShadow = 'none !important';
+        };
+        deleteBtn.onclick = function() {
+            deleteReality(realityId);
+        };
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = 'display: flex; gap: 15px; justify-content: center;';
+        buttonContainer.appendChild(downloadBtn);
+        buttonContainer.appendChild(deleteBtn);
+
         const content = document.createElement('div');
         content.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 20px;';
         content.appendChild(modalImage);
-        content.appendChild(downloadBtn);
+        content.appendChild(buttonContainer);
 
         Modals.open({
-            title: 'Captured Reality',
             content: content,
-            confirmText: 'Close',
-            showCancel: false,
             closeOnOverlay: true
         });
     }
@@ -858,6 +998,36 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    }
+
+    // Show modal for max realities reached
+    function showMaxRealitiesModal() {
+        const content = document.createElement('div');
+        content.style.cssText = 'text-align: center; padding: 32px;';
+        content.innerHTML = `
+            <h3 style="color: var(--text-primary); margin-bottom: 18px;">Maximum Realities Reached</h3>
+            <p style="color: var(--text-accent); margin-bottom: 24px;">You have reached the limit of <b>${MAX_REALITIES}</b> realities.<br>Delete some realities to add new ones.</p>
+            <button style="background: var(--accent-purple); color: white; border: none; padding: 10px 28px; border-radius: 8px; font-size: 16px; cursor: pointer;">OK</button>
+        `;
+        content.querySelector('button').onclick = function() {
+            Modals.close();
+        };
+        Modals.open({
+            content: content,
+            closeOnOverlay: true
+        });
+    }
+
+    // Initialize the app: load existing realities from memory
+    document.addEventListener('DOMContentLoaded', function() {
+        loadExistingRealities();
+    });
+
+    // Also load if DOM is already ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadExistingRealities);
+    } else {
+        loadExistingRealities();
     }
     </script>
 </body>

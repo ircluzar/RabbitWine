@@ -43,6 +43,15 @@ html, body {
     box-shadow: 0 8px 32px rgba(204, 188, 252, 0.18);
     border-color: var(--accent-purple);
 }
+.gallery-image-fade-in {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+.gallery-image-fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
 @keyframes fadeInUp {
     from {
         opacity: 0;

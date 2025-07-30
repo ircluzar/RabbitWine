@@ -399,6 +399,31 @@ body {
     transition: border-color 0.2s;
 }
 
+/* Base styles for palette colors and cog */
+.palette-color, .palette-add {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    box-sizing: border-box;
+}
+
+.palette-color:hover, .palette-add:hover {
+    border-color: var(--success-color);
+    transform: scale(1.05);
+}
+
+.palette-color.selected {
+    border: 3px solid #FF8C00 !important;
+    transform: scale(1.1);
+}
+
 /* Brush size dropdown: make it half width */
 .brush-size-select {
     min-width: 55px !important;
