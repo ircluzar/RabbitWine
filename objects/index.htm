@@ -139,6 +139,9 @@ $(document).ready(function() {
         return tiers[0];
     }
     
+    // Cache for reality blob URLs to prevent constant recreation
+    const realityBlobCache = new Map();
+    
     function getImgPath(obj) {
         if (obj.isEmpty || obj.imageNumber === null || obj.imageNumber === undefined) {
             return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjNGE0YTRhIi8+Cjx0ZXh0IHg9IjUwIiB5PSI1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk0YTNiOCIgZm9udC1zaXplPSIxMiI+RW1wdHk8L3RleHQ+Cjwvc3ZnPg==';
@@ -148,12 +151,20 @@ $(document).ready(function() {
         // For realities tier, check if a saved reality exists from the Realities app
         if (tier.name === 'realities') {
             const realityId = tier.img(obj.imageNumber); // This gives us Math.floor(imageNumber / 100)
+            
+            // Check cache first
+            if (realityBlobCache.has(realityId)) {
+                return realityBlobCache.get(realityId);
+            }
+            
             try {
                 // Check if there's a saved reality in the Realities namespace
                 const savedReality = window.memory.readBlob('Realities', realityId.toString(), 'image/jpeg');
                 if (savedReality) {
-                    // Return a blob URL for the saved reality image
-                    return URL.createObjectURL(savedReality);
+                    // Create blob URL and cache it
+                    const blobUrl = URL.createObjectURL(savedReality);
+                    realityBlobCache.set(realityId, blobUrl);
+                    return blobUrl;
                 }
             } catch (e) {
                 // If memory access fails, fall back to default GIF
