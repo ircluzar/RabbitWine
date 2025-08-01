@@ -361,6 +361,66 @@
         transform: scale(1.05);
     }
     
+    /* Shuffle All Button */
+    .shuffle-all-btn {
+        background: var(--bg-accent);
+        border-radius: 16px;
+        border: 1.5px solid var(--border-color);
+        padding: 1.5rem 3rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: block;
+        margin: 0 auto 2rem auto;
+        width: fit-content;
+        min-width: 200px;
+        position: relative;
+        overflow: hidden;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        text-align: center;
+    }
+    
+    .shuffle-all-btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, var(--accent-purple), transparent);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        z-index: 1;
+    }
+    
+    .shuffle-all-btn:hover::before {
+        opacity: 0.1;
+    }
+    
+    .shuffle-all-btn:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 8px 25px rgba(204,188,252,0.2);
+        border-color: var(--accent-purple);
+    }
+    
+    .shuffle-all-btn:active {
+        transform: translateY(-4px);
+    }
+    
+    .shuffle-all-btn:disabled {
+        background: var(--bg-secondary);
+        color: var(--text-accent);
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+        border-color: var(--border-color);
+    }
+    
+    .shuffle-all-btn:disabled::before {
+        opacity: 0;
+    }
+    
     .jams-title {
         font-size: 2.1rem;
         font-weight: 700;
@@ -888,6 +948,12 @@
         .track-album {
             font-size: 0.9rem;
         }
+        
+        .shuffle-all-btn {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            min-width: 160px;
+        }
     }
     
     @media (max-width: 480px) {
@@ -959,6 +1025,12 @@
         
         .track-album {
             font-size: 0.8rem;
+        }
+        
+        .shuffle-all-btn {
+            padding: 0.8rem 1.5rem;
+            font-size: 0.9rem;
+            min-width: 140px;
         }
     }
     
@@ -1125,6 +1197,7 @@
         
         <!-- Artists Page -->
         <div id="artistsPage" class="page active">
+            <button id="shuffleAllBtn" class="shuffle-all-btn">Shuffle</button>
             <div id="artistsGrid" class="artists-grid">
                 <div class="loading-state">
                     <div class="loading-spinner"></div>
@@ -1183,7 +1256,7 @@
                     
                     <div class="volume-container">
                         <span>🔊</span>
-                        <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="70">
+                        <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="100">
                         <button id="shuffleBtn" class="shuffle-btn" title="Shuffle">Shuffle</button>
                     </div>
                 </div>
@@ -1200,6 +1273,7 @@
     <audio id="audioPlayer" preload="metadata"></audio>
     
     <script src="../modals.js"></script>
+    <script src="../memory.js"></script>
     <script src="../stars.js"></script>
     <script>
     class MusicPlayer {
@@ -1220,7 +1294,15 @@
             this.initializeElements();
             this.initializeEventListeners();
             this.loadArtists();
-            this.handleURLFragment();
+            
+            // Try to load saved state after initialization
+            setTimeout(() => {
+                const stateLoaded = this.loadPlayerState();
+                if (stateLoaded) {
+                    console.log('Loaded player state from memory');
+                }
+                this.handleURLFragment();
+            }, 100);
         }
         
         handleURLFragment() {
@@ -1234,6 +1316,117 @@
                     }
                 }, 100);
             }
+        }
+        
+        // Save current player state to memory
+        savePlayerState() {
+            if (!this.currentPlaylist.length) {
+                memory.remove('jams', 'playerState');
+                return;
+            }
+            
+            const state = {
+                playlist: this.currentPlaylist,
+                currentTrackIndex: this.currentTrackIndex,
+                currentPosition: this.audio.currentTime || 0,
+                volume: this.audio.volume || 1.0,
+                shuffleMode: this.shuffleMode,
+                shuffledIndices: this.shuffledIndices,
+                shuffleIndex: this.shuffleIndex,
+                currentArtist: this.currentArtist,
+                currentAlbum: this.currentAlbum,
+                timestamp: Date.now()
+            };
+            
+            memory.write('jams', 'playerState', state);
+        }
+        
+        // Load player state from memory
+        loadPlayerState() {
+            const state = memory.read('jams', 'playerState');
+            if (!state || !state.playlist || !state.playlist.length) {
+                return false;
+            }
+            
+            // Check if state is not too old (7 days)
+            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+            if (Date.now() - state.timestamp > maxAge) {
+                memory.remove('jams', 'playerState');
+                return false;
+            }
+            
+            // Restore state
+            this.currentPlaylist = state.playlist;
+            this.currentTrackIndex = state.currentTrackIndex || 0;
+            this.shuffleMode = state.shuffleMode || false;
+            this.shuffledIndices = state.shuffledIndices || [];
+            this.shuffleIndex = state.shuffleIndex || 0;
+            this.currentArtist = state.currentArtist || null;
+            this.currentAlbum = state.currentAlbum || null;
+            
+            // Restore volume
+            this.audio.volume = state.volume || 1.0;
+            this.volumeSlider.value = (state.volume || 1.0) * 100;
+            
+            // Update UI without playing
+            this.renderTracks(this.currentPlaylist);
+            this.updateTrackDisplay();
+            this.updateShuffleButton();
+            this.updateMiniPlayer();
+            this.updateMiniPlayerVisibility();
+            
+            // Set up audio for position restoration
+            if (this.currentPlaylist[this.currentTrackIndex]) {
+                const track = this.currentPlaylist[this.currentTrackIndex];
+                this.audio.src = track.location;
+                this.audio.currentTime = state.currentPosition || 0;
+                
+                // Update progress display
+                this.audio.addEventListener('loadedmetadata', () => {
+                    this.audio.currentTime = state.currentPosition || 0;
+                    this.updateProgress();
+                }, { once: true });
+            }
+            
+            return true;
+        }
+        
+        // Update track display and UI elements
+        updateTrackDisplay() {
+            if (this.currentPlaylist.length > 0 && this.currentTrackIndex >= 0) {
+                const track = this.currentPlaylist[this.currentTrackIndex];
+                
+                // Update current track display
+                this.currentTrackTitle.textContent = track.title;
+                this.currentTrackArtist.textContent = track.creator;
+                this.currentTrackAlbum.textContent = track.album;
+                
+                // Update album art
+                this.currentAlbumArt.src = `https://redscientist.com/Content/music/${track.albumId}/front.jpg`;
+                
+                // Update page title
+                this.albumPageTitle.textContent = this.currentAlbum ? this.currentAlbum.name : 'Player';
+                
+                // Update track list highlighting
+                document.querySelectorAll('.track-item').forEach(el => el.classList.remove('playing'));
+                const trackElements = document.querySelectorAll('.track-item');
+                if (trackElements[this.currentTrackIndex]) {
+                    trackElements[this.currentTrackIndex].classList.add('playing');
+                }
+                
+                // Update browser tab title
+                document.title = `${track.creator} - ${track.title}`;
+            }
+        }
+        
+        // Update shuffle button state
+        updateShuffleButton() {
+            this.shuffleBtn.classList.toggle('active', this.shuffleMode);
+        }
+        
+        // Clear saved player state
+        clearPlayerState() {
+            memory.remove('jams', 'playerState');
         }
         
         initializeElements() {
@@ -1280,6 +1473,9 @@
             // Redscientist button
             this.artistRedscientistBtn = document.getElementById('artistRedscientistBtn');
             this.artistBanner = document.getElementById('artistBanner');
+            
+            // Shuffle All button
+            this.shuffleAllBtn = document.getElementById('shuffleAllBtn');
         }
         
         initializeEventListeners() {
@@ -1290,6 +1486,9 @@
             this.shuffleBtn.addEventListener('click', () => this.toggleShuffle());
             this.volumeSlider.addEventListener('input', (e) => this.setVolume(e.target.value));
             this.progressBar.addEventListener('click', (e) => this.seek(e));
+            
+            // Shuffle All button
+            this.shuffleAllBtn.addEventListener('click', () => this.shuffleAllMusic());
             
             // Mini player controls
             this.miniPlayPauseBtn.addEventListener('click', (e) => {
@@ -1325,7 +1524,7 @@
             window.addEventListener('storage', (e) => this.handleStorageAction(e));
             
             // Set initial volume
-            this.audio.volume = 0.7;
+            this.audio.volume = 1.0;
             
             // Initialize Media Session API for mobile notifications
             this.initializeMediaSession();
@@ -1440,10 +1639,9 @@
         }
         
         updateMiniPlayerVisibility() {
-            // Show mini player if music is playing/loaded and not on player page
+            // Show mini player if music is loaded and not on player page
             const shouldShowMiniPlayer = this.currentPlaylist.length > 0 && 
-                                       this.currentPage !== 'player' && 
-                                       this.audio.src;
+                                       this.currentPage !== 'player';
             
             if (shouldShowMiniPlayer) {
                 this.miniPlayer.classList.add('visible');
@@ -1617,6 +1815,15 @@
                 this.renderArtists();
             } catch (error) {
                 console.error('Error loading artists:', error);
+                
+                // Show modal for critical network errors
+                if (error.message.includes('HTTP') || error.message.includes('fetch')) {
+                    Modals.alert(
+                        'Unable to connect to the music catalog. Please check your internet connection and try again.',
+                        'Connection Error'
+                    );
+                }
+                
                 this.artistsGrid.innerHTML = `
                     <div class="error-state">
                         <div class="error-message">Error loading artists</div>
@@ -1808,6 +2015,15 @@
                 }
             } catch (error) {
                 console.error('Error loading tracks:', error);
+                
+                // Show modal for critical track loading errors
+                if (error.message.includes('HTTP') || error.message.includes('fetch') || error.message.includes('No tracks found')) {
+                    Modals.alert(
+                        'Unable to load tracks from this album. Please try another album or check your connection.',
+                        'Album Error'
+                    );
+                }
+                
                 this.tracksList.innerHTML = `
                     <div class="error-state">
                         <div class="error-message">Error loading tracks</div>
@@ -1868,6 +2084,9 @@
 
             // Update browser tab title
             document.title = `${track.creator} - ${track.title}`;
+            
+            // Save state to memory
+            this.savePlayerState();
         }
         
         play() {
@@ -1877,8 +2096,15 @@
                 this.playPauseBtn.classList.add('pause');
                 this.updateMiniPlayer();
                 this.updateMediaSession();
+                
+                // Update browser tab title when resuming playback
+                if (this.currentPlaylist.length > 0 && this.currentTrackIndex >= 0) {
+                    const track = this.currentPlaylist[this.currentTrackIndex];
+                    document.title = `${track.creator} - ${track.title}`;
+                }
             }).catch(error => {
                 console.error('Error playing audio:', error);
+                Modals.alert('Unable to play this track. Please try another song.', 'Playback Error');
             });
         }
         
@@ -1942,6 +2168,9 @@
                 // Find current track in shuffled array
                 this.shuffleIndex = this.shuffledIndices.indexOf(this.currentTrackIndex);
             }
+            
+            // Save state to memory
+            this.savePlayerState();
         }
         
         generateShuffledIndices() {
@@ -1954,6 +2183,10 @@
         
         setVolume(value) {
             this.audio.volume = value / 100;
+            // Save state immediately when volume changes
+            if (this.currentPlaylist.length > 0) {
+                this.savePlayerState();
+            }
         }
         
         seek(event) {
@@ -1970,8 +2203,8 @@
                 this.currentTime.textContent = this.formatTime(this.audio.currentTime);
                 
                 // Save state every few seconds
-                if (!this.lastStateSave || Date.now() - this.lastStateSave > 3000) {
-                    this.saveMusicStateToStorage();
+                if (!this.lastStateSave || Date.now() - this.lastStateSave > 5000) {
+                    this.savePlayerState();
                     this.lastStateSave = Date.now();
                 }
             }
@@ -1988,9 +2221,174 @@
             return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
         
+        async shuffleAllMusic() {
+            try {
+                // Disable button and show loading state
+                this.shuffleAllBtn.disabled = true;
+                this.shuffleAllBtn.textContent = 'Loading Music...';
+                
+                console.log('Starting shuffle all music...');
+                
+                // Get all artists (already loaded)
+                if (!this.artists.length) {
+                    await this.loadArtists();
+                }
+                
+                let allTracks = [];
+                
+                // Fetch all albums and tracks from all artists
+                for (let artistIndex = 0; artistIndex < this.artists.length; artistIndex++) {
+                    const artist = this.artists[artistIndex];
+                    this.shuffleAllBtn.textContent = `Loading ${artist.name}... (${artistIndex + 1}/${this.artists.length})`;
+                    
+                    try {
+                        // Fetch artist albums
+                        const artistResponse = await fetch(`https://redscientist.com/Content/data/${artist.id}.json`);
+                        if (!artistResponse.ok) {
+                            console.warn(`Failed to load artist ${artist.name}:`, artistResponse.status);
+                            continue;
+                        }
+                        
+                        const artistData = await artistResponse.json();
+                        
+                        if (!artistData.albums || !Array.isArray(artistData.albums)) {
+                            console.warn(`Invalid albums data for artist ${artist.name}`);
+                            continue;
+                        }
+                        
+                        // Fetch tracks from each album
+                        for (const album of artistData.albums) {
+                            try {
+                                const playlistResponse = await fetch(`https://redscientist.com/Content/music/${album.id}/playlist.xml`);
+                                if (!playlistResponse.ok) {
+                                    console.warn(`Failed to load album ${album.name}:`, playlistResponse.status);
+                                    continue;
+                                }
+                                
+                                const xmlText = await playlistResponse.text();
+                                const parser = new DOMParser();
+                                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                                
+                                const trackElements = xmlDoc.getElementsByTagName('track');
+                                
+                                Array.from(trackElements).forEach((trackEl, index) => {
+                                    const location = trackEl.getElementsByTagName('location')[0]?.textContent || '';
+                                    const title = trackEl.getElementsByTagName('title')[0]?.textContent || 'Unknown Title';
+                                    const creator = trackEl.getElementsByTagName('creator')[0]?.textContent || artist.name;
+                                    const albumName = trackEl.getElementsByTagName('album')[0]?.textContent || album.name;
+                                    const image = trackEl.getElementsByTagName('image')[0]?.textContent || '';
+                                    
+                                    if (location) {
+                                        allTracks.push({
+                                            index: index + 1,
+                                            title,
+                                            creator,
+                                            album: albumName,
+                                            location: `https://redscientist.com/Content/${location}`,
+                                            image: image ? `https://redscientist.com/Content/${image}` : '',
+                                            albumId: album.id,
+                                            artistId: artist.id,
+                                            albumYear: album.year || ''
+                                        });
+                                    }
+                                });
+                                
+                            } catch (albumError) {
+                                console.warn(`Error processing album ${album.name}:`, albumError);
+                                continue;
+                            }
+                        }
+                        
+                    } catch (artistError) {
+                        console.warn(`Error processing artist ${artist.name}:`, artistError);
+                        continue;
+                    }
+                }
+                
+                console.log(`Loaded ${allTracks.length} total tracks`);
+                
+                if (allTracks.length === 0) {
+                    throw new Error('No tracks found in the catalog');
+                }
+                
+                // Show warning if very few tracks found
+                if (allTracks.length < 50) {
+                    const proceed = await Modals.confirm(
+                        `Only ${allTracks.length} tracks found. Continue with shuffle?`,
+                        'Limited Tracks',
+                        'Continue',
+                        'Cancel'
+                    );
+                    if (!proceed) {
+                        return; // User cancelled
+                    }
+                }
+                
+                // Shuffle all tracks and select 420 (or all if less than 420)
+                const shuffledTracks = [...allTracks];
+                for (let i = shuffledTracks.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffledTracks[i], shuffledTracks[j]] = [shuffledTracks[j], shuffledTracks[i]];
+                }
+                
+                const selectedTracks = shuffledTracks.slice(0, Math.min(420, shuffledTracks.length));
+                
+                // Re-index the tracks for the mega playlist
+                selectedTracks.forEach((track, index) => {
+                    track.index = index + 1;
+                });
+                
+                // Set up the mega playlist
+                this.currentPlaylist = selectedTracks;
+                this.currentArtist = null; // No artist context for shuffle - back goes to artists page
+                this.currentAlbum = { 
+                    name: 'Shuffle', 
+                    id: 'shuffle-all',
+                    year: new Date().getFullYear()
+                };
+                
+                // Update page titles
+                this.albumPageTitle.textContent = 'Shuffle';
+                
+                // Navigate to player page
+                this.navigateToPage('playerPage', true);
+                
+                // Render the track list
+                this.renderTracks(selectedTracks);
+                
+                // Generate new shuffle indices for the mega playlist
+                this.generateShuffledIndices();
+                
+                // Auto-play the first track
+                if (selectedTracks.length > 0) {
+                    this.playTrack(0);
+                }
+                
+                console.log(`Created mega playlist with ${selectedTracks.length} songs`);
+                
+            } catch (error) {
+                console.error('Error creating shuffle playlist:', error);
+                Modals.alert(`Error creating shuffle playlist: ${error.message}`, 'Shuffle Error');
+            } finally {
+                // Re-enable button
+                this.shuffleAllBtn.disabled = false;
+                this.shuffleAllBtn.textContent = 'Shuffle';
+            }
+        }
+        
         handleAudioError() {
             console.error('Audio error occurred');
             this.pause();
+            
+            // Show modal if it's a critical error that prevents playback
+            if (this.currentPlaylist.length > 0 && this.currentTrackIndex >= 0) {
+                const track = this.currentPlaylist[this.currentTrackIndex];
+                Modals.alert(
+                    `Unable to play "${track.title}". Trying next track...`,
+                    'Playback Error'
+                );
+            }
+            
             // Try next track if current fails
             setTimeout(() => this.nextTrack(), 1000);
         }
