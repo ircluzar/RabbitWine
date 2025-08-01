@@ -1129,6 +1129,19 @@
         transform: scale(1.1);
     }
     
+    .mini-control-btn.close {
+        background: var(--bg-secondary);
+        color: var(--text-accent);
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .mini-control-btn.close:hover {
+        background: #e74c3c;
+        color: #fff;
+        transform: scale(1.1);
+    }
+    
     .mini-progress {
         position: absolute;
         bottom: 0;
@@ -1182,6 +1195,7 @@
         </div>
         <div class="mini-controls">
             <button id="miniPlayPauseBtn" class="mini-control-btn play" title="Play/Pause">⏸</button>
+            <button id="miniCloseBtn" class="mini-control-btn close" title="Close Player">✕</button>
         </div>
         <div class="mini-progress">
             <div id="miniProgressFill" class="mini-progress-fill"></div>
@@ -1321,7 +1335,7 @@
         // Save current player state to memory
         savePlayerState() {
             if (!this.currentPlaylist.length) {
-                memory.remove('jams', 'playerState');
+                memory.remove('Jams', 'playerState');
                 return;
             }
             
@@ -1335,15 +1349,16 @@
                 shuffleIndex: this.shuffleIndex,
                 currentArtist: this.currentArtist,
                 currentAlbum: this.currentAlbum,
+                albumPageTitle: this.albumPageTitle.textContent,
                 timestamp: Date.now()
             };
             
-            memory.write('jams', 'playerState', state);
+            memory.write('Jams', 'playerState', state);
         }
         
         // Load player state from memory
         loadPlayerState() {
-            const state = memory.read('jams', 'playerState');
+            const state = memory.read('Jams', 'playerState');
             if (!state || !state.playlist || !state.playlist.length) {
                 return false;
             }
@@ -1351,7 +1366,7 @@
             // Check if state is not too old (7 days)
             const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
             if (Date.now() - state.timestamp > maxAge) {
-                memory.remove('jams', 'playerState');
+                memory.remove('Jams', 'playerState');
                 return false;
             }
             
@@ -1363,6 +1378,11 @@
             this.shuffleIndex = state.shuffleIndex || 0;
             this.currentArtist = state.currentArtist || null;
             this.currentAlbum = state.currentAlbum || null;
+            
+            // Restore album page title for correct track display format
+            if (state.albumPageTitle) {
+                this.albumPageTitle.textContent = state.albumPageTitle;
+            }
             
             // Restore volume
             this.audio.volume = state.volume || 1.0;
@@ -1426,7 +1446,73 @@
         
         // Clear saved player state
         clearPlayerState() {
-            memory.remove('jams', 'playerState');
+            memory.remove('Jams', 'playerState');
+        }
+        
+        // Show confirmation modal before clearing playlist
+        async showClearPlaylistModal() {
+            const trackCount = this.currentPlaylist.length;
+            const currentTrack = trackCount > 0 ? this.currentPlaylist[this.currentTrackIndex] : null;
+            
+            let message = `Are you sure you want to discard your current playlist?`;
+            if (trackCount > 0) {
+                message += `\n\nThis will remove ${trackCount} track${trackCount !== 1 ? 's' : ''} from your queue.`;
+                if (currentTrack) {
+                    message += `\n\nCurrently playing: "${currentTrack.title}" by ${currentTrack.creator}`;
+                }
+            }
+            
+            const confirmed = await Modals.confirm(
+                message,
+                'Clear Playlist',
+                'Yes, Clear',
+                'Cancel'
+            );
+            
+            if (confirmed) {
+                this.clearPlaylistAndHideMiniPlayer();
+            }
+        }
+        
+        // Clear playlist and hide mini player
+        clearPlaylistAndHideMiniPlayer() {
+            // Stop and reset audio
+            this.audio.pause();
+            this.audio.currentTime = 0;
+            this.audio.src = '';
+            
+            // Clear playlist and state
+            this.currentPlaylist = [];
+            this.currentTrackIndex = 0;
+            this.isPlaying = false;
+            this.shuffleMode = false;
+            this.shuffledIndices = [];
+            this.shuffleIndex = 0;
+            this.currentArtist = null;
+            this.currentAlbum = null;
+            
+            // Clear saved state
+            this.clearPlayerState();
+            
+            // Update UI
+            this.updateMiniPlayerVisibility();
+            this.updateMediaSession();
+            
+            // Clear localStorage state for other pages
+            try {
+                localStorage.removeItem('jamsMusicState');
+                localStorage.removeItem('JamsMusicState');
+            } catch (e) {
+                console.warn('Could not clear localStorage:', e);
+            }
+            
+            // Reset document title
+            document.title = 'Jams - Music Player';
+            
+            // If we're on the player page, go back to artists
+            if (this.currentPage === 'player') {
+                this.showArtistsPage();
+            }
         }
         
         initializeElements() {
@@ -1451,6 +1537,7 @@
             this.miniTrackTitle = document.getElementById('miniTrackTitle');
             this.miniTrackArtist = document.getElementById('miniTrackArtist');
             this.miniPlayPauseBtn = document.getElementById('miniPlayPauseBtn');
+            this.miniCloseBtn = document.getElementById('miniCloseBtn');
             this.miniProgressFill = document.getElementById('miniProgressFill');
             
             // Pages
@@ -1494,6 +1581,10 @@
             this.miniPlayPauseBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.togglePlayPause();
+            });
+            this.miniCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showClearPlaylistModal();
             });
             this.miniAlbumArt.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1696,7 +1787,7 @@
             };
             
             try {
-                localStorage.setItem('jamsMusicState', JSON.stringify(musicState));
+                localStorage.setItem('JamsMusicState', JSON.stringify(musicState));
             } catch (e) {
                 console.warn('Could not save music state to localStorage:', e);
             }
@@ -1787,6 +1878,12 @@
                         switch (action.action) {
                             case 'togglePlayPause':
                                 this.togglePlayPause();
+                                break;
+                            case 'clearPlaylist':
+                                this.clearPlaylistAndHideMiniPlayer();
+                                break;
+                            case 'showClearConfirmation':
+                                this.showClearPlaylistModal();
                                 break;
                             // Add more actions as needed
                         }
@@ -1974,12 +2071,13 @@
                 
                 const xmlText = await response.text();
                 const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                const xmlDoc = parser.parseFromString(this.sanitizeXML(xmlText), 'text/xml');
                 
                 // Check for XML parsing errors
                 const parseError = xmlDoc.querySelector('parsererror');
                 if (parseError) {
-                    throw new Error('Invalid XML format');
+                    console.error('XML parsing error:', parseError.textContent);
+                    throw new Error(`Invalid XML format: ${parseError.textContent}`);
                 }
                 
                 const trackElements = xmlDoc.getElementsByTagName('track');
@@ -2038,12 +2136,20 @@
         
         renderTracks(tracks) {
             this.tracksList.innerHTML = '';
+            
+            // Check if we're in playlist/shuffle mode by looking at the album page title
+            const isPlaylistMode = this.albumPageTitle.textContent === 'Shuffle';
+            
             tracks.forEach((track, index) => {
                 const trackEl = document.createElement('div');
                 trackEl.className = 'track-item';
+                
+                // In playlist mode, show "Artist - TrackName", otherwise just track name
+                const displayName = isPlaylistMode ? `${track.creator} - ${track.title}` : track.title;
+                
                 trackEl.innerHTML = `
                     <div class="track-number">${track.index}</div>
-                    <div class="track-name">${track.title}</div>
+                    <div class="track-name">${displayName}</div>
                 `;
                 trackEl.addEventListener('click', () => this.playTrack(index));
                 this.tracksList.appendChild(trackEl);
@@ -2181,6 +2287,25 @@
             }
         }
         
+        sanitizeXML(xmlText) {
+            // Handle unescaped ampersands in XML content while preserving valid XML structure
+            return xmlText
+                // First, temporarily protect already escaped entities
+                .replace(/&amp;/g, '__AMP_PLACEHOLDER__')
+                .replace(/&lt;/g, '__LT_PLACEHOLDER__')
+                .replace(/&gt;/g, '__GT_PLACEHOLDER__')
+                .replace(/&quot;/g, '__QUOT_PLACEHOLDER__')
+                .replace(/&apos;/g, '__APOS_PLACEHOLDER__')
+                // Then escape remaining unescaped ampersands
+                .replace(/&/g, '&amp;')
+                // Restore the placeholders back to proper entities
+                .replace(/__AMP_PLACEHOLDER__/g, '&amp;')
+                .replace(/__LT_PLACEHOLDER__/g, '&lt;')
+                .replace(/__GT_PLACEHOLDER__/g, '&gt;')
+                .replace(/__QUOT_PLACEHOLDER__/g, '&quot;')
+                .replace(/__APOS_PLACEHOLDER__/g, '&apos;');
+        }
+        
         setVolume(value) {
             this.audio.volume = value / 100;
             // Save state immediately when volume changes
@@ -2267,7 +2392,7 @@
                                 
                                 const xmlText = await playlistResponse.text();
                                 const parser = new DOMParser();
-                                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                                const xmlDoc = parser.parseFromString(this.sanitizeXML(xmlText), 'text/xml');
                                 
                                 const trackElements = xmlDoc.getElementsByTagName('track');
                                 

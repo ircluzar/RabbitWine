@@ -59,6 +59,7 @@ class GlobalMiniPlayer {
                 <div class="global-mini-controls">
                     <button id="globalMiniPlayPauseBtn" class="global-mini-control-btn play" title="Play/Pause">▶</button>
                     <button id="globalMiniPlayerBtn" class="global-mini-control-btn player" title="Go to Player">🎵</button>
+                    <button id="globalMiniCloseBtn" class="global-mini-control-btn close" title="Close Player">✕</button>
                 </div>
                 <div class="global-mini-progress">
                     <div id="globalMiniProgressFill" class="global-mini-progress-fill"></div>
@@ -163,6 +164,19 @@ class GlobalMiniPlayer {
                 transform: scale(1.1);
             }
             
+            .global-mini-control-btn.close {
+                background: #3a3447;
+                color: #a0a0a0;
+                font-size: 0.8rem;
+                font-weight: bold;
+            }
+            
+            .global-mini-control-btn.close:hover {
+                background: #e74c3c;
+                color: #fff;
+                transform: scale(1.1);
+            }
+            
             .global-mini-progress {
                 position: absolute;
                 bottom: 0;
@@ -214,6 +228,7 @@ class GlobalMiniPlayer {
         const miniPlayer = document.getElementById('globalMiniPlayer');
         const playPauseBtn = document.getElementById('globalMiniPlayPauseBtn');
         const playerBtn = document.getElementById('globalMiniPlayerBtn');
+        const closeBtn = document.getElementById('globalMiniCloseBtn');
         
         if (playPauseBtn) {
             playPauseBtn.addEventListener('click', (e) => {
@@ -226,6 +241,13 @@ class GlobalMiniPlayer {
             playerBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.goToPlayer();
+            });
+        }
+        
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showClearPlaylistConfirmation();
             });
         }
         
@@ -266,6 +288,108 @@ class GlobalMiniPlayer {
         }
         
         window.location.href = jamsPagePath;
+    }
+    
+    showClearPlaylistConfirmation() {
+        // First try to send action to jams page if it's open
+        if (this.sendActionToJamsPage('showClearConfirmation')) {
+            return; // Jams page will handle the confirmation
+        }
+        
+        // Check if we have access to the Modals system (might be available on some pages)
+        if (typeof window.Modals !== 'undefined') {
+            // Use the modal system if available
+            this.showModalConfirmation();
+        } else {
+            // Fallback to browser confirm dialog
+            this.showBrowserConfirmation();
+        }
+    }
+    
+    sendActionToJamsPage(actionType) {
+        try {
+            // Check if there's an active music state (meaning jams page might be open)
+            const currentState = localStorage.getItem('jamsMusicState');
+            if (currentState) {
+                const action = {
+                    action: actionType,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('jamsMusicAction', JSON.stringify(action));
+                return true;
+            }
+        } catch (e) {
+            console.warn('Could not send action to jams page:', e);
+        }
+        return false;
+    }
+    
+    async showModalConfirmation() {
+        try {
+            let message = `Are you sure you want to discard your current playlist?`;
+            
+            // Try to get current track info from storage
+            const storedState = localStorage.getItem('jamsMusicState');
+            if (storedState) {
+                const musicState = JSON.parse(storedState);
+                if (musicState.currentTrack) {
+                    const track = musicState.currentTrack;
+                    message += `\n\nCurrently playing: "${track.title}" by ${track.creator}`;
+                }
+            }
+            
+            const confirmed = await window.Modals.confirm(
+                message,
+                'Clear Playlist',
+                'Yes, Clear',
+                'Cancel'
+            );
+            
+            if (confirmed) {
+                this.clearPlaylist();
+            }
+        } catch (e) {
+            console.warn('Modal confirmation failed, falling back to browser confirm:', e);
+            this.showBrowserConfirmation();
+        }
+    }
+    
+    showBrowserConfirmation() {
+        const message = "Are you sure you want to discard your current playlist?\n\nThis will stop playback and clear your queue.";
+        
+        if (confirm(message)) {
+            this.clearPlaylist();
+        }
+    }
+    
+    clearPlaylist() {
+        // Clear the playlist through direct access if available
+        if (this.musicPlayer && this.musicPlayer.clearPlaylistAndHideMiniPlayer) {
+            this.musicPlayer.clearPlaylistAndHideMiniPlayer();
+        } else if (this.sendActionToJamsPage('clearPlaylist')) {
+            // Jams page will handle the clearing
+            // Hide the global mini player immediately
+            const miniPlayer = document.getElementById('globalMiniPlayer');
+            if (miniPlayer) {
+                miniPlayer.classList.remove('visible');
+                document.body.classList.remove('global-mini-player-visible');
+            }
+        } else {
+            // Fallback: clear localStorage and hide mini player
+            try {
+                localStorage.removeItem('jamsMusicState');
+                localStorage.removeItem('JamsMusicState');
+            } catch (e) {
+                console.warn('Could not clear localStorage:', e);
+            }
+            
+            // Hide the global mini player immediately
+            const miniPlayer = document.getElementById('globalMiniPlayer');
+            if (miniPlayer) {
+                miniPlayer.classList.remove('visible');
+                document.body.classList.remove('global-mini-player-visible');
+            }
+        }
     }
     
     updateMiniPlayerFromJamsPage() {
