@@ -41,7 +41,6 @@
     <link rel="stylesheet" href="mainmenu.css">
     <link rel="stylesheet" href="stars.css">
     <link rel="stylesheet" href="modals.css">
-    <script src="miniPlayer.js"></script>
 </head>
 <body>
     <div class="background-animation" id="backgroundAnimation"></div>
@@ -79,13 +78,12 @@
     </script>
     
     <div class="intro-container">
-        <div class="logo-container">
-        <a href="#" id="aboutLogo">
-            <img src="rabbitwine.png" alt="rabbit.wine logo" class="logo"></a>
+        <div class="logo-container" style="margin-top: 4px;">
+            <a href="#" id="aboutLogo">
+                <img src="rabbitwine.png" alt="rabbit.wine logo" class="logo">
+            </a>
         </div>
-        
-        <h1 class="title">Rabbit Wine</h1>
-        
+    <h1 class="title">Rabbit Wine</h1>
         <div class="features-grid">
 
             <a href="stickers" class="feature-card">
@@ -118,7 +116,6 @@
                 <h3 class="feature-title">Chaos</h3>
             </a>
 
-
             <a href="space" class="feature-card">
                 <span class="feature-icon">🌌</span>
                 <h3 class="feature-title">Space</h3>
@@ -127,6 +124,16 @@
             <a href="jams" class="feature-card">
                 <span class="feature-icon">🎵</span>
                 <h3 class="feature-title">Jams</h3>
+            </a>
+
+            <a href="midi" class="feature-card">
+                <span class="feature-icon">🎹</span>
+                <h3 class="feature-title">Midi</h3>
+            </a>
+
+            <a href="brokennes" class="feature-card">
+                <span class="feature-icon">🕹️</span>
+                <h3 class="feature-title">BrokenNes</h3>
             </a>
 
             <a href="ask" class="feature-card">
@@ -139,7 +146,12 @@
     </div>
 
     <script src="stars.js"></script>
+    <!-- Mini player system (moved from head for proper initialization) -->
     <script src="modals.js"></script>
+    <script src="memory.js"></script>
+    <script src="musicPlayerCore.js"></script>
+    <script src="musicPlayerMini.js"></script>
+    <script src="musicPlayerInit.js"></script>
     <script>
     // About modal on logo click
     document.addEventListener('DOMContentLoaded', function() {
@@ -204,5 +216,38 @@
             });
         });
     </script>
+    <style>
+    /* Mini player spacing adjustments */
+    .intro-container {
+        /* Minimize top padding to reduce empty space above logo */
+        padding-top: 2px !important;
+    }
+    .logo-container {
+        margin-top: 2px !important;
+    }
+    .title {
+        margin: 32px 0 28px 0 !important;
+        padding: 12px 0 !important;
+        font-size: 2.8rem;
+        font-weight: 700;
+        color: #e2e2e2;
+        letter-spacing: 0.04em;
+        text-align: center;
+        line-height: 1.1;
+        /* No background or box-shadow, restore original look */
+    }
+    @media (max-width: 600px) {
+        .intro-container {
+            padding-top: 2px !important;
+        }
+        .logo-container {
+            margin-top: 2px !important;
+        }
+        .title {
+            margin: 22px 0 18px 0 !important;
+            padding: 8px 0 !important;
+        }
+    }
+    </style>
 </body>
 </html>

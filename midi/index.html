@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MIDI Player — Jams Style</title>
+  <link rel="stylesheet" href="../mainmenu.css">
+  <link rel="stylesheet" href="../stars.css">
+  <style>
+    /* Jams-aligned layout, scrolling, and mobile behavior */
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-primary, #0f172a);
+      color: var(--text-primary, #e2e2e2);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      height: auto !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      overscroll-behavior: auto !important;
+      touch-action: auto !important;
+    }
+
+    .background-animation {
+      position: fixed !important;
+      top: 0; left: 0; width: 100vw; height: 100vh !important;
+      z-index: 0 !important; pointer-events: none;
+    }
+
+    .jams-main {
+      max-width: 1200px; margin: 0 auto; padding: 20px 8px 40px 8px;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      position: relative; z-index: 2; height: auto; min-height: 100vh; margin-top: 32px;
+    }
+
+    .main-header { transition: all 0.3s ease; text-align: center; }
+    .jams-title {
+      font-size: 2.1rem; font-weight: 700; margin: 18px auto 6px auto; text-align: center;
+      background: linear-gradient(45deg, var(--accent-purple), #fff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      max-width: 100vw; word-break: break-word; transition: opacity 0.5s;
+    }
+    .jams-subtitle { font-size: 1rem; font-weight: 400; color: var(--text-accent); opacity: 0.8; margin-bottom: 1.4rem; }
+
+    .player-container { display:flex; flex-direction: column; gap: 1.5rem; width: 100%; max-width: 1000px; margin: 0 auto; }
+
+    .player-card { background: var(--bg-accent); border-radius: 22px; box-shadow: 0 2px 8px rgba(204,188,252,0.07); border: 1.5px solid var(--border-color);
+      padding: 18px; position: sticky; top: 20px; z-index: 10; }
+
+    .current-track { display:flex; align-items:center; gap: 1rem; margin-bottom: 1rem; }
+    .album-art { width: 220px; height: 220px; border-radius: 16px; background: var(--bg-secondary); border: 2px solid var(--border-color);
+      object-fit: cover; box-shadow: 0 10px 30px rgba(0,0,0,0.25); transition: all 0.3s ease; cursor: default; }
+    .album-art:hover { border-color: var(--accent-purple); box-shadow: 0 15px 40px rgba(204,188,252,0.3); transform: scale(1.02); }
+
+    .track-info { flex:1; min-width:0; }
+    .track-title { font-size: 1.3rem; font-weight: 600; color: var(--text-primary); margin: 0 0 0.3rem 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-artist { font-size: 1.05rem; color: var(--text-accent); margin: 0 0 0.3rem 0; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
+    .track-album { font-size: 0.95rem; color: var(--text-accent); margin: 0; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
+
+    .player-controls { display:flex; align-items:center; justify-content:center; gap:1rem; margin-bottom: 1rem; }
+    .control-btn { min-width:48px; min-height:48px; border-radius:50%; background: var(--accent-purple); color:#1a1626; border: none; font-size:1.2rem; cursor:pointer; transition: all 0.2s; display:flex; align-items:center; justify-content:center; position: relative; }
+    .control-btn:hover { background: var(--accent-hover); transform: scale(1.1); }
+    .control-btn.play-pause { min-width: 56px; min-height: 56px; font-size: 1.4rem; }
+    .control-btn::before { content:''; display:block; width:0; height:0; }
+    .control-btn.play::before { border-left: 8px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; margin-left: 2px; }
+    .control-btn.pause::before { width:8px; height:12px; background: currentColor; box-shadow: 4px 0 0 currentColor; }
+    .control-btn.prev::before { border-right: 6px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; box-shadow: -3px 0 0 currentColor; }
+    .control-btn.next::before { border-left: 6px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; box-shadow: 3px 0 0 currentColor; }
+
+    .progress-container { display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; }
+    .time-display { font-size: 0.8rem; color: var(--text-accent); min-width: 40px; text-align: center; }
+    .progress-bar { flex:1; height: 6px; background: var(--bg-secondary); border-radius:3px; overflow:hidden; cursor: pointer; }
+    .progress-fill { height:100%; background: var(--accent-purple); width: 0%; transition: width 0.1s; }
+
+    .volume-container { display:flex; align-items:center; gap:0.5rem; }
+    .volume-slider { width: 140px; height: 6px; background: var(--bg-secondary); border-radius:3px; appearance: none; cursor: pointer; }
+    .volume-slider::-webkit-slider-thumb { appearance:none; width:16px; height:16px; background: var(--accent-purple); border-radius:50%; cursor: pointer; }
+
+    .shuffle-btn { background: var(--bg-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; padding: 0.5rem 1rem !important; border-radius:8px !important; font-size:0.9rem !important; cursor:pointer; transition: all 0.2s; margin-left: 1rem; display:flex !important; align-items:center; gap:0.5rem; }
+    .shuffle-btn:hover { background: var(--accent-purple) !important; color: #1a1626 !important; transform: scale(1.05) !important; }
+    .shuffle-btn.active { background: var(--accent-purple) !important; color: #1a1626 !important; }
+
+    .tracks-panel { background: var(--bg-accent); border-radius: 16px; border: 1.5px solid var(--border-color); padding: 16px; }
+    .panel-title { font-size: 1.1rem; font-weight: 600; color: var(--accent-purple); margin: 0 0 1rem 0; text-align: center; }
+    .track-item { display:flex; align-items:center; padding:0.7rem; margin-bottom:0.5rem; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s; }
+    .track-item:hover { background: var(--accent-purple); color:#1a1626; transform: translateX(4px); }
+    .track-item.playing { background: var(--accent-purple); color:#1a1626; border-color: var(--accent-purple); }
+    .track-number { min-width:30px; font-size:0.8rem; opacity:0.8; }
+    .track-name { flex:1; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow: ellipsis; min-width:0; }
+
+    /* Inputs & buttons */
+    label.small { font-size:12px; color: var(--text-accent, #a0a0a0); }
+  .pill { padding:6px 10px; border-radius:999px; background: rgba(255,255,255,0.02); color: var(--text-accent); display:inline-block; }
+    .file { display:grid; grid-template-columns: 1fr; gap:8px; align-items:center; }
+    .file input[type="file"] { padding:10px; border-radius:10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); color: var(--text-primary); width:100%; }
+    .file input[type="file"]::file-selector-button,
+    .file input[type="file"]::-webkit-file-upload-button {
+      margin-right: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(204,188,252,0.16), rgba(204,188,252,0.06)); color:#fff; font-weight:700; cursor: pointer;
+    }
+
+    /* Keyboard */
+    .keyboard-wrap { margin-top: 12px; display:grid; gap:8px; }
+    .keyboard { position:relative; width:100%; height: 88px; margin: 0 auto; user-select:none; touch-action: none; max-width:100%; overflow: hidden; }
+    .key.white { position:relative; display:inline-flex; width: calc(100% / 8); height:100%; border:1px solid rgba(0,0,0,0.45); background: linear-gradient(180deg,#fff,#f6f6f6);
+      box-shadow: inset 0 -6px 8px rgba(0,0,0,0.06); border-radius:6px; align-items:flex-end; justify-content:center; padding-bottom:6px; color:#111; font-weight:700; font-size:12px; box-sizing: border-box; }
+    .key.black { position:absolute; width: calc(100% / 12); height:62%; background:#111; top:0; z-index:2; border-radius:6px; box-shadow: 0 4px 8px rgba(0,0,0,0.45); color:#fff; display:flex; align-items:flex-end; justify-content:center; padding-bottom:6px; font-size:11px; }
+    .key.active.white { background: linear-gradient(180deg,#e9f0ff,#dfeeff); }
+    .key.active.black { background:#333; transform: translateY(2px); }
+    .key-label { font-size:11px; opacity:0.9; }
+
+    footer { margin-top: 12px; text-align:center; color: var(--text-accent); font-size:12px; }
+
+    /* Responsive */
+    @media (min-width: 720px) {
+      .album-art { width: 280px; height: 280px; }
+      .jams-title { font-size: 2rem; }
+    }
+    @media (max-width: 768px) {
+      .current-track { flex-direction: column; text-align:center; gap: 0.7rem; }
+      .track-info { text-align: center; }
+      .album-art { width: 220px; height: 220px; }
+      .player-controls { gap: 0.7rem; }
+      .volume-container { justify-content:center; flex-wrap: wrap; }
+    }
+    @media (max-width: 480px) {
+      .album-art { width: 180px; height: 180px; }
+      .control-btn { min-width: 40px; min-height: 40px; font-size: 1rem; }
+      .control-btn.play-pause { min-width: 48px; min-height: 48px; font-size: 1.2rem; }
+      .jams-title { font-size: 1.6rem; }
+      .volume-container { flex-direction: column; gap: 0.7rem; }
+    }
+  </style>
+  <!-- Libraries required by js-synthesizer -->
+  <script src="libfluidsynth-2.0.2.js"></script>
+  <script src="js-synthesizer.min.js"></script>
+  <script src="../stars.js"></script>
+</head>
+<body>
+  <div class="background-animation" id="backgroundAnimation"></div>
+  <div class="jams-main">
+    <div class="main-header">
+      <div class="jams-title">MIDI Player</div>
+      <div class="jams-subtitle">Sounds of the Online Layer</div>
+    </div>
+
+    <div class="player-container" role="application" aria-label="MIDI player">
+      <div class="player-card">
+        <div class="current-track">
+          <img id="currentAlbumArt" class="album-art" src="../rabbitwine.png" alt="Artwork">
+          <div class="track-info">
+            <div id="currentTrackTitle" class="track-title">Select a MIDI</div>
+            <div id="currentTrackArtist" class="track-artist">SoundFont Synth</div>
+            <div id="currentTrackAlbum" class="track-album">No SoundFont loaded</div>
+          </div>
+        </div>
+
+        <div class="player-controls">
+          <button id="prevBtn" class="control-btn prev" title="Previous" aria-label="Previous"></button>
+          <button id="playPauseBtn" class="control-btn play-pause play" title="Play/Pause" aria-label="Play/Pause"></button>
+          <button id="nextBtn" class="control-btn next" title="Next" aria-label="Next"></button>
+        </div>
+
+        <div class="progress-container">
+          <div id="currentTime" class="time-display">0:00</div>
+          <div id="progressBar" class="progress-bar" title="Seek">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <div id="totalTime" class="time-display">0:00</div>
+        </div>
+
+        <div class="volume-container">
+          <span>🔊</span>
+          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="83" />
+          <button id="loopBtn" class="shuffle-btn" title="Loop" aria-pressed="false">Loop</button>
+        </div>
+      </div>
+
+      <div class="tracks-panel">
+        <div class="panel-title">Load</div>
+        <div class="file">
+          <label class="small" for="midi">MIDI file (.mid/.midi)</label>
+          <input id="midi" type="file" accept=".mid,.midi" />
+          <div id="midiName" class="pill">No MIDI loaded</div>
+        </div>
+      </div>
+
+      <div class="tracks-panel" id="playlistPanel" aria-label="MIDI playlist">
+        <div class="tracks-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div class="panel-title" style="margin:0;">Tracks</div>
+          <button id="togglePlaylist" class="shuffle-btn" aria-expanded="false" style="margin:0;">Show</button>
+        </div>
+        <div id="playlistContent" style="display:none; margin-top:12px;">
+          <div id="tracksList">Loading playlist…</div>
+        </div>
+      </div>
+
+      <div class="tracks-panel">
+        <div class="panel-title">Keyboard</div>
+        <div class="kbd-controls">
+          <div class="row" style="display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center;">
+            <label class="small" for="instrumentSelect">Instrument</label>
+            <select id="instrumentSelect" class="pill">
+              <option value="">(load SF2 to list instruments)</option>
+            </select>
+            <span></span>
+          </div>
+          <div class="row" style="display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center;">
+            <label class="small" for="velocity">Velocity</label>
+            <input id="velocity" type="range" min="1" max="127" value="100" />
+            <div id="velLbl" class="pill" style="min-width:38px;text-align:center">100</div>
+          </div>
+          <div class="row" style="display:grid; grid-template-columns:auto auto 1fr; gap:8px; align-items:center; margin-bottom:14px;">
+            <label class="small" for="latencyToggleBtn">Low-Latency Piano</label>
+            <button id="latencyToggleBtn" class="shuffle-btn" aria-pressed="false" title="Toggle low-latency piano mode (smaller audio buffer)">Off</button>
+            <span></span>
+          </div>
+        </div>
+        <div id="keyboard" class="keyboard" aria-label="Piano keyboard" role="application"></div>
+      </div>
+    </div>
+
+    <footer>Local-only demo. Drop your .mid files; the SoundFont is selected automatically.</footer>
+  </div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  // status log removed: send messages to the console instead
+  const log = (msg, isErr=false) => {
+    if (isErr) console.error(msg);
+    else console.log(msg);
+  };
+  const fmt = (ms=0) => {
+    ms = Math.max(0, Math.floor(ms));
+    const s = Math.floor(ms/1000); const m = Math.floor(s/60); const r = s%60;
+    return `${m}:${r<10? '0'+r : r}`;
+          }
+  // Piano mapping for one octave starting at MIDI note 60 (C4)
+  const WHITE_KEYS = ['C','D','E','F','G','A','B','C2'];
+  const WHITE_OFFSETS = [0,2,4,5,7,9,11,12];
+  const BLACK_OFFSETS = [1,3,-1,6,8,10,-1]; // -1 where no black key
+  const WHITE_KEYCODE = ['z','x','c','v','b','n','m',','];
+  const BLACK_KEYCODE = ['s','d','','g','h','j',''];
+
+  class MiniMidiPlayer {
+    constructor(){
+      this.context = null;
+      this.synth = null;
+  this.node = null;
+      this.sf2Buffer = null; this.sf2Name = '';
+      this.midiBuffer = null; this.midiName = '';
+      this.timer = null; this.dragging = false; this.usingWorklet = false;
+  this.totalMs = 0; this.prevPlaying = false;
+
+      // Piano state
+      this.baseNote = 60; // C4
+      this.channel = 0;
+      this.velocity = 100;
+      this.pressedNotes = new Set();
+
+      // Track which SF2 is already loaded into the synth to avoid reloading
+      this.sfLoadedName = null;
+
+      // Presets parsed from SF2
+      this.presets = [];
+      this.currentPresetIndex = -1;
+
+  // Playlist state
+  this.playlist = [];
+  this.playlistUrls = [];
+  this.currentIndex = -1;
+  this.loop = false;
+
+  // Pause/resume state
+  this.pausedAtMs = null;
+
+  // Latency / buffer configuration
+  this.lowLatency = false; // default conservative for playback
+  // Use a much larger default buffer so piano latency is clearly felt when not in low-latency mode.
+  // Typical ScriptProcessor sizes: 256/512/1024/2048/4096/8192
+  this.bufferSizeNormal = 4096; // ~93ms @44.1kHz (perceptible), stable for general playback
+  this.bufferSizeLow = 256;     // ~6ms @44.1kHz (snappy for piano)
+    }
+
+    async ensureEngine(){
+      if (!this.context) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) throw new Error('Web Audio is not supported in this browser');
+        try {
+          // Request low-latency mode where supported
+          this.context = new AC({ latencyHint: 'interactive' });
+        } catch (e) {
+          // Some browsers may not accept options — fallback
+          this.context = new AC();
+        }
+      }
+      if (this.synth) return; // already created
+
+      // Try AudioWorklet first, but gracefully fall back if it fails (e.g. missing COI / SharedArrayBuffer)
+      let workletReady = false;
+      if (this.context.audioWorklet && this.context.audioWorklet.addModule) {
+        try {
+          // Ensure the FluidSynth runtime is available inside the AudioWorklet global scope.
+          // The worklet expects AudioWorkletGlobalScope.wasmModule to be set by libfluidsynth.
+          try {
+            await this.context.audioWorklet.addModule('libfluidsynth-2.0.2.js');
+          } catch (innerErr) {
+            // non-fatal: if the worklet runtime is already provided or cannot be loaded separately,
+            // we'll attempt to load the synth worklet directly and handle errors below.
+            console.warn('Could not load libfluidsynth inside AudioWorklet scope:', innerErr);
+          }
+
+          await this.context.audioWorklet.addModule('js-synthesizer.worklet.min.js');
+          this.synth = new JSSynth.AudioWorkletNodeSynthesizer();
+          this.synth.init(this.context.sampleRate);
+          this.node = this.synth.createAudioNode(this.context);
+          this.node.connect(this.context.destination);
+          this.usingWorklet = true;
+          workletReady = true;
+        } catch (e) {
+          // Fall back to ScriptProcessor when AudioWorklet cannot be used
+          try { this.synth && this.synth.close && this.synth.close(); } catch {}
+          this.synth = null;
+          this.node = null;
+          this.usingWorklet = false;
+          try { log('AudioWorklet unavailable, falling back: ' + e.message); } catch {}
+        }
+      }
+
+      if (!workletReady) {
+        // Fallback to ScriptProcessor with a small buffer for lower latency
+        this.synth = new JSSynth.Synthesizer();
+        this.synth.init(this.context.sampleRate);
+  const bufSize = this.lowLatency ? this.bufferSizeLow : this.bufferSizeNormal;
+  this.node = this.synth.createAudioNode(this.context, bufSize);
+  this.node.connect(this.context.destination);
+        this.usingWorklet = false;
+      }
+
+      // Ensure the context is running (resumes audio hardware) — helps reduce first-sound delay
+  try { await this.context.resume(); } catch (e) {}
+    }
+
+    async loadSf2FromFile(file){
+      const buf = await file.arrayBuffer();
+      const name = file.name || 'SoundFont';
+      await this.loadSf2FromArrayBuffer(buf, name);
+    }
+
+    // Load an SF2 from an ArrayBuffer (used when fetching known SF2 files)
+    async loadSf2FromArrayBuffer(arrayBuffer, name){
+      this.sf2Buffer = arrayBuffer;
+      this.sf2Name = name || 'SoundFont';
+      log('SoundFont ready: ' + this.sf2Name);
+
+      // Pre-initialize audio engine and pre-load the SoundFont so real-time keys are ready
+      try {
+        await this.ensureEngine();
+        if (this.synth && this.sf2Buffer) {
+          await this.synth.loadSFont(this.sf2Buffer);
+          this.sfLoadedName = this.sf2Name;
+          if (this.midiBuffer) {
+            await this.synth.resetPlayer();
+            await this.synth.addSMFDataToPlayer(this.midiBuffer);
+          }
+          // Parse and populate instruments
+          this.presets = this.parseSf2Presets(this.sf2Buffer);
+          this.populateInstrumentList();
+        }
+      } catch (e) {
+        log('SF2 load/init error: ' + e.message, true);
+      }
+
+      this.updateControls();
+    }
+
+    async loadMidiFromFile(file){
+      const buf = await file.arrayBuffer();
+      this.midiBuffer = buf; this.midiName = file.name || 'MIDI';
+      $('midiName').textContent = `MIDI: ${this.midiName}`;
+      log('MIDI ready: ' + this.midiName);
+  // Clear playlist selection context and show track name
+  this.currentIndex = -1;
+  this.pausedAtMs = null;
+  const tn = document.getElementById('currentTrackTitle');
+  if (tn) tn.textContent = this.midiName;
+  const tracksEl = document.getElementById('tracksList');
+  if (tracksEl) [...tracksEl.children].forEach(c=>c.classList.remove('playing'));
+      this.updateControls();
+    }
+
+    // Load MIDI from a URL (fetches arrayBuffer). nameOverride is optional for display
+    async loadMidiFromUrl(url, nameOverride){
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to fetch MIDI: ' + res.status);
+        const buf = await res.arrayBuffer();
+        this.midiBuffer = buf;
+        this.midiName = nameOverride || url.split('/').pop() || 'MIDI';
+        $('midiName').textContent = `MIDI: ${this.midiName}`;
+        log('MIDI loaded from URL: ' + this.midiName);
+        this.updateControls();
+      } catch (e) {
+        log('Error loading MIDI from URL: ' + e.message, true);
+        throw e;
+      }
+    }
+
+  // loadDefaults removed: SF2 selection is automatic
+
+    // Parse SF2 preset headers (phdr) and return array of { name, bank, program }
+    parseSf2Presets(arrayBuffer){
+      try {
+        const u8 = new Uint8Array(arrayBuffer);
+        // Find 'phdr' chunk
+        const needle = [0x70,0x68,0x64,0x72]; // 'phdr'
+        let off = -1;
+        for (let i=0;i<=u8.length-4;i++){
+          if (u8[i]===needle[0] && u8[i+1]===needle[1] && u8[i+2]===needle[2] && u8[i+3]===needle[3]) { off = i; break; }
+        }
+        if (off < 0) return [];
+        const view = new DataView(arrayBuffer);
+        const size = view.getUint32(off+4, true);
+        const recSize = 38; // phdr structure size
+        const count = Math.floor(size/recSize);
+        const presets = [];
+        for (let i=0;i<count; i++){
+          const base = off + 8 + i*recSize;
+          // Name (20 bytes, null-terminated)
+          let name = '';
+          for (let j=0;j<20;j++){
+            const c = u8[base + j];
+            if (c===0) break; name += String.fromCharCode(c);
+          }
+          const program = view.getUint16(base + 20, true);
+          const bank = view.getUint16(base + 22, true);
+          // Skip terminal 'EOP' entry
+          if (name === 'EOP') break;
+          presets.push({ name, bank, program });
+        }
+        return presets;
+      } catch (e) {
+        return [];
+      }
+    }
+
+    populateInstrumentList(){
+      const sel = document.getElementById('instrumentSelect');
+      if (!sel) return;
+      sel.innerHTML = '';
+      if (!this.presets || this.presets.length===0){
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '(no instruments found)';
+        sel.appendChild(opt);
+        return;
+      }
+      this.presets.forEach((p, idx)=>{
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = `${p.name}  (Bank ${p.bank}, Program ${p.program})`;
+        sel.appendChild(opt);
+      });
+      // Select the first preset by default
+      sel.selectedIndex = 0;
+      this.currentPresetIndex = 0;
+      this.applyCurrentPreset();
+    }
+
+    async applyCurrentPreset(){
+      if (this.currentPresetIndex == null || this.currentPresetIndex < 0) return;
+      const p = this.presets[this.currentPresetIndex];
+      if (!p) return;
+      await this.loadInstrumentPreset(p);
+    }
+
+    async loadInstrumentPreset(preset){
+      try {
+        await this.ensureEngine();
+        if (!this.synth) return;
+
+        const program = Math.max(0, Math.min(127, preset.program));
+        const bank = Math.max(0, preset.bank|0);
+
+        if (typeof this.synth.midiBankSelect === 'function') {
+          this.synth.midiBankSelect(this.channel, bank);
+        } else if (typeof this.synth.midiControl === 'function') {
+          // Derive MSB/LSB from bank number
+          const msb = (bank >> 7) & 0x7F;
+          const lsb = bank & 0x7F;
+          this.synth.midiControl(this.channel, 0, msb);
+          this.synth.midiControl(this.channel, 32, lsb);
+        }
+
+        if (typeof this.synth.midiProgramChange === 'function') {
+          this.synth.midiProgramChange(this.channel, program);
+        }
+        log(`Instrument: ${preset.name} (Bank ${bank} / Prog ${program})`);
+      } catch (e) {
+        log('Instrument change error: ' + e.message, true);
+      }
+    }
+
+  async play(){
+      try {
+        if (!this.midiBuffer) throw new Error('Select a MIDI (.mid) first');
+
+        // Decide which SF2 to use based on MIDI filename
+        const midiName = (this.midiName || '').toUpperCase();
+        const desiredSF = midiName.endsWith('_MNES.MID') ? 'MNES.sf2' : 'N3510.sf2';
+
+        // Only load the SF2 if none loaded yet or if switching to a different SF2
+        if (!this.sf2Name || this.sf2Name !== desiredSF) {
+          try {
+            const res = await fetch(desiredSF);
+            if (!res.ok) throw new Error('Missing ' + desiredSF);
+            const buf = await res.arrayBuffer();
+            await this.loadSf2FromArrayBuffer(buf, desiredSF);
+          } catch (e) {
+            // If fetch failed and we don't have any SF2, propagate the error
+            if (!this.sf2Buffer) throw e;
+            log('Warning: could not auto-load ' + desiredSF + ': ' + e.message, true);
+          }
+        }
+
+        await this.ensureEngine();
+
+        // If already playing, restart with current buffers
+        if (this.synth.isPlayerPlaying()) {
+          await this.synth.stopPlayer();
+        }
+
+        // Load the SoundFont only if it's not already loaded in the synth
+        if (this.sfLoadedName !== this.sf2Name) {
+          await this.synth.loadSFont(this.sf2Buffer);
+          this.sfLoadedName = this.sf2Name;
+        }
+
+        await this.synth.resetPlayer();
+        await this.synth.addSMFDataToPlayer(this.midiBuffer);
+        // Seek to paused position if resuming
+        if (this.pausedAtMs != null) {
+          try { await this.synth.seekPlayer(this.pausedAtMs); } catch {}
+          this.pausedAtMs = null;
+        }
+        await this.synth.playPlayer();
+
+  // (removed hidden audio element used for MediaSession experiment)
+
+        // Apply volume from Jams-style slider (0..100 -> 0..30)
+        const vs = document.getElementById('volumeSlider');
+        if (vs) {
+          const v30 = Math.round((Number(vs.value||'83')/100) * 30);
+          this.setVolume(v30);
+        }
+
+        log('Playing...');
+        this.prevPlaying = true;
+        this.startTimer();
+        this.updateControls();
+      } catch (e) {
+        log('Play error: ' + e.message, true);
+      }
+    }
+
+    async pause(){
+      try {
+        if (this.synth) {
+          // store current position before stopping
+          try { this.pausedAtMs = await this.synth.retrievePlayerCurrentTick(); } catch { this.pausedAtMs = null; }
+          await this.synth.stopPlayer();
+        }
+  // (removed hidden audio element pause call)
+        this.prevPlaying = false;
+        this.updateControls();
+      } catch (e) { log('Pause error: ' + e.message, true); }
+    }
+
+    setVolume(sliderValue){
+      // sliderValue is 0..30, synth expects 0..1 gain
+      const v = Math.max(0, Math.min(30, Number(sliderValue)));
+      const gain = v / 30;
+      if (this.synth && typeof this.synth.setGain === 'function') {
+        this.synth.setGain(gain);
+      }
+      try { localStorage.setItem('mini_vol', String(v)); } catch {}
+    }
+
+    startTimer(){
+      if (this.timer) clearInterval(this.timer);
+      this.timer = setInterval(async () => {
+        if (!this.synth) return;
+        try {
+          const total = await this.synth.retrievePlayerTotalTicks();
+          const cur = await this.synth.retrievePlayerCurrentTick();
+          if (Number.isFinite(total)) this.totalMs = total;
+          const curEl = document.getElementById('currentTime');
+          const maxEl = document.getElementById('totalTime');
+          const fill = document.getElementById('progressFill');
+          if (curEl) curEl.textContent = fmt(cur || 0);
+          if (maxEl) maxEl.textContent = fmt(this.totalMs || 0);
+          if (fill) {
+            const ratio = (this.totalMs ? Math.max(0, Math.min(1, (cur||0) / this.totalMs)) : 0);
+            fill.style.width = `${Math.floor(ratio*100)}%`;
+          }
+          // (media session removed)
+
+          // Detect end of track: when player stops but we were previously playing
+          let isPlaying = false;
+          try { isPlaying = !!this.synth.isPlayerPlaying(); } catch {}
+          if (!isPlaying && this.prevPlaying) {
+            // Track finished — either loop current or advance
+            try {
+              this.pausedAtMs = null;
+              if (this.loop) {
+                const idx = this.currentIndex >= 0 ? this.currentIndex : 0;
+                await this.loadTrackByIndex(idx, true);
+              } else {
+                await this.nextTrack(/*auto*/true);
+              }
+            } catch {}
+          }
+          this.prevPlaying = isPlaying;
+          // (media session removed)
+        } catch {}
+        this.updateControls();
+      }, 200);
+    }
+
+    async seekTo(ms){
+      if (!this.synth) return;
+      try { await this.synth.seekPlayer(ms); } catch {}
+    }
+
+    updateControls(){
+      // Ready to play when a MIDI is loaded. SoundFont will be auto-selected and loaded on play.
+      const ready = !!(this.midiBuffer) || (this.playlist.length>0);
+      const isPlaying = !!(this.synth && this.synth.isPlayerPlaying());
+      const playPauseBtn = $('playPauseBtn');
+      const prevBtn = $('prevBtn');
+      const nextBtn = $('nextBtn');
+      if (playPauseBtn) {
+        playPauseBtn.disabled = !ready;
+        playPauseBtn.classList.toggle('play', !isPlaying);
+        playPauseBtn.classList.toggle('pause', isPlaying);
+        playPauseBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+        playPauseBtn.title = isPlaying ? 'Pause' : 'Play';
+      }
+      if (prevBtn) prevBtn.disabled = !(this.playlist.length>0);
+      if (nextBtn) nextBtn.disabled = !(this.playlist.length>0);
+    }
+
+    // Playlist helpers: sequential next/prev through current list
+    getNextIndex(cur){
+      const n = this.playlist.length;
+      if (n===0) return -1;
+      return (cur + 1) % n;
+    }
+
+    getPrevIndex(cur){
+      const n = this.playlist.length;
+      if (n===0) return -1;
+      return (cur - 1 + n) % n;
+    }
+
+    async loadTrackByIndex(index, autoPlay=true){
+      if (index < 0 || index >= this.playlist.length) return;
+      const name = this.playlist[index];
+      const url = this.playlistUrls[index];
+      await this.loadMidiFromUrl(url, name);
+      this.currentIndex = index;
+      this.pausedAtMs = null;
+      // UI highlight and name
+  const listEl = document.getElementById('tracksList');
+      if (listEl){
+        [...listEl.children].forEach(c=>c.classList.remove('playing'));
+        const btn = listEl.children[index];
+        if (btn) btn.classList.add('playing');
+      }
+  const tn = document.getElementById('currentTrackTitle');
+  if (tn) tn.textContent = name;
+  const artistEl = document.getElementById('currentTrackArtist');
+  if (artistEl) artistEl.textContent = 'Online Layer Library';
+  const alb = document.getElementById('currentTrackAlbum');
+  if (alb) alb.textContent = this.sf2Name ? `SF2: ${this.sf2Name}` : 'SF2: (auto)';
+      if (autoPlay) await this.play();
+    }
+
+    async nextTrack(auto=false){
+      if (this.playlist.length===0) return;
+      const next = this.getNextIndex(this.currentIndex >=0 ? this.currentIndex : 0);
+      await this.loadTrackByIndex(next, true);
+    }
+
+    async prevTrack(){
+      if (this.playlist.length===0) return;
+      const prev = this.getPrevIndex(this.currentIndex >=0 ? this.currentIndex : 0);
+      await this.loadTrackByIndex(prev, true);
+    }
+
+    // Piano note on/off helpers
+    async pianoNoteOn(note){
+      try {
+        await this.ensureEngine();
+        if (!this.synth) return;
+        if (typeof this.synth.midiNoteOn === 'function') {
+          this.synth.midiNoteOn(this.channel, note, this.velocity);
+        }
+      } catch (e) { }
+    }
+    async pianoNoteOff(note){
+      try {
+        if (!this.synth) return;
+        if (typeof this.synth.midiNoteOff === 'function') {
+          this.synth.midiNoteOff(this.channel, note);
+        }
+      } catch (e) { }
+    }
+
+  // changeSoundFont removed: SF2 selection is automatic
+
+    // Toggle latency mode at runtime (ScriptProcessor path only). For AudioWorklet we keep current behavior.
+    async setLowLatencyMode(enabled){
+      const want = !!enabled;
+      if (this.lowLatency === want) return;
+      this.lowLatency = want;
+      try { localStorage.setItem('mini_lowlat', this.lowLatency ? '1':'0'); } catch {}
+      // Only relevant when NOT using worklet
+      if (!this.usingWorklet) {
+        if (this.node && this.node.disconnect) {
+          try { this.node.disconnect(); } catch {}
+        }
+        try {
+          const bufSize = this.lowLatency ? this.bufferSizeLow : this.bufferSizeNormal;
+          this.node = this.synth.createAudioNode(this.context, bufSize);
+          this.node.connect(this.context.destination);
+        } catch (e) { log('Latency toggle error: ' + e.message, true); }
+      }
+      // Keep current playback state uninterrupted; synth + player continue.
+      this.updateLatencyUIButton();
+    }
+
+    updateLatencyUIButton(){
+      const btn = document.getElementById('latencyToggleBtn');
+      if (!btn) return;
+      btn.setAttribute('aria-pressed', this.lowLatency ? 'true':'false');
+      btn.classList.toggle('active', this.lowLatency);
+      btn.textContent = this.lowLatency ? 'On' : 'Off';
+      btn.title = this.lowLatency ? 'Low-latency piano mode: On (smaller audio buffer)' : 'Low-latency piano mode: Off (higher buffer for playback)';
+    }
+
+  }
+
+  const app = new MiniMidiPlayer();
+
+  // (Media Session and hidden audio element removed)
+
+  // render keyboard
+  const keyboardEl = $('keyboard');
+  function buildKeyboard(){
+    keyboardEl.innerHTML = '';
+    const w = 8; // white keys
+    for (let i=0;i<w;i++){
+      const k = document.createElement('div');
+      k.className = 'key white';
+      const note = app.baseNote + WHITE_OFFSETS[i];
+      k.dataset.note = note;
+      k.dataset.index = i;
+      k.innerHTML = `<div class="key-label">${WHITE_KEYCODE[i].toUpperCase()}<br>${note}</div>`;
+      k.addEventListener('mousedown', async (e)=>{ await noteDown(note, k); });
+      k.addEventListener('mouseup', async (e)=>{ await noteUp(note, k); });
+      k.addEventListener('mouseleave', async (e)=>{ if (app.pressedNotes.has(note)) await noteUp(note, k); });
+      k.addEventListener('touchstart', async (e)=>{ e.preventDefault(); await noteDown(note, k); });
+      k.addEventListener('touchend', async (e)=>{ e.preventDefault(); await noteUp(note, k); });
+      keyboardEl.appendChild(k);
+    }
+    // black keys positions
+    const blacks = [0,1,-1,2,3,4,-1];
+    for (let i=0;i<7;i++){
+      const offset = BLACK_OFFSETS[i];
+      if (offset<0) continue;
+      const note = app.baseNote + offset;
+      const b = document.createElement('div');
+      b.className = 'key black';
+      // position: left based on white key index
+      const leftPct = (i + 1) * (100/8) - (100/16);
+      b.style.left = `calc(${leftPct}% - (${100/96}%))`;
+      b.dataset.note = note;
+      b.innerHTML = `<div class="key-label">${BLACK_KEYCODE[i].toUpperCase()}<br>${note}</div>`;
+      b.addEventListener('mousedown', async (e)=>{ await noteDown(note, b); });
+      b.addEventListener('mouseup', async (e)=>{ await noteUp(note, b); });
+      b.addEventListener('mouseleave', async (e)=>{ if (app.pressedNotes.has(note)) await noteUp(note, b); });
+      b.addEventListener('touchstart', async (e)=>{ e.preventDefault(); await noteDown(note, b); });
+      b.addEventListener('touchend', async (e)=>{ e.preventDefault(); await noteUp(note, b); });
+      keyboardEl.appendChild(b);
+    }
+  }
+
+  async function noteDown(note, el){
+    if (app.pressedNotes.has(note)) return;
+    app.pressedNotes.add(note);
+    el.classList.add('active');
+    await app.pianoNoteOn(note);
+  }
+  async function noteUp(note, el){
+    if (!app.pressedNotes.has(note)) return;
+    app.pressedNotes.delete(note);
+    el.classList.remove('active');
+    await app.pianoNoteOff(note);
+  }
+
+  buildKeyboard();
+
+  // keyboard mapping
+  const keyToNote = {};
+  for (let i=0;i<WHITE_KEYCODE.length;i++) keyToNote[WHITE_KEYCODE[i]] = app.baseNote + WHITE_OFFSETS[i];
+  for (let i=0;i<BLACK_KEYCODE.length;i++) if (BLACK_KEYCODE[i]) keyToNote[BLACK_KEYCODE[i]] = app.baseNote + BLACK_OFFSETS[i];
+
+  const downKeys = new Set();
+  window.addEventListener('keydown', async (e)=>{
+    const k = e.key.toLowerCase();
+    if (downKeys.has(k)) return;
+    if (k in keyToNote){
+      downKeys.add(k);
+      const note = keyToNote[k];
+      const el = [...keyboardEl.children].find(c=>c.dataset.note==note);
+      if (el) await noteDown(note, el);
+    }
+  });
+  window.addEventListener('keyup', async (e)=>{
+    const k = e.key.toLowerCase();
+    if (!downKeys.has(k)) return;
+    downKeys.delete(k);
+    if (k in keyToNote){
+      const note = keyToNote[k];
+      const el = [...keyboardEl.children].find(c=>c.dataset.note==note);
+      if (el) await noteUp(note, el);
+    }
+  });
+
+  // instrument / velocity UI
+  const instrumentSelectEl = document.getElementById('instrumentSelect');
+  if (instrumentSelectEl){
+    instrumentSelectEl.addEventListener('change', async (e)=>{
+      const idx = Number(e.target.value);
+      if (!Number.isNaN(idx)) {
+        app.currentPresetIndex = idx;
+        await app.applyCurrentPreset();
+      }
+    });
+  }
+  document.getElementById('velocity').addEventListener('input', (e)=>{ app.velocity = Number(e.target.value); document.getElementById('velLbl').textContent = e.target.value; });
+
+  // Latency toggle button
+  const latencyBtn = document.getElementById('latencyToggleBtn');
+  if (latencyBtn){
+    latencyBtn.addEventListener('click', async ()=>{
+      await app.setLowLatencyMode(!app.lowLatency);
+    });
+  }
+
+  // SF2 picker removed; soundfont is selected automatically when playing a MIDI
+
+  $('midi').addEventListener('change', async (e)=>{
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    await app.loadMidiFromFile(f);
+    const tn = document.getElementById('currentTrackTitle');
+    if (tn) tn.textContent = app.midiName || '—';
+    const artistEl = document.getElementById('currentTrackArtist');
+    if (artistEl) artistEl.textContent = 'SoundFont Synth';
+  const alb = document.getElementById('currentTrackAlbum');
+  if (alb) alb.textContent = app.sf2Name ? `SF2: ${app.sf2Name}` : 'SF2: (auto)';
+    app.updateControls();
+  });
+
+  // defaults button removed
+
+  // Player button wiring
+  $('playPauseBtn').addEventListener('click', async ()=>{
+    try {
+      const isPlaying = !!(app.synth && app.synth.isPlayerPlaying());
+      if (isPlaying) await app.pause();
+      else {
+        if (!app.midiBuffer && app.playlist.length>0) {
+          // Load current if nothing loaded
+          if (app.currentIndex<0) app.currentIndex = 0;
+          await app.loadTrackByIndex(app.currentIndex, true);
+        } else {
+          await app.play();
+        }
+      }
+  // media session removed
+    } catch {}
+  });
+  $('prevBtn').addEventListener('click', ()=> app.prevTrack());
+  $('nextBtn').addEventListener('click', ()=> app.nextTrack());
+  $('loopBtn').addEventListener('click', (e)=>{
+    const btn = e.currentTarget;
+    app.loop = !app.loop;
+    btn.setAttribute('aria-pressed', String(app.loop));
+    btn.classList.toggle('active', app.loop);
+  });
+
+  $('volumeSlider').addEventListener('input', (e)=> {
+    const v100 = Number(e.target.value||0);
+    const v30 = Math.round((v100/100) * 30);
+    app.setVolume(v30);
+  });
+
+  // Click/seek on progress bar
+  const progressBar = $('progressBar');
+  progressBar.addEventListener('click', async (e)=>{
+    const rect = progressBar.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    const target = Math.floor((app.totalMs || 0) * ratio);
+  await app.seekTo(target);
+  });
+
+  // Timer-driven progress update to Jams-style bar
+
+  // Loop per-track removed in favor of advancing through playlist with wrap
+
+  // Restore volume (map 0..30 -> 0..100 slider)
+  try {
+    const v = parseFloat(localStorage.getItem('mini_vol')||'25');
+    if (!Number.isNaN(v)) {
+      $('volumeSlider').value = String(Math.round((v/30)*100));
+      app.setVolume(v);
+    }
+    const ll = localStorage.getItem('mini_lowlat');
+    if (ll === '1') {
+      app.lowLatency = true; // set flag before engine init
+    }
+  } catch {}
+
+  // Ensure UI reflects latency state
+  app.updateLatencyUIButton();
+
+  log('Ready. Load a MIDI to begin; a SoundFont will be selected automatically.');
+
+  // --- Playlist: fetch remote index and render clickable items ---
+  async function fetchAndRenderPlaylist(){
+    const tracksEl = document.getElementById('tracksList');
+    if (!tracksEl) return;
+    tracksEl.textContent = 'Loading playlist…';
+    try {
+      // Fetch the index.php which returns filenames separated by '|'
+      const res = await fetch('onlinelayer_midi/index.php');
+      if (!res.ok) throw new Error('Playlist fetch failed: ' + res.status);
+      const text = await res.text();
+      const parts = text.split('|').map(s=>s.trim()).filter(Boolean);
+      // Shuffle playlist order once at load time
+      for (let i = parts.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [parts[i], parts[j]] = [parts[j], parts[i]];
+      }
+      if (parts.length === 0) {
+        tracksEl.textContent = 'No files found.';
+        return;
+      }
+      tracksEl.innerHTML = '';
+  // Build absolute URLs and store playlist
+  app.playlist = parts.slice();
+  app.playlistUrls = parts.map(fname => new URL('onlinelayer_midi/' + fname, window.location.href).href);
+
+  parts.forEach((fname, idx) => {
+        const item = document.createElement('div');
+        item.className = 'track-item';
+        item.title = 'Load and play ' + fname;
+        const number = document.createElement('div'); number.className = 'track-number'; number.textContent = String(idx+1).padStart(2,'0');
+        const name = document.createElement('div'); name.className = 'track-name'; name.textContent = fname;
+        item.appendChild(number); item.appendChild(name);
+        item.addEventListener('click', async (e)=>{
+          try {
+    await app.loadTrackByIndex(idx, true);
+          } catch (e) {
+            // remove highlight on failure
+            item.classList.remove('playing');
+          }
+        });
+        tracksEl.appendChild(item);
+      });
+
+  // After shuffle, start from the first item by default (do not autoplay)
+  const startIndex = 0;
+  app.currentIndex = startIndex;
+  const tn = document.getElementById('currentTrackTitle');
+  if (tn) tn.textContent = app.playlist[startIndex] || '—';
+  const artistEl = document.getElementById('currentTrackArtist'); if (artistEl) artistEl.textContent = 'SoundFont Synth';
+  const alb = document.getElementById('currentTrackAlbum'); if (alb) alb.textContent = app.sf2Name ? `SF2: ${app.sf2Name}` : 'SF2: (auto)';
+  // Highlight selection in list
+  const listChildren = [...tracksEl.children];
+  listChildren.forEach((c,i)=> c.classList.toggle('playing', i===startIndex));
+  app.updateControls();
+    } catch (e) {
+      tracksEl.textContent = 'Error loading playlist';
+      log('Playlist error: ' + e.message, true);
+    }
+  }
+
+  // Playlist collapsible toggle (defaults collapsed)
+  const toggleBtn = document.getElementById('togglePlaylist');
+  const playlistContent = document.getElementById('playlistContent');
+  if (toggleBtn && playlistContent){
+    toggleBtn.addEventListener('click', ()=>{
+      const expanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+      const next = !expanded;
+      toggleBtn.setAttribute('aria-expanded', String(next));
+      toggleBtn.textContent = next ? 'Hide' : 'Show';
+      playlistContent.style.display = next ? 'block' : 'none';
+    });
+    // default collapsed
+    toggleBtn.setAttribute('aria-expanded', 'false');
+    toggleBtn.textContent = 'Show';
+    playlistContent.style.display = 'none';
+  }
+
+  // Fetch on load
+  fetchAndRenderPlaylist();
+})();
+</script>
+</body>
+</html>
