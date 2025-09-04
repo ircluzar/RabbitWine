@@ -93,14 +93,15 @@ Create `mz/js/gameplay/` for pure logic and orchestration.
 
 Files
 - [ ] player-state.js — default `state.player` structure and constants (if not kept in state.js; choose one place and remove duplication).
-- [ ] controls.js — `turnLeft`, `turnRight`, `handleKeyboard`.
-- [ ] physics.js — `groundHeightAt`, `moveAndCollide`, `applyVerticalPhysics`.
-- [ ] trail-logic.js — `updateTrail`.
-- [ ] camera.js — camera follow/yaw smoothing helpers.
-- [ ] step-loop.js — `stepGame(dt)` calls physics, movement, camera, trail updates.
+	- Note: kept in `core/state.js`; no separate file needed.
+- [x] controls.js — `turnLeft`, `turnRight`, `handleKeyboard`.
+- [x] physics.js — `groundHeightAt`, `moveAndCollide`, `applyVerticalPhysics`.
+- [x] trail-logic.js — `updateTrail`.
+- [x] camera.js — camera follow/yaw smoothing helpers.
+- [x] step-loop.js — `stepGame(dt)` calls physics, movement, camera, trail updates.
 
 Index order update
-- [ ] Load gameplay files after pipelines and UI.
+- [x] Load gameplay files after pipelines and UI.
 - [ ] Smoke test.
 
 ---
@@ -109,11 +110,11 @@ Index order update
 Create `mz/js/app/` to isolate the render loop and presenting.
 
 Files
-- [ ] bootstrap.js — the main loop (`render(now)`), both camera views, scene draw calls, and final blit.
+- [x] bootstrap.js — the main loop (`render(now)`), both camera views, scene draw calls, and final blit.
 - [ ] (Optional) present.js — move final screen blit here; bootstrap calls present.
 
 Index order update
-- [ ] Ensure bootstrap is last.
+- [x] Ensure bootstrap is last.
 - [ ] Smoke test.
 
 ---
