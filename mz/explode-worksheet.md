@@ -17,9 +17,9 @@ Verification checklist (run after each milestone)
 ---
 
 ## Milestone 0 — Prep and baseline
-- [x] Confirm current split runs (config.js, gl.js, scene.js, input_ui.js, gameplay.js, bootstrap.js).
-- [x] Note current `index.html` script order.
-- [x] Commit a checkpoint (baseline before deeper split).
+- [ ] Confirm current split runs (config.js, gl.js, scene.js, input_ui.js, gameplay.js, bootstrap.js).
+- [ ] Note current `index.html` script order.
+- [ ] Commit a checkpoint (baseline before deeper split).
 
 ---
 
@@ -27,16 +27,16 @@ Verification checklist (run after each milestone)
 Create `mz/js/core/` and move low-level, shared pieces.
 
 Files
-- [ ] core/constants.js — `BASE_WIDTH`, `BASE_HEIGHT` (constants only).
-- [ ] core/state.js — constructs global `state` object (same shape/names).
-- [ ] ui/dom.js — `CANVAS`, `HUD`, `SEAM`, `SEAM_HANDLE`, `GLOW_L`, `GLOW_R`, `FILL_TOGGLE` (DOM lookups only).
-- [ ] core/gl-core.js — WebGL2 `gl` init; `createProgram`, `createRenderTarget`.
-- [ ] core/math.js — `mat4Identity`, `mat4Multiply`, `mat4Perspective`, `mat4LookAt`, `mat4Translate`, `mat4RotateY`, `mat4Scale`, `deg2rad`, `smoothstep`, `normalizeAngle`.
-- [ ] core/blit.js — BLIT shaders/VAO/VBO and `offscreen` target.
+- [x] core/constants.js — `BASE_WIDTH`, `BASE_HEIGHT` (constants only).
+- [x] core/state.js — constructs global `state` object (same shape/names).
+- [x] ui/dom.js — `CANVAS`, `HUD`, `SEAM`, `SEAM_HANDLE`, `GLOW_L`, `GLOW_R`, `FILL_TOGGLE` (DOM lookups only).
+- [x] core/gl-core.js — WebGL2 `gl` init; `createProgram`, `createRenderTarget`.
+- [x] core/math.js — `mat4Identity`, `mat4Multiply`, `mat4Perspective`, `mat4LookAt`, `mat4Translate`, `mat4RotateY`, `mat4Scale`, `deg2rad`, `smoothstep`, `normalizeAngle`.
+- [x] core/blit.js — BLIT shaders/VAO/VBO and `offscreen` target.
 
 Index order update
-- [ ] Include: constants → state → ui/dom → gl-core → math → blit (before anything that uses them).
-- [ ] Smoke test (see checklist).
+- [x] Include: constants → state → ui/dom → gl-core → math → blit (before anything that uses them).
+- [x] Smoke test (see checklist).
 
 ---
 
@@ -44,13 +44,13 @@ Index order update
 Create `mz/js/map/` for game space data separate from rendering.
 
 Files
-- [ ] map-data.js — `TILE`, `MAP_W`, `MAP_H`, `map`, `mapIdx`, `buildSampleMap()` (invoked once here).
-- [ ] map-instances.js — `rebuildInstances()`, `instOpen`, `instWall`.
-- [ ] columns.js — `extraColumns`, `columnHeights` (built once here).
+- [x] map-data.js — `TILE`, `MAP_W`, `MAP_H`, `map`, `mapIdx`, `buildSampleMap()` (invoked once here).
+- [x] map-instances.js — `rebuildInstances()`, `instOpen`, `instWall`.
+- [x] columns.js — `extraColumns`, `columnHeights` (built once here).
 
 Index order update
-- [ ] Load map-data → map-instances → columns after core and before pipelines.
-- [ ] Smoke test.
+- [x] Load map-data → map-instances → columns after core and before pipelines.
+- [x] Smoke test.
 
 ---
 
@@ -58,14 +58,14 @@ Index order update
 Create `mz/js/pipelines/` and split each GPU pipeline with its VAO+draw routines.
 
 Files
-- [ ] grid.js — grid shaders/VAO; `renderGridViewport`, `drawGridOverlay`.
-- [ ] tiles.js — tile shaders/VAO; `drawTiles(mvp, kind)`.
-- [ ] trail.js — trail wireframe shaders/VAO; exports uniforms/VAOs used by trail + outlines.
-- [ ] walls.js — wall shaders/VAO; `drawWalls`, `drawTallColumns` (depends on trail.js for outlines).
-- [ ] player.js — player cube shaders/VAO; exposes uniforms/VAO for player drawing.
+- [x] grid.js — grid shaders/VAO; `renderGridViewport`, `drawGridOverlay`.
+- [x] tiles.js — tile shaders/VAO; `drawTiles(mvp, kind)`.
+- [x] trail.js — trail wireframe shaders/VAO; exports uniforms/VAOs used by trail + outlines.
+- [x] walls.js — wall shaders/VAO; `drawWalls`, `drawTallColumns` (depends on trail.js for outlines).
+- [x] player.js — player cube shaders/VAO; exposes uniforms/VAO for player drawing.
 
 Index order update
-- [ ] pipelines load order: grid → tiles → trail → walls → player.
+- [x] pipelines load order: grid → tiles → trail → walls → player.
 - [ ] Smoke test.
 
 ---
@@ -74,16 +74,16 @@ Index order update
 Create `mz/js/ui/` for browser/UI concerns.
 
 Files
-- [ ] resize.js — `resizeCanvasToViewport` and letterbox computation.
-- [ ] hud.js — `updateHUD`.
-- [ ] input-pointer.js — `onPointerDown/Move/UpOrCancel`, swipe detection.
-- [ ] input-keyboard.js — `onKey` (keydown/up wiring).
-- [ ] seam.js — seam drag handlers and snapping logic.
-- [ ] toggle.js — fill viewport toggle button wiring.
-- [ ] dom-events.js — all `addEventListener` bindings (optional; can remain near each feature if preferred).
+- [x] resize.js — `resizeCanvasToViewport` and letterbox computation.
+- [x] hud.js — `updateHUD`.
+- [x] input-pointer.js — `onPointerDown/Move/UpOrCancel`, swipe detection.
+- [x] input-keyboard.js — `onKey` (keydown/up wiring).
+- [x] seam.js — seam drag handlers and snapping logic.
+- [x] toggle.js — fill viewport toggle button wiring.
+- [x] dom-events.js — all `addEventListener` bindings (optional; can remain near each feature if preferred).
 
 Index order update
-- [ ] Load ui files after core and before gameplay (so handlers exist early).
+- [x] Load ui files after core and before gameplay (so handlers exist early).
 - [ ] Smoke test.
 
 ---

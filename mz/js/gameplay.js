@@ -23,6 +23,15 @@ function handleSwipeTurns(){
   // This is integrated in onPointerUpOrCancel but we keep logic here if needed for future multi-touch
 }
 
+// Trigger a jump if grounded (shared by keyboard and tap)
+function doJump(){
+  if (state.player.grounded){
+    state.player.vy = 8.5;
+    state.player.grounded = false;
+    state.player.jumpStartY = state.player.y;
+  }
+}
+
 function seamSpeedFactor(){
   // More bottom map area (low seamRatio) => slower; more top (high seamRatio) => faster
   return 0.6 + 0.9 * state.seamRatio; // 0.6..1.5x
