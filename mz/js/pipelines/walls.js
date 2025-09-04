@@ -1,0 +1,205 @@
+// Walls pipeline (extracted from scene.js) + outline helpers and tall columns
+const WALL_VS = `#version 300 es
+layout(location=0) in vec3 a_pos;
+layout(location=1) in vec2 a_off;
+uniform mat4 u_mvp;
+uniform vec2 u_originXZ;
+uniform float u_scale;
+uniform float u_height;
+uniform vec3 u_voxCount; // voxel counts per axis (x,y,z)
+uniform vec3 u_voxOff;   // current voxel offset (x,y,z) in [0..count-1]
+uniform float u_yBase;   // additional vertical base offset (stacking)
+void main(){
+  float lx = (a_pos.x + u_voxOff.x) / u_voxCount.x;
+  float ly = (a_pos.y + u_voxOff.y) / u_voxCount.y;
+  float lz = (a_pos.z + u_voxOff.z) / u_voxCount.z;
+  vec2 xz = (vec2(lx, lz) + a_off + u_originXZ) * u_scale;
+  float y = ly * u_height + u_yBase;
+  gl_Position = u_mvp * vec4(xz.x, y, xz.y, 1.0);
+}`;
+const WALL_FS = `#version 300 es
+precision mediump float;
+uniform vec3 u_color;
+uniform float u_alpha;
+out vec4 outColor;
+void main(){ outColor = vec4(u_color, u_alpha); }`;
+const wallProgram = createProgram(WALL_VS, WALL_FS);
+const wall_u_mvp = gl.getUniformLocation(wallProgram, 'u_mvp');
+const wall_u_origin = gl.getUniformLocation(wallProgram, 'u_originXZ');
+const wall_u_scale = gl.getUniformLocation(wallProgram, 'u_scale');
+const wall_u_height = gl.getUniformLocation(wallProgram, 'u_height');
+const wall_u_color = gl.getUniformLocation(wallProgram, 'u_color');
+const wall_u_alpha = gl.getUniformLocation(wallProgram, 'u_alpha');
+const wall_u_voxCount = gl.getUniformLocation(wallProgram, 'u_voxCount');
+const wall_u_voxOff = gl.getUniformLocation(wallProgram, 'u_voxOff');
+const wall_u_yBase = gl.getUniformLocation(wallProgram, 'u_yBase');
+
+const wallVAO = gl.createVertexArray();
+const wallVBO_Pos = gl.createBuffer();
+const wallVBO_Inst = gl.createBuffer();
+gl.bindVertexArray(wallVAO);
+gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Pos);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  // Unit cube 0..1
+  // Front
+  0,0,1,  1,0,1,  1,1,1,
+  0,0,1,  1,1,1,  0,1,1,
+  // Back
+  1,0,0,  0,0,0,  0,1,0,
+  1,0,0,  0,1,0,  1,1,0,
+  // Left
+  0,0,0,  0,0,1,  0,1,1,
+  0,0,0,  0,1,1,  0,1,0,
+  // Right
+  1,0,1,  1,0,0,  1,1,0,
+  1,0,1,  1,1,0,  1,1,1,
+  // Top
+  0,1,1,  1,1,1,  1,1,0,
+  0,1,1,  1,1,0,  0,1,0,
+  // Bottom
+  0,0,0,  1,0,0,  1,0,1,
+  0,0,0,  1,0,1,  0,0,1,
+]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+gl.bufferData(gl.ARRAY_BUFFER, instWall, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(1);
+gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+gl.vertexAttribDivisor(1, 1);
+gl.bindVertexArray(null);
+gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+function drawWalls(mvp){
+  const data = instWall;
+  if (!data.length) return;
+  gl.useProgram(wallProgram);
+  gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+  gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+  gl.uniform1f(wall_u_scale, 1.0);
+  gl.uniform1f(wall_u_height, 1.0);
+  gl.uniform1f(wall_u_yBase, 0.0);
+  gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
+  gl.uniform1f(wall_u_alpha, 0.65);
+  const voxX=2, voxY=2, voxZ=2;
+  gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
+  gl.bindVertexArray(wallVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+  // Depth pre-pass
+  gl.disable(gl.BLEND);
+  gl.colorMask(false, false, false, false);
+  gl.depthMask(true);
+  gl.depthFunc(gl.LESS);
+  for (let vz=0; vz<voxZ; vz++){
+    for (let vy=0; vy<voxY; vy++){
+      for (let vx=0; vx<voxX; vx++){
+        gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, data.length/2);
+      }
+    }
+  }
+  // Blended color pass (no depth writes)
+  gl.colorMask(true, true, true, true);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.depthFunc(gl.LEQUAL);
+  for (let vz=0; vz<voxZ; vz++){
+    for (let vy=0; vy<voxY; vy++){
+      for (let vx=0; vx<voxX; vx++){
+        gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, data.length/2);
+      }
+    }
+  }
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+  gl.depthFunc(gl.LESS);
+  gl.bindVertexArray(null);
+
+  // Silhouette outlines per wall tile
+  drawOutlinesForTileArray(mvp, data, 0.5, 1.0);
+}
+
+function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
+  const count = tileArray.length/2;
+  if (count <= 0) return;
+  const tNow = state.nowSec || (performance.now()/1000);
+  const inst = new Float32Array(count * 4);
+  for (let i=0;i<count;i++){
+    const tx = tileArray[i*2+0];
+    const ty = tileArray[i*2+1];
+    const cx = (tx - MAP_W*0.5 + 0.5);
+    const cz = (ty - MAP_H*0.5 + 0.5);
+    inst[i*4+0]=cx; inst[i*4+1]=yCenter; inst[i*4+2]=cz; inst[i*4+3]=tNow;
+  }
+  gl.useProgram(trailCubeProgram);
+  gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
+  gl.uniform1f(tc_u_now, tNow);
+  gl.uniform1f(tc_u_ttl, 1.0);
+  gl.uniform1i(tc_u_dashMode, 0);
+  gl.uniform3f(tc_u_lineColor, 0.0, 0.0, 0.0);
+  gl.bindVertexArray(trailCubeVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
+  gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  gl.disable(gl.BLEND);
+  gl.depthMask(false);
+  gl.uniform1f(tc_u_mulAlpha, 1.0);
+  gl.uniform1f(tc_u_scale, baseScale);
+  gl.drawArraysInstanced(gl.LINES, 0, 24, count);
+  gl.uniform1f(tc_u_scale, baseScale * 1.03);
+  gl.drawArraysInstanced(gl.LINES, 0, 24, count);
+  gl.depthMask(true);
+  gl.bindVertexArray(null);
+}
+
+function drawTallColumns(mvp){
+  if (extraColumns.length === 0) return;
+  const pillars = extraColumns.map(p=>[p.x, p.y]);
+  gl.useProgram(wallProgram);
+  gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+  gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+  gl.uniform1f(wall_u_scale, 1.0);
+  gl.uniform1f(wall_u_height, 1.0);
+  gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
+  gl.uniform1f(wall_u_alpha, 0.65);
+  const voxX=1, voxY=1, voxZ=1;
+  gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
+  gl.bindVertexArray(wallVAO);
+  const offs = new Float32Array(pillars.length * 2);
+  for (let i=0;i<pillars.length;i++){ offs[i*2+0]=pillars[i][0]; offs[i*2+1]=pillars[i][1]; }
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+  gl.bufferData(gl.ARRAY_BUFFER, offs, gl.DYNAMIC_DRAW);
+  gl.disable(gl.BLEND);
+  gl.colorMask(false,false,false,false);
+  gl.depthMask(true);
+  gl.depthFunc(gl.LESS);
+  let maxH = 0; for (const c of extraColumns) maxH = Math.max(maxH, c.h|0);
+  for (let level=0; level<maxH; level++){
+    gl.uniform1f(wall_u_yBase, level * 1.0);
+    gl.uniform3f(wall_u_voxOff, 0,0,0);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
+  }
+  gl.colorMask(true,true,true,true);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.depthFunc(gl.LEQUAL);
+  for (let level=0; level<maxH; level++){
+    gl.uniform1f(wall_u_yBase, level * 1.0);
+    gl.uniform3f(wall_u_voxOff, 0,0,0);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
+  }
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+  gl.depthFunc(gl.LESS);
+  gl.bindVertexArray(null);
+
+  for (let level=0; level<maxH; level++){
+    const yCenter = level + 0.5;
+    const offs2 = new Float32Array(pillars.length * 2);
+    for (let i=0;i<pillars.length;i++){ offs2[i*2+0]=pillars[i][0]; offs2[i*2+1]=pillars[i][1]; }
+    drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0);
+  }
+}
