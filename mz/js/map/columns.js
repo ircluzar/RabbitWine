@@ -1,0 +1,10 @@
+// Extra tall columns (moved from scene.js)
+const extraColumns = [
+  { x: 10, y: 10, h: 6 },
+  { x: 13, y: 10, h: 6 },
+  { x: 10, y: 13, h: 6 },
+  { x: 13, y: 13, h: 6 },
+];
+// Fast lookup: tile "x,y" -> height
+const columnHeights = new Map();
+for (const c of extraColumns){ columnHeights.set(`${c.x},${c.y}`, c.h); }
