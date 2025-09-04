@@ -1,0 +1,135 @@
+/* VRUN MZ styles: full-viewport canvas, mobile-first */
+:root {
+  --bg: #0a0a0f;
+  --fg: #c8d0ff;
+  --hud-bg: #111622cc;
+  --hud-fg: #a8b0e0;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  height: 100%;
+}
+
+/* Ensure we fill the full safe area on iOS */
+body {
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  overflow: hidden;
+  touch-action: none; /* We'll manage gestures to prevent accidental scroll/zoom */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#app {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  width: 100svw;
+  height: 100svh;
+  width: 100dvw;
+  height: 100dvh;
+  outline: none;
+}
+
+#hud {
+  position: fixed;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  background: var(--hud-bg);
+  color: var(--hud-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  pointer-events: none;
+  max-width: min(90vw, 480px);
+  white-space: pre-wrap;
+}
+
+#fill-toggle {
+  position: fixed;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  background: #1b2330cc;
+  color: #cfe4ff;
+  border: 1px solid #43516b;
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+  z-index: 11;
+}
+#fill-toggle[aria-pressed="false"]{ background:#111622cc; color:#9bb7d6; }
+#fill-toggle:active{ transform: translateY(1px); }
+
+#swipe-glow-left, #swipe-glow-right {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 18vw;
+  max-width: 160px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+  mix-blend-mode: screen;
+}
+.swipe-glow.left { left: 0; background: radial-gradient(circle at left center, #87a6ff 0%, #6ea1ff66 40%, transparent 70%); }
+.swipe-glow.right { right: 0; background: radial-gradient(circle at right center, #b08cff 0%, #a58cff66 40%, transparent 70%); }
+.swipe-glow.show { opacity: 1; }
+
+#seam {
+  position: fixed;
+  left: 0;
+  width: 100vw;
+  width: 100svw;
+  height: 0; /* container does not block input */
+  top: 50vh; /* initial midpoint */
+  transform: translateY(-50%);
+  pointer-events: none; /* allow game swipes across screen */
+  z-index: 10;
+}
+
+#seam-handle {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px;  /* square, chunky */
+  height: 48px;
+  border-radius: 4px; /* slightly softened corners, still square-ish */
+  background: #333; /* flat, crude */
+  border: 3px solid #000; /* thick, harsh outline */
+  /* blocky shadow to feel more primitive */
+  box-shadow: 3px 3px 0 #0008;
+  pointer-events: auto; /* only the handle captures pointer */
+  touch-action: none;
+  cursor: ns-resize;
+}
+
+/* add a rough "grip" using fat stripes */
+#seam-handle::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  background: repeating-linear-gradient(
+    90deg,
+    #111 0 6px,
+    #444 6px 12px
+  );
+  border: 2px solid #000;
+}
+
+#seam-handle:active {
+  transform: translate(-50%, -50%) scale(0.98);
+  box-shadow: 1px 1px 0 #0008;
+}
