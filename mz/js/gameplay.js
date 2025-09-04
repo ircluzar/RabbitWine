@@ -308,21 +308,7 @@ gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 const trailCubeBaseCount = 24 * 2; // 12 edges * 2 verts = 24 vertices; we listed duplicates correctly above (24 verts)
 
-function mat4Translate(tx,ty,tz){
-  const m = mat4Identity(); m[12]=tx; m[13]=ty; m[14]=tz; return m;
-}
-function mat4RotateY(rad){
-  const c=Math.cos(rad), s=Math.sin(rad);
-  return new Float32Array([
-    c,0,-s,0,
-    0,1, 0,0,
-    s,0, c,0,
-    0,0, 0,1,
-  ]);
-}
-function mat4Scale(sx,sy,sz){
-  const m = mat4Identity(); m[0]=sx; m[5]=sy; m[10]=sz; return m;
-}
+// mat4Translate, mat4RotateY, mat4Scale are provided by core/math.js
 
 function drawPlayerAndTrail(mvp){
   // Trail as instanced wireframe cubes
