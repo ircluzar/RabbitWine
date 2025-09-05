@@ -163,7 +163,19 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
 
 function drawTallColumns(mvp){
   if (extraColumns.length === 0) return;
-  const pillars = extraColumns.map(p=>[p.x, p.y]);
+
+  // Group pillars/columns by their integer height so we respect per-column heights
+  /** @type {Map<number, Array<[number,number]>>} */
+  const groups = new Map();
+  for (const c of extraColumns){
+    const h = (c && typeof c.h === 'number') ? (c.h|0) : 0; // floor
+    if (h <= 0) continue;
+    const arr = groups.get(h) || [];
+    arr.push([c.x, c.y]);
+    groups.set(h, arr);
+  }
+  if (groups.size === 0) return;
+
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
   gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
@@ -174,39 +186,64 @@ function drawTallColumns(mvp){
   const voxX=1, voxY=1, voxZ=1;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
-  const offs = new Float32Array(pillars.length * 2);
-  for (let i=0;i<pillars.length;i++){ offs[i*2+0]=pillars[i][0]; offs[i*2+1]=pillars[i][1]; }
-  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
-  gl.bufferData(gl.ARRAY_BUFFER, offs, gl.DYNAMIC_DRAW);
-  gl.disable(gl.BLEND);
-  gl.colorMask(false,false,false,false);
-  gl.depthMask(true);
-  gl.depthFunc(gl.LESS);
-  let maxH = 0; for (const c of extraColumns) maxH = Math.max(maxH, c.h|0);
-  for (let level=0; level<maxH; level++){
-    gl.uniform1f(wall_u_yBase, level * 1.0);
-    gl.uniform3f(wall_u_voxOff, 0,0,0);
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
+
+  // For determinism, draw groups in ascending height
+  const heights = Array.from(groups.keys()).sort((a,b)=>a-b);
+  for (const h of heights){
+    const pillars = groups.get(h);
+    if (!pillars || pillars.length === 0) continue;
+    const offs = new Float32Array(pillars.length * 2);
+    for (let i=0;i<pillars.length;i++){ offs[i*2+0]=pillars[i][0]; offs[i*2+1]=pillars[i][1]; }
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+    gl.bufferData(gl.ARRAY_BUFFER, offs, gl.DYNAMIC_DRAW);
+
+    // Depth pre-pass for this height group
+    gl.disable(gl.BLEND);
+    gl.colorMask(false,false,false,false);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    for (let level=0; level<h; level++){
+      gl.uniform1f(wall_u_yBase, level * 1.0);
+      gl.uniform3f(wall_u_voxOff, 0,0,0);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
+    }
+
+    // Blended color pass for this height group
+    gl.colorMask(true,true,true,true);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
+    for (let level=0; level<h; level++){
+      gl.uniform1f(wall_u_yBase, level * 1.0);
+      gl.uniform3f(wall_u_voxOff, 0,0,0);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
+    }
+
+    // Silhouette outlines per level for this group
+    for (let level=0; level<h; level++){
+      const yCenter = level + 0.5;
+      const offs2 = new Float32Array(pillars.length * 2);
+      for (let i=0;i<pillars.length;i++){ offs2[i*2+0]=pillars[i][0]; offs2[i*2+1]=pillars[i][1]; }
+      drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0);
+    }
+
+  // Rebind wall VAO and wall program after outlines (they switch program/VAO),
+  // and restore uniforms so next group renders color correctly.
+  gl.bindVertexArray(wallVAO);
+  gl.useProgram(wallProgram);
+  gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+  gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+  gl.uniform1f(wall_u_scale, 1.0);
+  gl.uniform1f(wall_u_height, 1.0);
+  gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
+  gl.uniform1f(wall_u_alpha, 0.65);
+  gl.uniform3f(wall_u_voxCount, 1,1,1);
   }
-  gl.colorMask(true,true,true,true);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.depthMask(false);
-  gl.depthFunc(gl.LEQUAL);
-  for (let level=0; level<maxH; level++){
-    gl.uniform1f(wall_u_yBase, level * 1.0);
-    gl.uniform3f(wall_u_voxOff, 0,0,0);
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
-  }
+
+  // Restore defaults
   gl.depthMask(true);
   gl.disable(gl.BLEND);
   gl.depthFunc(gl.LESS);
   gl.bindVertexArray(null);
-
-  for (let level=0; level<maxH; level++){
-    const yCenter = level + 0.5;
-    const offs2 = new Float32Array(pillars.length * 2);
-    for (let i=0;i<pillars.length;i++){ offs2[i*2+0]=pillars[i][0]; offs2[i*2+1]=pillars[i][1]; }
-    drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0);
-  }
 }

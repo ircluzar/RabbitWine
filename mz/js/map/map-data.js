@@ -34,15 +34,11 @@ function buildSampleMap(){
   // Targets: 24x24 grid, writes to global 'map' Uint8Array, uses TILE enum
   const builder = new MapBuilder(MAP_W, MAP_H, map, TILE);
 
-  // Step 1: Establish base terrain - Fill entire grid with open walkable space
-  // Effect: All 576 tiles (24*24) set to TILE.OPEN (value 0)
+  // Establish base terrain - Fill entire grid with open walkable space
   builder.clear(TILE.OPEN);
 
-  // Step 2: Create outer boundary walls for map containment
-  // Specification: 1-tile thick perimeter around entire 24x24 grid
-  // Coverage: Top row (y=0), bottom row (y=23), left column (x=0), right column (x=23)
-  // Total wall tiles: 92 perimeter tiles set to TILE.WALL (value 1)
-  builder.border(TILE.OPEN);
+  // Create outer boundary walls for map containment
+  builder.border(TILE.WALL);
 
   // Step 3: Interior room structure - Rectangular outline in center area with elevated height
   // Coordinates: Top-left (6,6) to bottom-right (17,17)
@@ -50,7 +46,7 @@ function buildSampleMap(){
   // Height: 10.0 units (significantly taller than standard 1.0 wall height)
   // Purpose: Defines a contained room within the larger map area with imposing tall walls
   // Wall pattern: Hollow rectangle (outline only, interior remains open)
-  builder.rect(6, 6, 17, 17, TILE.WALL, 1.0);
+  builder.rect(6, 6, 17, 17, TILE.WALL, 3.0);
 
   // Step 4: Decorative pillar obstacles within the interior room at varying heights
   // Pattern: 2x2 symmetric arrangement in room center quadrants
