@@ -34,6 +34,17 @@ const state = {
   // Movement mode: 'stationary' (decelerate/hold 0) or 'accelerate' (accelerate toward seam max)
   movementMode: 'stationary',
     radius: 0.3,
+  // Dash powerup (debug: always on)
+  hasDash: true,
+  dashUsed: false,
+  isFrozen: false,
+  isDashing: false,
+  dashTime: 0.0,
+  // Saved values when frozen/dashing
+  _savedSpeed: 0.0,
+  _savedVy: 0.0,
+  _savedMode: 'stationary',
+  _resumeVy: 0.0,
   },
   trail: {
     points: [], // array of [x,y,z,bornSec]

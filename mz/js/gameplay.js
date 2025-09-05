@@ -57,7 +57,7 @@ function drawPlayerAndTrail(mvp){
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
   if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-  if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, 0);
+  if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, state.player.isFrozen ? 1 : 0);
   gl.bindVertexArray(playerVAO);
   gl.depthMask(true);
   gl.drawArrays(gl.TRIANGLES, 0, 36);

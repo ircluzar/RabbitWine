@@ -21,6 +21,10 @@ function stepGame(dt){
   if (state.player.wallJumpCooldown > 0) {
     state.player.wallJumpCooldown = Math.max(0, state.player.wallJumpCooldown - dt);
   }
+  // Safety: if frozen while grounded, unfreeze (freeze only valid midair)
+  if (state.player.grounded && state.player.isFrozen){ state.player.isFrozen = false; }
+  // Safety: if started dash while grounded by edge-case, cancel
+  if (state.player.grounded && state.player.isDashing){ state.player.isDashing = false; }
   
   updateTrail();
 }

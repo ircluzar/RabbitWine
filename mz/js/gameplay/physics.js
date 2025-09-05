@@ -30,7 +30,11 @@ function moveAndCollide(dt){
   const baseSpeed = 3.0;
   const seamMax = baseSpeed * seamSpeedFactor();
   // Target speed depends on mode
-  const targetSpeed = (p.movementMode === 'accelerate') ? seamMax : 0.0;
+  let targetSpeed = (p.movementMode === 'accelerate') ? seamMax : 0.0;
+  // If frozen, speed is forced 0 (already set in controls but keep safe)
+  if (p.isFrozen) targetSpeed = 0.0;
+  // If dashing, lock to 125% of max speed
+  if (p.isDashing) targetSpeed = seamMax * 1.25;
   // Smooth accel/decel toward target; accelerate relatively fast
   const accelRate = 10.0; // units/sec^2 when speeding up
   const decelRate = 12.0; // units/sec^2 when slowing down
@@ -42,8 +46,12 @@ function moveAndCollide(dt){
   } else {
     p.speed += ds;
   }
-  const dirX = Math.sin(p.angle);
-  const dirZ = -Math.cos(p.angle);
+  let dirX = Math.sin(p.angle);
+  let dirZ = -Math.cos(p.angle);
+  // Dash overrides direction
+  if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){
+    dirX = p._dashDirX; dirZ = p._dashDirZ;
+  }
   const stepX = dirX * p.speed * dt;
   const stepZ = dirZ * p.speed * dt;
   let newX = p.x + stepX;
@@ -64,25 +72,63 @@ function moveAndCollide(dt){
   if (!isWallAt(p.x, newZ)) { p.z = newZ; } else { newZ = p.z; hitWall = true; }
   if (!isWallAt(newX, p.z)) { p.x = newX; } else { newX = p.x; hitWall = true; }
 
-  if (hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
+  // If dashing and hit a wall, end dash immediately and treat as a wall jump
+  if (p.isDashing && hitWall){
+    p.isDashing = false;
+    // Wall jump: flip and give upward vy
     p.angle += Math.PI;
     p.vy = 8.5;
     p.grounded = false;
     p.jumpStartY = p.y;
     p.wallJumpCooldown = 0.22;
+    // Reset dash on wall jump to allow chaining as requested
+    p.dashUsed = false;
+    // After dash ends due to wall, clamp horizontal speed back to max
+    const base = 3.0; const max = base * seamSpeedFactor();
+    if (p.speed > max) p.speed = max;
+  }
+
+  if (!p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
+    p.angle += Math.PI;
+    p.vy = 8.5;
+    p.grounded = false;
+    p.jumpStartY = p.y;
+    p.wallJumpCooldown = 0.22;
+    // Reset dash on wall jump
+    p.dashUsed = false;
   }
 }
 
 function applyVerticalPhysics(dt){
   const p = state.player;
   const GRAV = -12.5;
-  p.vy += GRAV * dt;
+  // If frozen: pause gravity
+  if (!p.isFrozen){
+    // If dashing: ignore gravity for 1 second countdown
+  if (p.isDashing){
+      p.dashTime -= dt;
+      if (p.dashTime <= 0){
+        p.isDashing = false;
+    // Drop straight down next frame, keep current vy (0) and clamp speed to max
+    const base = 3.0; const max = base * seamSpeedFactor();
+    if (p.speed > max) p.speed = max;
+      }
+      // Do not apply gravity while dashing
+    } else {
+      p.vy += GRAV * dt;
+    }
+  }
   let newY = p.y + p.vy * dt;
   const gH = groundHeightAt(p.x, p.z);
   if (p.vy <= 0.0 && newY <= gH){
     newY = gH;
     p.vy = 0.0;
     p.grounded = true;
+    // touching ground resets dash availability
+    p.dashUsed = false;
+    // Exiting any freeze/dash on ground
+    p.isFrozen = false;
+    p.isDashing = false;
   } else {
     if (p.grounded) { p.jumpStartY = p.y; }
     p.grounded = false;

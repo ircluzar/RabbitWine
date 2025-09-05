@@ -50,14 +50,19 @@ function onPointerMove(e) {
     if (!p.turned) {
       // Horizontal swipe => turn left/right
       if (Math.abs(totalDx) > 36 && Math.abs(totalDx) > Math.abs(totalDy) * 1.3) {
-        if (totalDx < 0) turnLeft(); else turnRight();
+        if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+          if (totalDx < 0) startDash('left'); else startDash('right');
+        } else {
+          if (totalDx < 0) turnLeft(); else turnRight();
+        }
         p.turned = true;
       } else if (Math.abs(totalDy) > 36 && Math.abs(totalDy) > Math.abs(totalDx) * 1.3) {
         // Vertical swipe => up/down movement control
-        if (totalDy < 0) {
-          if (typeof swipeUp === 'function') swipeUp();
+        if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+          if (totalDy < 0) startDash('up'); else startDash('down');
         } else {
-          if (typeof swipeDown === 'function') swipeDown();
+          if (totalDy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
+          else { if (typeof swipeDown === 'function') swipeDown(); }
         }
         p.turned = true;
       }
@@ -75,10 +80,16 @@ function onPointerUpOrCancel(e) {
       const mag = Math.hypot(dx, dy);
       if (mag > 24) {
         if (Math.abs(dx) > Math.abs(dy) * 1.2) {
-          if (dx < 0) turnLeft(); else turnRight();
+          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+            if (dx < 0) startDash('left'); else startDash('right');
+          } else { if (dx < 0) turnLeft(); else turnRight(); }
         } else if (Math.abs(dy) > Math.abs(dx) * 1.2) {
-          if (dy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
-          else { if (typeof swipeDown === 'function') swipeDown(); }
+          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+            if (dy < 0) startDash('up'); else startDash('down');
+          } else {
+            if (dy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
+            else { if (typeof swipeDown === 'function') swipeDown(); }
+          }
         } else {
           const isSmallMove = mag <= 14;
           const dur = (p.downT != null) ? (e.timeStamp - p.downT) : 1e9;
