@@ -51,6 +51,7 @@ function drawPlayerAndTrail(mvp){
   const p = state.player;
   let model = mat4Multiply(mat4Translate(p.x, p.y+0.25, p.z), mat4RotateY(p.angle));
   model = mat4Multiply(model, mat4Scale(1,1,1));
+  // First pass: draw only the visible (not occluded) parts, write depth
   gl.useProgram(playerProgram);
   gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
   gl.uniformMatrix4fv(pl_u_model, false, model);
@@ -58,9 +59,32 @@ function drawPlayerAndTrail(mvp){
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
   if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
   if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, state.player.isFrozen ? 1 : 0);
+  if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 0);
   gl.bindVertexArray(playerVAO);
+  gl.depthFunc(gl.LEQUAL);
   gl.depthMask(true);
+  gl.disable(gl.BLEND);
   gl.drawArrays(gl.TRIANGLES, 0, 36);
+  gl.bindVertexArray(null);
+
+  // Second pass: draw only occluded fragments with checkerboard stipple
+  gl.useProgram(playerProgram);
+  gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
+  gl.uniformMatrix4fv(pl_u_model, false, model);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
+  if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
+  if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, state.player.isFrozen ? 1 : 0);
+  if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 1);
+  gl.bindVertexArray(playerVAO);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthFunc(gl.GREATER); // Only draw where player is behind existing depth (occluded)
+  gl.depthMask(false);      // Don't disturb depth buffer
+  gl.drawArrays(gl.TRIANGLES, 0, 36);
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+  gl.depthFunc(gl.LESS);
   gl.bindVertexArray(null);
 
   // White wireframe contour slightly larger than the cube, floating around it

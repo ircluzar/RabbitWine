@@ -24,7 +24,9 @@ function render(now) {
   // Clear offscreen
   gl.disable(gl.SCISSOR_TEST);
   gl.clearColor(0.04, 0.04, 0.06, 1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.clearDepth(1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   const W = offscreen.w, H = offscreen.h;
   const seamY = Math.floor(H * state.seamRatio);

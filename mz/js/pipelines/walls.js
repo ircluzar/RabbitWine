@@ -78,7 +78,20 @@ gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
 function drawWalls(mvp){
-  const data = instWall;
+  // Filter out wall tiles that are represented as tall columns (height > 1.0)
+  let data = instWall;
+  if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.size > 0 && data.length) {
+    const filtered = [];
+    for (let i=0; i<data.length; i+=2){
+      const x = data[i], y = data[i+1];
+      const key = `${x},${y}`;
+      const h = columnHeights.get(key);
+      if (!(typeof h === 'number' && h > 1.0)) {
+        filtered.push(x,y);
+      }
+    }
+    data = new Float32Array(filtered);
+  }
   if (!data.length) return;
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);

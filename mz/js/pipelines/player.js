@@ -21,18 +21,29 @@ precision mediump float;
 precision mediump sampler2DArray;
 uniform sampler2DArray u_tex;
 uniform int u_forceWhite;
+uniform int u_stipple; // 1 = checkerboard stipple using gl_FragCoord, 0 = normal
 in vec2 v_uv;
 flat in float v_layer;
 out vec4 outColor;
 void main(){
-  if (u_forceWhite == 1) { outColor = vec4(1.0,1.0,1.0,1.0); }
-  else { outColor = texture(u_tex, vec3(v_uv, floor(v_layer + 0.5))); }
+  if (u_forceWhite == 1) {
+    outColor = vec4(1.0,1.0,1.0,1.0);
+  } else {
+    outColor = texture(u_tex, vec3(v_uv, floor(v_layer + 0.5)));
+  }
+  if (u_stipple == 1) {
+    // Screen-space checkerboard: keep 1 of every 2 pixels
+    float cx = floor(gl_FragCoord.x);
+    float cy = floor(gl_FragCoord.y);
+    if (mod(cx + cy, 2.0) < 1.0) discard;
+  }
 }`;
 const playerProgram = createProgram(PLAYER_VS, PLAYER_FS);
 const pl_u_mvp = gl.getUniformLocation(playerProgram, 'u_mvp');
 const pl_u_model = gl.getUniformLocation(playerProgram, 'u_model');
 const pl_u_tex = gl.getUniformLocation(playerProgram, 'u_tex');
 const pl_u_forceWhite = gl.getUniformLocation(playerProgram, 'u_forceWhite');
+const pl_u_stipple = gl.getUniformLocation(playerProgram, 'u_stipple');
 const playerVAO = gl.createVertexArray();
 const playerVBO = gl.createBuffer();
 gl.bindVertexArray(playerVAO);
