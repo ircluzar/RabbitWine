@@ -28,7 +28,20 @@ function groundHeightAt(x, z){
 function moveAndCollide(dt){
   const p = state.player;
   const baseSpeed = 3.0;
-  p.speed = baseSpeed * seamSpeedFactor();
+  const seamMax = baseSpeed * seamSpeedFactor();
+  // Target speed depends on mode
+  const targetSpeed = (p.movementMode === 'accelerate') ? seamMax : 0.0;
+  // Smooth accel/decel toward target; accelerate relatively fast
+  const accelRate = 10.0; // units/sec^2 when speeding up
+  const decelRate = 12.0; // units/sec^2 when slowing down
+  const rate = (targetSpeed > p.speed + 1e-4) ? accelRate : decelRate;
+  const ds = Math.sign(targetSpeed - p.speed) * rate * dt;
+  // Clamp to target to avoid oscillation
+  if ((ds >= 0 && p.speed + ds > targetSpeed) || (ds < 0 && p.speed + ds < targetSpeed)) {
+    p.speed = targetSpeed;
+  } else {
+    p.speed += ds;
+  }
   const dirX = Math.sin(p.angle);
   const dirZ = -Math.cos(p.angle);
   const stepX = dirX * p.speed * dt;

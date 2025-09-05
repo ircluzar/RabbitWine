@@ -23,6 +23,29 @@ function turnRight(){
 }
 
 /**
+ * Engage acceleration mode (swipe up)
+ */
+function swipeUp(){
+  state.player.movementMode = 'accelerate';
+  if (typeof showSwipeGlow === 'function') showSwipeGlow('up');
+}
+
+/**
+ * Engage deceleration/stop or 180-flip when stationary (swipe down)
+ */
+function swipeDown(){
+  const p = state.player;
+  if (p.movementMode === 'stationary' && (p.speed||0) <= 0.001){
+    // 180 and start accelerating in opposite direction
+    p.angle += Math.PI;
+    p.movementMode = 'accelerate';
+  } else {
+    p.movementMode = 'stationary';
+  }
+  if (typeof showSwipeGlow === 'function') showSwipeGlow('down');
+}
+
+/**
  * Process keyboard input for player controls
  * @param {number} dt - Delta time (unused)
  */
@@ -36,6 +59,17 @@ function handleKeyboard(dt){
     turnRight(); 
     state.inputs.keys.delete('ArrowRight'); 
     state.inputs.keys.delete('d');
+  }
+  // Optional keyboard for up/down swipes
+  if (state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('w')){
+    swipeUp();
+    state.inputs.keys.delete('ArrowUp');
+    state.inputs.keys.delete('w');
+  }
+  if (state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('s')){
+    swipeDown();
+    state.inputs.keys.delete('ArrowDown');
+    state.inputs.keys.delete('s');
   }
   if (state.inputs.keys.has(' ') || state.inputs.keys.has('Space') || state.inputs.keys.has('Spacebar')){
     doJump();

@@ -30,7 +30,9 @@ const state = {
     wallJumpCooldown: 0.0,
     jumpStartY: 0.0,
     angle: 0, // radians, 0 faces -Z
-    speed: 0,
+  speed: 0,
+  // Movement mode: 'stationary' (decelerate/hold 0) or 'accelerate' (accelerate toward seam max)
+  movementMode: 'stationary',
     radius: 0.3,
   },
   trail: {

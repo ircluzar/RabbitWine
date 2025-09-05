@@ -6,7 +6,7 @@
  */
 
 // HUD updates and swipe glow feedback
-let glowTimerL = 0, glowTimerR = 0;
+let glowTimerL = 0, glowTimerR = 0, glowTimerU = 0, glowTimerD = 0;
 
 /**
  * Show swipe glow visual feedback
@@ -18,9 +18,17 @@ function showSwipeGlow(dir){
   if (dir === 'left') { 
     glowTimerL = now + dur; 
     if (GLOW_L) GLOW_L.classList.add('show'); 
-  } else { 
+  } else if (dir === 'right') { 
     glowTimerR = now + dur; 
     if (GLOW_R) GLOW_R.classList.add('show'); 
+  } else if (dir === 'up') {
+    glowTimerU = now + dur;
+    const el = document.getElementById('swipe-glow-up');
+    if (el) el.classList.add('show');
+  } else if (dir === 'down') {
+    glowTimerD = now + dur;
+    const el = document.getElementById('swipe-glow-down');
+    if (el) el.classList.add('show');
   }
 }
 
@@ -45,10 +53,15 @@ function updateHUD(now) {
     `FPS ${state.fps} | t ${elapsed.toFixed(1)}s | DPR ${state.dpr.toFixed(2)}`,
     `Canvas ${CANVAS.width}x${CANVAS.height} (px) | seam ${(state.seamRatio*100).toFixed(1)}%`,
     `Present ${state.letterboxCss.w}x${state.letterboxCss.h} css @ (${state.letterboxCss.x},${state.letterboxCss.y})`,
-    `Player x=${state.player.x.toFixed(2)} z=${state.player.z.toFixed(2)} ang=${(state.player.angle*180/Math.PI).toFixed(0)} speed=${state.player.speed.toFixed(2)}`,
+  `Player x=${state.player.x.toFixed(2)} z=${state.player.z.toFixed(2)} ang=${(state.player.angle*180/Math.PI).toFixed(0)} speed=${state.player.speed.toFixed(2)} mode=${state.player.movementMode}`,
     pointerLines.length ? `Pointers:\n${pointerLines.join('\n')}` : 'Pointers: none',
     state.inputs.keys.size ? `Keys: ${Array.from(state.inputs.keys).join(',')}` : 'Keys: none',
   ].join('\n');
-  if (GLOW_L && performance.now() > glowTimerL) GLOW_L.classList.remove('show');
-  if (GLOW_R && performance.now() > glowTimerR) GLOW_R.classList.remove('show');
+  const nowMs = performance.now();
+  if (GLOW_L && nowMs > glowTimerL) GLOW_L.classList.remove('show');
+  if (GLOW_R && nowMs > glowTimerR) GLOW_R.classList.remove('show');
+  const GU = document.getElementById('swipe-glow-up');
+  const GD = document.getElementById('swipe-glow-down');
+  if (GU && nowMs > glowTimerU) GU.classList.remove('show');
+  if (GD && nowMs > glowTimerD) GD.classList.remove('show');
 }
