@@ -27,8 +27,10 @@ function groundHeightAt(x, z){
  */
 function moveAndCollide(dt){
   const p = state.player;
+  const oldX = p.x, oldZ = p.z;
   const baseSpeed = 3.0;
   const seamMax = baseSpeed * seamSpeedFactor();
+  const wasDashing = !!p.isDashing;
   // Target speed depends on mode
   let targetSpeed = (p.movementMode === 'accelerate') ? seamMax : 0.0;
   // If frozen, speed is forced 0 (already set in controls but keep safe)
@@ -72,8 +74,10 @@ function moveAndCollide(dt){
   if (!isWallAt(p.x, newZ)) { p.z = newZ; } else { newZ = p.z; hitWall = true; }
   if (!isWallAt(newX, p.z)) { p.x = newX; } else { newX = p.x; hitWall = true; }
 
-  // If dashing and hit a wall, end dash immediately and treat as a wall jump
-  if (p.isDashing && hitWall){
+  // If dash hit a wall this frame, cancel any movement and jump immediately
+  if (hitWall && wasDashing){
+    // Revert movement from this frame
+    p.x = oldX; p.z = oldZ;
     p.isDashing = false;
     // Wall jump: flip and give upward vy
     p.angle += Math.PI;
@@ -83,9 +87,12 @@ function moveAndCollide(dt){
     p.wallJumpCooldown = 0.22;
     // Reset dash on wall jump to allow chaining as requested
     p.dashUsed = false;
-    // After dash ends due to wall, clamp horizontal speed back to max
-    const base = 3.0; const max = base * seamSpeedFactor();
-    if (p.speed > max) p.speed = max;
+    // Clamp speed to max after dash ends
+    const base2 = 3.0; const max2 = base2 * seamSpeedFactor();
+    if (p.speed > max2) p.speed = max2;
+  // Ensure we keep moving after the wall-jump
+  p.movementMode = 'accelerate';
+    return;
   }
 
   if (!p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
@@ -96,6 +103,8 @@ function moveAndCollide(dt){
     p.wallJumpCooldown = 0.22;
     // Reset dash on wall jump
     p.dashUsed = false;
+    // keep moving post-bounce
+    p.movementMode = 'accelerate';
   }
 }
 
@@ -112,6 +121,8 @@ function applyVerticalPhysics(dt){
     // Drop straight down next frame, keep current vy (0) and clamp speed to max
     const base = 3.0; const max = base * seamSpeedFactor();
     if (p.speed > max) p.speed = max;
+    // Continue moving at max speed in that direction
+    p.movementMode = 'accelerate';
       }
       // Do not apply gravity while dashing
     } else {
