@@ -120,9 +120,13 @@ Index order update
 ---
 
 ## Milestone 7 — Wiring + cleanup
-- [ ] Replace previous intermediate split files (config.js, gl.js, scene.js, input_ui.js, gameplay.js) with the new structure or keep them only as temporary shims until parity is verified.
-- [ ] Remove any duplicated globals; ensure each symbol is defined once.
-- [ ] Verify load order comments are reflected in `index.html`.
+- [x] Replace previous intermediate split files (config.js, gl.js, scene.js, input_ui.js, gameplay.js) with the new structure or keep them only as temporary shims until parity is verified.
+	- Removed: `js/config.js`, `js/gl.js`, `js/scene.js`, `js/input_ui.js`, old `js/bootstrap.js`.
+	- Kept: `js/gameplay.js` (rendering-only) and all new split files.
+- [x] Remove any duplicated globals; ensure each symbol is defined once.
+	- Player state remains in `core/state.js`.
+	- Rendering helpers live in `gameplay.js`; logic lives in `gameplay/*`.
+- [x] Verify load order comments are reflected in `index.html`.
 - [ ] Update/readme for new layout (optional).
 - [ ] Smoke test (final).
 
