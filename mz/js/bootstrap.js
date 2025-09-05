@@ -1,12 +1,26 @@
+/**
+ * Main render loop and application bootstrap for the MZ game.
+ * Orchestrates the dual-viewport rendering system with offscreen targets and manages the core render loop.
+ * Exports: render() function and offscreen render target setup.
+ * Dependencies: All core modules, state management, WebGL pipelines. Side effects: Modifies WebGL state, calls requestAnimationFrame.
+ */
+
+/**
+ * Main render function called every frame
+ * @param {number} now - Current timestamp from requestAnimationFrame
+ */
 function render(now) {
   state.frames++;
   const dt = Math.min(0.05, Math.max(0, (now - state.timePrev) / 1000));
   state.timePrev = now;
   state.nowSec = now / 1000;
+  
   stepGame(dt);
+  
   // 1) Render into offscreen low-res target (480x720)
   gl.bindFramebuffer(gl.FRAMEBUFFER, offscreen.fbo);
   gl.viewport(0, 0, offscreen.w, offscreen.h);
+  
   // Clear offscreen
   gl.disable(gl.SCISSOR_TEST);
   gl.clearColor(0.04, 0.04, 0.06, 1.0);
@@ -16,6 +30,7 @@ function render(now) {
   const seamY = Math.floor(H * state.seamRatio);
   const topH = Math.max(1, seamY);
   const botH = Math.max(1, H - seamY);
+  
   if (state.snapBottomFull) {
     // Full-screen bottom camera
     gl.viewport(0, 0, W, H);

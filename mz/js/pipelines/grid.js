@@ -1,3 +1,10 @@
+/**
+ * Grid overlay rendering pipeline with distance-based fading.
+ * Provides wireframe grid lines that fade based on camera distance for visual reference.
+ * Exports: GRID_VS, GRID_FS shaders, gridProgram, gridVAO, drawGridOverlay(), renderGridViewport() functions.
+ * Dependencies: createProgram() from gl-core.js, gl context. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ */
+
 // Grid pipeline (extracted from scene.js)
 const GRID_VS = `#version 300 es
 layout(location=0) in vec3 a_pos;
@@ -5,6 +12,7 @@ uniform mat4 u_mvp;
 out vec3 v_world;
 void main(){ v_world = a_pos; gl_Position = u_mvp * vec4(a_pos,1.0); }
 `;
+
 const GRID_FS = `#version 300 es
 precision mediump float;
 uniform vec3 u_color;

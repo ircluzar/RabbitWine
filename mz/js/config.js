@@ -1,4 +1,15 @@
+/**
+ * LEGACY CONFIGURATION FILE - Content has been moved to other modules
+ * Originally contained DOM element lookups, constants, and state - now distributed across:
+ * - DOM elements moved to ui/dom.js
+ * - Constants moved to core/constants.js  
+ * - State moved to core/state.js
+ * TODO: Remove this file and update any remaining imports.
+ * Dependencies: None. Side effects: May create duplicate global variables.
+ */
+
 // VRUN MZ minimal app shell (M0): WebGL2 init, DPR resize, input logger
+// NOTE: Content below has been refactored into separate modules
 
 const CANVAS = document.getElementById('app');
 const HUD = document.getElementById('hud');

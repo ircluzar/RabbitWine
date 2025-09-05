@@ -1,15 +1,33 @@
+/**
+ * Player and trail rendering functions using established rendering pipelines.
+ * Provides high-level rendering calls for player character and movement trail visualization.
+ * Exports: handleSwipeTurns(), drawPlayerAndTrail() functions.
+ * Dependencies: trail pipeline from pipelines/trail.js, state.trail from state.js. Side effects: Modifies WebGL state during rendering.
+ */
+
 // Rendering for player and trail (uses pipeline globals)
 
+/**
+ * Handle swipe-based turning (placeholder for future multi-touch support)
+ * Main logic is in pointer event handlers
+ */
 function handleSwipeTurns(){
   // kept for potential multi-touch future; main logic lives in pointer handlers
 }
 
+/**
+ * Render player character and movement trail
+ * @param {Float32Array} mvp - Model-view-projection matrix
+ */
 function drawPlayerAndTrail(mvp){
   // Trail as instanced wireframe cubes
   const pts = state.trail.points;
   if (pts.length >= 1){
     const inst = new Float32Array(pts.length * 4);
-    for (let i=0;i<pts.length;i++){ const p=pts[i]; inst[i*4+0]=p[0]; inst[i*4+1]=p[1]; inst[i*4+2]=p[2]; inst[i*4+3]=p[3]; }
+    for (let i=0;i<pts.length;i++){ 
+      const p=pts[i]; 
+      inst[i*4+0]=p[0]; inst[i*4+1]=p[1]; inst[i*4+2]=p[2]; inst[i*4+3]=p[3]; 
+    }
     gl.useProgram(trailCubeProgram);
     gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
     gl.uniform1f(tc_u_scale, 0.12);

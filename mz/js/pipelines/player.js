@@ -1,3 +1,10 @@
+/**
+ * Player rendering pipeline with vertex buffer and shader management.
+ * Handles player geometry, trail rendering, and WebGL draw calls with texture array support.
+ * Exports: PLAYER_VS, PLAYER_FS shaders, playerProgram, playerVAO, and drawPlayerAndTrail() function.
+ * Dependencies: gl context, createProgram() from gl-core.js, state.player and state.trail from state.js. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ */
+
 // Player pipeline (extracted from gameplay.js)
 const PLAYER_VS = `#version 300 es
 layout(location=0) in vec3 a_pos;
@@ -8,6 +15,7 @@ uniform mat4 u_model;
 out vec2 v_uv;
 flat out float v_layer;
 void main(){ v_uv = a_uv; v_layer = a_layer; gl_Position = u_mvp * u_model * vec4(a_pos,1.0); }`;
+
 const PLAYER_FS = `#version 300 es
 precision mediump float;
 precision mediump sampler2DArray;

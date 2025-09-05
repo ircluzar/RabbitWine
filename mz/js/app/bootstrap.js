@@ -1,3 +1,14 @@
+/**
+ * DUPLICATE FILE - This appears to be an exact copy of js/bootstrap.js
+ * Main render loop and application bootstrap for the MZ game.
+ * TODO: Remove this duplicate file and update imports to use js/bootstrap.js instead.
+ * Dependencies: All core modules, state management, WebGL pipelines. Side effects: Modifies WebGL state, calls requestAnimationFrame.
+ */
+
+/**
+ * Main render function called every frame
+ * @param {number} now - Current timestamp from requestAnimationFrame
+ */
 function render(now) {
   state.frames++;
   const dt = Math.min(0.05, Math.max(0, (now - state.timePrev) / 1000));

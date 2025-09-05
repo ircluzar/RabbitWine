@@ -1,8 +1,26 @@
+/**
+ * Tilemap data structure and sample map generation.
+ * Defines the game world grid with walls and open spaces, provides map indexing utilities.
+ * Exports: TILE enum, MAP_W, MAP_H constants, map array, mapIdx(), buildSampleMap() functions.
+ * Dependencies: None. Side effects: Initializes global map array when buildSampleMap() is called.
+ */
+
 // Tilemap representation (moved from scene.js)
 const TILE = { OPEN: 0, WALL: 1 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
+
+/**
+ * Convert 2D map coordinates to 1D array index
+ * @param {number} x - Grid X coordinate (0 to MAP_W-1)
+ * @param {number} y - Grid Y coordinate (0 to MAP_H-1)
+ * @returns {number} Array index for the map data
+ */
 function mapIdx(x,y){ return y*MAP_W + x; }
+
+/**
+ * Generate a sample map with border walls and interior rooms
+ */
 function buildSampleMap(){
   // Simple border walls and a few interior blocks
   for (let y=0;y<MAP_H;y++){

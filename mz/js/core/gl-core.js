@@ -1,3 +1,10 @@
+/**
+ * WebGL2 context initialization and core rendering utilities.
+ * Sets up WebGL2 context with optimal settings and provides render target creation and shader compilation.
+ * Exports: gl context, createRenderTarget(), createShader(), createProgram() functions.
+ * Dependencies: CANVAS from dom.js. Side effects: Gets WebGL2 context, throws error if unsupported.
+ */
+
 // WebGL2 context and core helpers (moved from gl.js)
 const gl = CANVAS.getContext('webgl2', {
   antialias: true,
@@ -11,6 +18,12 @@ if (!gl) {
   throw new Error('WebGL2 not supported');
 }
 
+/**
+ * Create a render target (framebuffer + texture)
+ * @param {number} w - Width in pixels
+ * @param {number} h - Height in pixels
+ * @returns {Object} Object with fbo, tex, w, h properties
+ */
 function createRenderTarget(w, h) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);

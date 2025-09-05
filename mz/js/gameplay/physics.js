@@ -1,4 +1,17 @@
+/**
+ * Physics and collision detection for player movement and world interaction.
+ * Handles ground height calculation, wall collision, and player movement with physics integration.
+ * Exports: groundHeightAt(), moveAndCollide() functions for use by gameplay loop.
+ * Dependencies: MAP_W, MAP_H, TILE, columnHeights, map, mapIdx from map data. Side effects: Modifies state.player position and velocity.
+ */
+
 // Physics and collision
+/**
+ * Calculate ground height at world coordinates
+ * @param {number} x - World X coordinate
+ * @param {number} z - World Z coordinate
+ * @returns {number} Ground height (0.0 for empty, 1.0 for wall, or custom column height)
+ */
 function groundHeightAt(x, z){
   const gx = Math.floor(x + MAP_W*0.5);
   const gz = Math.floor(z + MAP_H*0.5);
@@ -8,6 +21,10 @@ function groundHeightAt(x, z){
   return map[mapIdx(gx,gz)] === TILE.WALL ? 1.0 : 0.0;
 }
 
+/**
+ * Update player position with collision detection and physics
+ * @param {number} dt - Delta time in seconds
+ */
 function moveAndCollide(dt){
   const p = state.player;
   const baseSpeed = 3.0;

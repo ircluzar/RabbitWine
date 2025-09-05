@@ -1,3 +1,10 @@
+/**
+ * Wall and column rendering pipeline with voxel-based geometry.
+ * Handles instanced rendering of walls, tall columns, and their wireframe outlines with advanced voxel subdivision.
+ * Exports: WALL_VS, WALL_FS shaders, wallProgram, wallVAO, drawWalls(), drawTallColumns() functions.
+ * Dependencies: createProgram() from gl-core.js, gl context, map data. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ */
+
 // Walls pipeline (extracted from scene.js) + outline helpers and tall columns
 const WALL_VS = `#version 300 es
 layout(location=0) in vec3 a_pos;

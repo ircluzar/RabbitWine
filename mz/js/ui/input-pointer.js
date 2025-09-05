@@ -1,16 +1,40 @@
+/**
+ * Pointer and touch input handling with swipe gesture detection.
+ * Manages mouse and touch events, tracks pointer state, and detects left/right swipe gestures for player control.
+ * Exports: normalizeEventPosition(), onPointerDown(), onPointerMove(), onPointerUp() functions.
+ * Dependencies: CANVAS from dom.js, state.inputs from state.js, turnLeft/turnRight from controls.js. Side effects: Modifies state.inputs.pointers Map.
+ */
+
 // Pointer input and swipe detection
+/**
+ * Convert screen coordinates to canvas-relative coordinates
+ * @param {PointerEvent|MouseEvent|TouchEvent} e - Input event
+ * @returns {Object} Normalized position {x, y} relative to canvas
+ */
 function normalizeEventPosition(e) {
   const rect = CANVAS.getBoundingClientRect();
   return { x: (e.clientX - rect.left), y: (e.clientY - rect.top) };
 }
 
+/**
+ * Handle pointer down events and start tracking
+ * @param {PointerEvent} e - Pointer down event
+ */
 function onPointerDown(e) {
   CANVAS.focus();
   const pos = normalizeEventPosition(e);
   const id = e.pointerId || 0;
-  state.inputs.pointers.set(id, { x: pos.x, y: pos.y, dx: 0, dy: 0, startX: pos.x, startY: pos.y, lastT: e.timeStamp, downT: e.timeStamp, turned: false });
+  state.inputs.pointers.set(id, { 
+    x: pos.x, y: pos.y, dx: 0, dy: 0, 
+    startX: pos.x, startY: pos.y, 
+    lastT: e.timeStamp, downT: e.timeStamp, turned: false 
+  });
 }
 
+/**
+ * Handle pointer move events and track swipe gestures
+ * @param {PointerEvent} e - Pointer move event
+ */
 function onPointerMove(e) {
   const id = e.pointerId || 0;
   const pos = normalizeEventPosition(e);

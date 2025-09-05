@@ -1,3 +1,13 @@
+/**
+ * LEGACY WEBGL FILE - Content has been moved to core modules
+ * Originally contained WebGL context, render targets, and core utilities - now distributed across:
+ * - WebGL context moved to core/gl-core.js
+ * - Blit functionality moved to core/blit.js
+ * - Math utilities moved to core/math.js
+ * TODO: Remove this file and update any remaining imports.
+ * Dependencies: CANVAS from dom.js. Side effects: May create duplicate WebGL context.
+ */
+
 const gl = CANVAS.getContext('webgl2', {
   antialias: true,
   alpha: false,
@@ -11,6 +21,12 @@ if (!gl) {
 }
 
 // --- Offscreen low-res render target (480x720) ---
+/**
+ * Create a render target (framebuffer + texture) - MOVED TO core/gl-core.js
+ * @param {number} w - Width in pixels
+ * @param {number} h - Height in pixels
+ * @returns {Object} Object with fbo, tex, w, h properties
+ */
 function createRenderTarget(w, h) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);

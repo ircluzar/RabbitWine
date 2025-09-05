@@ -1,6 +1,15 @@
+/**
+ * Trail wireframe rendering pipeline for player movement history.
+ * Manages instanced rendering of trail cubes with time-based alpha fading and dash effects.
+ * Exports: TRAIL_CUBE_VS, TRAIL_CUBE_FS shaders, trailCubeProgram, trailCubeVAO, and related functions.
+ * Dependencies: createProgram() from gl-core.js, gl context, trail data from state. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ */
+
 // Trail wireframe pipeline (extracted from gameplay.js)
 const TRAIL_CUBE_VS = `#version 300 es\nlayout(location=0) in vec3 a_pos;\nlayout(location=1) in vec4 a_inst;\nlayout(location=2) in float a_t;\nuniform mat4 u_mvp;\nuniform float u_scale;\nuniform float u_now;\nuniform float u_ttl;\nout float v_alpha;\nout float v_t;\nvoid main(){\n  vec3 world = a_inst.xyz + a_pos * u_scale;\n  gl_Position = u_mvp * vec4(world,1.0);\n  float age = clamp((u_now - a_inst.w)/u_ttl, 0.0, 1.0);\n  v_alpha = 1.0 - age;\n  v_t = a_t;\n}`;
+
 const TRAIL_CUBE_FS = `#version 300 es\nprecision mediump float;\nin float v_alpha;\nin float v_t;\nuniform int u_dashMode;\nuniform float u_mulAlpha;\nuniform vec3 u_lineColor;\nout vec4 outColor;\nvoid main(){\n  if (u_dashMode == 1) { if (v_t > 0.10 && v_t < 0.90) discard; }\n  outColor = vec4(u_lineColor, v_alpha * u_mulAlpha);\n}`;
+
 const trailCubeProgram = createProgram(TRAIL_CUBE_VS, TRAIL_CUBE_FS);
 const tc_u_mvp = gl.getUniformLocation(trailCubeProgram, 'u_mvp');
 const tc_u_scale = gl.getUniformLocation(trailCubeProgram, 'u_scale');
@@ -9,6 +18,7 @@ const tc_u_ttl = gl.getUniformLocation(trailCubeProgram, 'u_ttl');
 const tc_u_dashMode = gl.getUniformLocation(trailCubeProgram, 'u_dashMode');
 const tc_u_mulAlpha = gl.getUniformLocation(trailCubeProgram, 'u_mulAlpha');
 const tc_u_lineColor = gl.getUniformLocation(trailCubeProgram, 'u_lineColor');
+
 const trailCubeVAO = gl.createVertexArray();
 const trailCubeVBO_Pos = gl.createBuffer();
 const trailCubeVBO_Inst = gl.createBuffer();

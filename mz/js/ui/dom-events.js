@@ -1,3 +1,10 @@
+/**
+ * Centralized DOM event binding and management.
+ * Sets up all event listeners for input handling, resize events, and UI interactions.
+ * Exports: None (side effects only). Registers event handlers at module load time.
+ * Dependencies: Event handler functions from input modules, DOM elements from dom.js. Side effects: Registers global event listeners.
+ */
+
 // Centralized DOM event bindings
 // Context menu prevention
 window.addEventListener('contextmenu', (e) => e.preventDefault(), { passive: false });

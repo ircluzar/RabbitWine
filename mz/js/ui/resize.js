@@ -1,4 +1,14 @@
+/**
+ * Canvas resize handling with letterboxing and device pixel ratio management.
+ * Manages viewport scaling, letterbox calculation, and maintains aspect ratio for the game canvas.
+ * Exports: resizeCanvasToViewport() function and letterbox calculation utilities.
+ * Dependencies: state from state.js, BASE_WIDTH/BASE_HEIGHT from constants.js, CANVAS from dom.js. Side effects: Modifies canvas size and state.letterboxCss.
+ */
+
 // Resize and letterbox computation
+/**
+ * Resize canvas to fit viewport with proper letterboxing
+ */
 function resizeCanvasToViewport() {
   const dpr = state.dpr = Math.min(window.devicePixelRatio || 1, 3);
   const cssW = Math.max(1, Math.floor(window.innerWidth));

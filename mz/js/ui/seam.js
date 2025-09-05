@@ -1,11 +1,26 @@
+/**
+ * Seam dragging UI for split-screen camera view control.
+ * Handles pointer events for dragging the seam divider that controls camera viewport splitting.
+ * Exports: draggingSeam variable, onSeamPointerDown(), onSeamPointerMove(), onSeamPointerUp() functions.
+ * Dependencies: state.seamRatio and state.letterboxCss from state.js, SEAM_HANDLE from dom.js. Side effects: Modifies state.seamRatio and element pointer capture.
+ */
+
 // Seam drag logic
 let draggingSeam = false;
 
+/**
+ * Start seam dragging interaction
+ * @param {PointerEvent} e - Pointer down event
+ */
 function onSeamPointerDown(e){
   draggingSeam = true;
   SEAM_HANDLE.setPointerCapture(e.pointerId);
 }
 
+/**
+ * Handle seam drag movement
+ * @param {PointerEvent} e - Pointer move event
+ */
 function onSeamPointerMove(e){
   if (!draggingSeam) return;
   const lb = state.letterboxCss;

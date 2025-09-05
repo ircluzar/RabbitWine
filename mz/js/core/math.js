@@ -1,10 +1,28 @@
+/**
+ * Essential 3D math utilities for matrix operations and transformations.
+ * Provides matrix creation, multiplication, perspective projection, and utility functions for WebGL rendering.
+ * Exports: mat4Identity(), mat4Multiply(), mat4Perspective(), mat4LookAt(), deg2rad() and other math functions.
+ * Dependencies: None. Side effects: None.
+ */
+
 // Minimal math utilities (moved from gl.js and gameplay.js)
+/**
+ * Create a 4x4 identity matrix
+ * @returns {Float32Array} 4x4 identity matrix in column-major order
+ */
 function mat4Identity(){
   return new Float32Array([1,0,0,0,
                            0,1,0,0,
                            0,0,1,0,
                            0,0,0,1]);
 }
+
+/**
+ * Multiply two 4x4 matrices
+ * @param {Float32Array} a - First matrix (left operand)
+ * @param {Float32Array} b - Second matrix (right operand)
+ * @returns {Float32Array} Result matrix a * b
+ */
 function mat4Multiply(a,b){
   const out = new Float32Array(16);
   for(let r=0;r<4;r++){
@@ -14,6 +32,15 @@ function mat4Multiply(a,b){
   }
   return out;
 }
+
+/**
+ * Create a perspective projection matrix
+ * @param {number} fovYRad - Field of view in Y direction (radians)
+ * @param {number} aspect - Aspect ratio (width/height)
+ * @param {number} near - Near clipping plane distance
+ * @param {number} far - Far clipping plane distance
+ * @returns {Float32Array} 4x4 perspective projection matrix
+ */
 function mat4Perspective(fovYRad, aspect, near, far){
   const f = 1.0/Math.tan(fovYRad/2);
   const nf = 1/(near - far);
