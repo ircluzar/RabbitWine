@@ -2,7 +2,7 @@
  * Physics and collision detection for player movement and world interaction.
  * Handles ground height calculation, wall collision, and player movement with physics integration.
  * Exports: groundHeightAt(), moveAndCollide() functions for use by gameplay loop.
- * Dependencies: MAP_W, MAP_H, TILE, columnHeights, map, mapIdx from map data. Side effects: Modifies state.player position and velocity.
+ * Dependencies: MAP_W, MAP_H, TILE, columnHeights, columnBases, map, mapIdx from map data. Side effects: Modifies state.player position and velocity.
  */
 
 // Physics and collision
@@ -17,7 +17,29 @@ function groundHeightAt(x, z){
   const gz = Math.floor(z + MAP_H*0.5);
   if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return 0.0;
   const key = `${gx},${gz}`;
-  if (columnHeights.has(key)) return columnHeights.get(key);
+  // Resolve base offset reliably even if globals are attached on window
+  function getBaseFor(key){
+    try {
+      if (typeof columnBases !== 'undefined' && columnBases && columnBases instanceof Map && columnBases.has(key)){
+        // Note: base may be 0; do not coalesce to default when 0
+        const v = columnBases.get(key);
+        return (typeof v === 'number') ? v : 0.0;
+      }
+    } catch(_){}
+    if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)){
+      const v = window.columnBases.get(key);
+      return (typeof v === 'number') ? v : 0.0;
+    }
+    return 0.0;
+  }
+  if (columnHeights.has(key)){
+    const h = columnHeights.get(key) || 0.0;
+    const b = getBaseFor(key);
+    // If player is below a raised base, treat ground as 0 (free to pass under). Otherwise top of solid.
+    const py = state.player ? state.player.y : 0.0;
+    if (py < b - 1e-3) return 0.0;
+    return b + h;
+  }
   return map[mapIdx(gx,gz)] === TILE.WALL ? 1.0 : 0.0;
 }
 
@@ -63,12 +85,35 @@ function moveAndCollide(dt){
     const gz = Math.floor(wz + MAP_H*0.5);
     if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true;
     const key = `${gx},${gz}`;
-    let blockH = 0.0;
-    if (columnHeights.has(key)) blockH = columnHeights.get(key);
-    else if (map[mapIdx(gx,gz)] === TILE.WALL) blockH = 1.0;
-    if (blockH <= 0.0) return false;
-    if (state.player.y >= blockH - 0.02) return false;
-    return true;
+    // Column with optional raised base
+    if (columnHeights.has(key)){
+      const h = columnHeights.get(key) || 0.0;
+      // Use same safe base lookup as groundHeightAt
+      let b = 0.0;
+      try {
+        if (typeof columnBases !== 'undefined' && columnBases && columnBases instanceof Map && columnBases.has(key)){
+          const bv = columnBases.get(key);
+          b = (typeof bv === 'number') ? bv : 0.0;
+        } else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)){
+          const bv = window.columnBases.get(key);
+          b = (typeof bv === 'number') ? bv : 0.0;
+        }
+      } catch(_){}
+      if (h <= 0.0) return false;
+      const top = b + h;
+      const py = state.player.y;
+      // If below the base or above the top, not colliding laterally.
+      if (py <= b - 0.02) return false;
+      if (py >= top - 0.02) return false;
+      return true;
+    }
+    // Simple wall tile at ground level (height 1)
+    if (map[mapIdx(gx,gz)] === TILE.WALL){
+      // Treat as solid from y in (0..1); allow passing if above the top
+      if (state.player.y >= 1.0 - 0.02) return false;
+      return true;
+    }
+    return false;
   }
   let hitWall = false;
   if (!isWallAt(p.x, newZ)) { p.z = newZ; } else { newZ = p.z; hitWall = true; }

@@ -38,7 +38,7 @@ function buildSampleMap(){
   builder.clear(TILE.OPEN);
 
   // Create outer boundary walls for map containment
-  builder.border(TILE.WALL);
+  builder.border(TILE.WALL,2.0);
 
   // Step 3: Interior room structure - Rectangular outline in center area with elevated height
   // Coordinates: Top-left (6,6) to bottom-right (17,17)

@@ -11,7 +11,7 @@
  * Usage example:
  *   const b = new MapBuilder(MAP_W, MAP_H, map, TILE);
  *   b.clear(TILE.OPEN)
- *    .border(TILE.WALL)
+ *    .border(TILE.WALL, 3.0)
  *    .rect(6,6,17,17,TILE.WALL)
  *    .pillars([[10,10],[13,10],[10,13],[13,13]], TILE.WALL);
  *
@@ -66,11 +66,29 @@ class MapBuilder {
   /** Fill entire map with a tile value */
   clear(tile){ this.map.fill(tile); return this; }
 
-  /** Draw outer border (1 tile thick) */
-  border(tile){
+  /**
+   * Draw outer border (1 tile thick) with optional height for tall columns.
+   * @param {number} tile - tile value to place on the border (e.g., TILE.WALL)
+   * @param {number} [height=1.0] - column height in units; >1 registers tall columns
+   */
+  border(tile, height=1.0){
     const w=this.w,h=this.h,m=this.map;
-    for(let x=0;x<w;x++){ m[this.idx(x,0)]=tile; m[this.idx(x,h-1)]=tile; }
-    for(let y=0;y<h;y++){ m[this.idx(0,y)]=tile; m[this.idx(w-1,y)]=tile; }
+    for(let x=0;x<w;x++){
+      m[this.idx(x,0)] = tile;
+      m[this.idx(x,h-1)] = tile;
+      if (height > 1.0){
+        this._setHeight(x, 0, height);
+        this._setHeight(x, h-1, height);
+      }
+    }
+    for(let y=0;y<h;y++){
+      m[this.idx(0,y)] = tile;
+      m[this.idx(w-1,y)] = tile;
+      if (height > 1.0){
+        this._setHeight(0, y, height);
+        this._setHeight(w-1, y, height);
+      }
+    }
     return this;
   }
 

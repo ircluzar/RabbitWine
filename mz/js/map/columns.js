@@ -7,10 +7,12 @@
  * Exports:
  *  - extraColumns: Array<{x:number,y:number,h:number,b?:number}>
  *  - columnHeights: Map key "x,y" -> height (h only, base elevation optional)
+ *  - columnBases: Map key "x,y" -> base elevation (b), defaults to 0 when absent
  *  - applyHeightData(heightData): merges builder-produced data
  */
 const extraColumns = [];
 const columnHeights = new Map();
+const columnBases = new Map();
 
 /**
  * Apply builder-produced height data.
@@ -23,12 +25,14 @@ function applyHeightData(heightData, replace=true){
   if (replace){
     extraColumns.length = 0;
     columnHeights.clear();
+  columnBases.clear();
   }
   if (Array.isArray(cols)){
     for (const c of cols){
       if (c && typeof c.x === 'number' && typeof c.y === 'number'){
         extraColumns.push(c);
         if (typeof c.h === 'number') columnHeights.set(`${c.x},${c.y}`, c.h);
+    if (typeof c.b === 'number') columnBases.set(`${c.x},${c.y}`, c.b|0);
       }
     }
   }
@@ -43,6 +47,7 @@ function applyHeightData(heightData, replace=true){
 if (typeof window !== 'undefined'){
   window.extraColumns = extraColumns;
   window.columnHeights = columnHeights;
+  window.columnBases = columnBases;
   window.applyHeightData = applyHeightData;
   if (window._pendingMapHeights){
     applyHeightData(window._pendingMapHeights, true);
