@@ -164,6 +164,9 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
   gl.bindVertexArray(trailCubeVAO);
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  // Ensure a_axis buffer has enough entries (even though u_useAnim==0)
+  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(count * 3), gl.DYNAMIC_DRAW);
   gl.disable(gl.BLEND);
   gl.depthMask(false);
   gl.uniform1f(tc_u_mulAlpha, 1.0);

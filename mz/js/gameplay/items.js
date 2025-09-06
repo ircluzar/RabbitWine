@@ -25,12 +25,22 @@ function initItemsFromBuilder(list){
   for (const it of list){
     if (!it || typeof it.x !== 'number' || typeof it.y !== 'number') continue;
     const w = gridToWorld(it.x, it.y);
-    items.push({ x: w.x, z: w.z, y: 0.65, payload: String(it.payload || ''), spawnT: t0, gone: false });
+    // random unit axis for 3D spin
+    let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
+    const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
+  // inner cube axis (independent random unit axis)
+  let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
+  const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
+  items.push({ x: w.x, z: w.z, y: 0.65, payload: String(it.payload || ''), spawnT: t0, gone: false, ax, ay, az, ix, iy, iz });
   }
 }
 
 function spawnItemWorld(x, y, z, payload){
-  items.push({ x, y, z, payload: String(payload || ''), spawnT: state.nowSec || performance.now()/1000, gone: false });
+  let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
+  const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
+  let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
+  const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
+  items.push({ x, y, z, payload: String(payload || ''), spawnT: state.nowSec || performance.now()/1000, gone: false, ax, ay, az, ix, iy, iz });
 }
 
 function updateItems(dt){
@@ -49,6 +59,10 @@ function updateItems(dt){
       it.gone = true;
       // Hook for future gameplay: we keep payload string available
       // Optionally dispatch an event later using it.payload
+  // Stop player movement immediately (stationary)
+  p.speed = 0.0;
+  p.movementMode = 'stationary';
+  p.isDashing = false;
     }
   }
 }
@@ -59,12 +73,20 @@ function drawItems(mvp){
   // Build instance buffer [x,y,z,spawnT] per item; animate in shader via spawnT
   const tNow = state.nowSec || (performance.now()/1000);
   const inst = new Float32Array(active.length * 4);
+  const axis = new Float32Array(active.length * 3);
+  const axisInner = new Float32Array(active.length * 3);
   for (let i=0;i<active.length;i++){
     const it = active[i];
     inst[i*4+0] = it.x;
     inst[i*4+1] = it.y; // already floating a bit above ground
     inst[i*4+2] = it.z;
     inst[i*4+3] = it.spawnT;
+    axis[i*3+0] = it.ax || 0.0;
+    axis[i*3+1] = it.ay || 1.0;
+    axis[i*3+2] = it.az || 0.0;
+    axisInner[i*3+0] = it.ix || 0.0;
+    axisInner[i*3+1] = it.iy || 1.0;
+    axisInner[i*3+2] = it.iz || 0.0;
   }
   gl.useProgram(trailCubeProgram);
   gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
@@ -74,21 +96,36 @@ function drawItems(mvp){
   gl.uniform1f(tc_u_ttl, 99999.0); // never fade automatically
   gl.uniform1i(tc_u_dashMode, 0);
   gl.uniform1f(tc_u_mulAlpha, 1.0);
-  gl.uniform3f(tc_u_lineColor, 1.0, 0.95, 0.2); // yellow-ish
   // Enable animation uniforms
   gl.uniform1i(tc_u_useAnim, 1);
-  gl.uniform1f(tc_u_rotSpeed, 1.2);      // rad/sec
+  gl.uniform1f(tc_u_rotSpeed, 0.35);      // slower spin
   gl.uniform1f(tc_u_wobbleAmp, 0.06);    // meters
   gl.uniform1f(tc_u_wobbleSpeed, 0.5);   // Hz
   gl.bindVertexArray(trailCubeVAO);
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  // Upload per-instance rotation axes
+  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
+  gl.bufferData(gl.ARRAY_BUFFER, axis, gl.DYNAMIC_DRAW);
   // Thicker lines look achieved by drawing slight multi-pass scales
   gl.depthMask(false);
   gl.disable(gl.BLEND);
+  // Outer yellow box
+  gl.uniform3f(tc_u_lineColor, 1.0, 0.95, 0.2); // yellow-ish
   const scales = [1.00, 1.02, 1.04, 1.06]; // stays < 0.5 overall (0.46 * 1.06 = 0.488)
   for (let s of scales){
     gl.uniform1f(tc_u_scale, 0.46 * s);
+    gl.drawArraysInstanced(gl.LINES, 0, 24, active.length);
+  }
+  // Inner smaller white box (different random axis and slightly different speed)
+  gl.uniform1f(tc_u_rotSpeed, 0.55);
+  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
+  gl.bufferData(gl.ARRAY_BUFFER, axisInner, gl.DYNAMIC_DRAW);
+  gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+  const innerBase = 0.28;
+  const innerScales = [1.00, 1.02, 1.04];
+  for (let s of innerScales){
+    gl.uniform1f(tc_u_scale, innerBase * s);
     gl.drawArraysInstanced(gl.LINES, 0, 24, active.length);
   }
   gl.depthMask(true);
