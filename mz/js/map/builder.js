@@ -29,6 +29,8 @@ class MapBuilder {
     // Initialize height tracking system for 3D column support
     this.extraColumns = []; // Array of {x,y,h} objects for tall columns
     this.columnHeights = new Map(); // Fast lookup: "x,y" -> height
+  // Optional spawn metadata (grid coords + facing angle in radians)
+  this._spawn = null; // { x:number, y:number, angle:number }
   }
   /** Convert (x,y) to linear index */
   idx(x,y){ return y * this.w + x; }
@@ -134,6 +136,44 @@ class MapBuilder {
       extraColumns: [...this.extraColumns], 
       columnHeights: new Map(this.columnHeights) 
     }; 
+  }
+
+  /**
+   * Designate player spawn on the grid with initial facing direction.
+   * @param {number} gx - grid X (0..w-1)
+   * @param {number} gy - grid Y (0..h-1)
+   * @param {number|string|[number,number]} dir - facing: radians number, or 'N'|'E'|'S'|'W', or [dx,dz] vector
+   */
+  spawn(gx, gy, dir='N'){
+    // Clamp to bounds
+    gx = this._clamp(Math.floor(gx), 0, this.w-1);
+    gy = this._clamp(Math.floor(gy), 0, this.h-1);
+    const ang = this._parseDir(dir);
+    this._spawn = { x: gx, y: gy, angle: ang };
+    return this;
+  }
+
+  /** Return spawn metadata if set: {x,y,angle} in grid coords and radians */
+  getSpawn(){ return this._spawn ? { ...this._spawn } : null; }
+
+  /** Internal: normalize dir into radians where 0 faces -Z */
+  _parseDir(dir){
+    if (Array.isArray(dir) && dir.length>=2){
+      const dx = +dir[0] || 0, dz = +dir[1] || 0;
+      if (dx===0 && dz===0) return 0;
+      return Math.atan2(dx, -dz);
+    }
+    if (typeof dir === 'number'){
+      return dir; // assume radians
+    }
+    if (typeof dir === 'string'){
+      const d = dir.trim().toUpperCase();
+      if (d === 'N') return 0.0;           // -Z
+      if (d === 'E') return Math.PI*0.5;   // +X
+      if (d === 'S') return Math.PI;       // +Z
+      if (d === 'W') return -Math.PI*0.5;  // -X
+    }
+    return 0.0;
   }
 }
 

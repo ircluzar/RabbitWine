@@ -71,7 +71,11 @@ function buildSampleMap(){
     builder.pillars([pos], TILE.WALL, pillarHeights[index] );
   });
 
-  // Step 5: Export & apply height data (defer if applyHeightData not yet loaded)
+  // Step 5: Default player spawn (grid 12,12 facing East)
+  // Converts later to world coords (center of tile) and applied to state.player
+  builder.spawn(3,6, 'S');
+
+  // Step 6: Export & apply height data (defer if applyHeightData not yet loaded)
   const heightData = builder.getHeightData();
   if (typeof applyHeightData === 'function') {
     applyHeightData(heightData, true);
@@ -80,5 +84,15 @@ function buildSampleMap(){
   }
   // Refresh instance buffers if system is loaded so removed objects disappear
   if (typeof rebuildInstances === 'function') rebuildInstances();
+
+  // Step 7: Apply spawn to player state if available
+  const sp = builder.getSpawn && builder.getSpawn();
+  if (sp && typeof state !== 'undefined' && state.player){
+    // Grid -> world: center of cell, origin at map center
+    state.player.x = (sp.x + 0.5) - MAP_W * 0.5;
+    state.player.z = (sp.y + 0.5) - MAP_H * 0.5;
+    state.player.angle = sp.angle || 0.0; // 0 faces -Z
+    // Leave y=0 so vertical physics will settle to ground height on first frame
+  }
 }
 buildSampleMap();

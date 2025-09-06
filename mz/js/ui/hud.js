@@ -49,11 +49,14 @@ function updateHUD(now) {
   state.inputs.pointers.forEach((p, id) => {
     pointerLines.push(`#${id}: x=${p.x.toFixed(1)} y=${p.y.toFixed(1)} dx=${p.dx.toFixed(1)} dy=${p.dy.toFixed(1)}`);
   });
+  // Convert world coordinates (origin-centered) to grid coordinates (0..MAP_W-1, 0..MAP_H-1)
+  const gridX = Math.floor(state.player.x + MAP_W * 0.5);
+  const gridY = Math.floor(state.player.z + MAP_H * 0.5);
   HUD.textContent = [
     `FPS ${state.fps} | t ${elapsed.toFixed(1)}s | DPR ${state.dpr.toFixed(2)}`,
     `Canvas ${CANVAS.width}x${CANVAS.height} (px) | seam ${(state.seamRatio*100).toFixed(1)}%`,
     `Present ${state.letterboxCss.w}x${state.letterboxCss.h} css @ (${state.letterboxCss.x},${state.letterboxCss.y})`,
-  `Player x=${state.player.x.toFixed(2)} z=${state.player.z.toFixed(2)} ang=${(state.player.angle*180/Math.PI).toFixed(0)} speed=${state.player.speed.toFixed(2)} mode=${state.player.movementMode}`,
+    `Player grid=${gridX},${gridY} | world=${state.player.x.toFixed(2)},${state.player.z.toFixed(2)} | ang=${(state.player.angle*180/Math.PI).toFixed(0)} speed=${state.player.speed.toFixed(2)} mode=${state.player.movementMode}`,
     pointerLines.length ? `Pointers:\n${pointerLines.join('\n')}` : 'Pointers: none',
     state.inputs.keys.size ? `Keys: ${Array.from(state.inputs.keys).join(',')}` : 'Keys: none',
   ].join('\n');
