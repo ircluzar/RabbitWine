@@ -137,6 +137,8 @@ function moveAndCollide(dt){
     p.grounded = false;
     p.jumpStartY = p.y;
     p.wallJumpCooldown = 0.22;
+  // SFX: wall jump
+  try { if (window.sfx) sfx.play('./sfx/VHS_Jump2.mp3'); } catch(_){}
     // Reset dash on wall jump to allow chaining as requested
     p.dashUsed = false;
     // Clamp speed to max after dash ends
@@ -153,6 +155,8 @@ function moveAndCollide(dt){
     p.grounded = false;
     p.jumpStartY = p.y;
     p.wallJumpCooldown = 0.22;
+  // SFX: wall jump (auto bounce)
+  try { if (window.sfx) sfx.play('./sfx/VHS_Jump2.mp3'); } catch(_){}
     // Reset dash on wall jump
     p.dashUsed = false;
     // keep moving post-bounce
@@ -187,6 +191,8 @@ function applyVerticalPhysics(dt){
     newY = gH;
     p.vy = 0.0;
     p.grounded = true;
+    // SFX: landing (only if we were in the air)
+    try { if (!state._wasGrounded && window.sfx) sfx.play('./sfx/VHS_Step2.mp3'); } catch(_){}
     // touching ground resets dash availability
     p.dashUsed = false;
     // Exiting any freeze/dash on ground
@@ -197,4 +203,6 @@ function applyVerticalPhysics(dt){
     p.grounded = false;
   }
   p.y = newY;
+  // Track previous grounded state for landing SFX
+  state._wasGrounded = p.grounded;
 }

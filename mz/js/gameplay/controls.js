@@ -13,6 +13,8 @@ function turnLeft(){
   if (!state.player.canTurn) return;
   state.player.angle -= Math.PI/2; 
   showSwipeGlow('left'); 
+  // SFX: turn left (35%)
+  try { if (window.sfx) sfx.play('./sfx/Menu_Move.mp3', { volume: 0.35 }); } catch(_){}
 }
 
 /**
@@ -22,6 +24,8 @@ function turnRight(){
   if (!state.player.canTurn) return;
   state.player.angle += Math.PI/2; 
   showSwipeGlow('right'); 
+  // SFX: turn right (35%)
+  try { if (window.sfx) sfx.play('./sfx/Menu_Move.mp3', { volume: 0.35 }); } catch(_){}
 }
 
 /**
@@ -30,6 +34,8 @@ function turnRight(){
 function swipeUp(){
   state.player.movementMode = 'accelerate';
   if (typeof showSwipeGlow === 'function') showSwipeGlow('up');
+  // SFX: move forward (35%)
+  try { if (window.sfx) sfx.play('./sfx/Menu_Select.mp3', { volume: 0.35 }); } catch(_){}
 }
 
 /**
@@ -46,6 +52,8 @@ function swipeDown(){
     p.movementMode = 'stationary';
   }
   if (typeof showSwipeGlow === 'function') showSwipeGlow('down');
+  // SFX: back/stop (35%)
+  try { if (window.sfx) sfx.play('./sfx/Menu_Back.mp3', { volume: 0.35 }); } catch(_){}
 }
 
 // --- Dash helpers ---
@@ -55,6 +63,8 @@ function startFreeze(){
   if (p.dashUsed) return;
   if (p.isFrozen || p.isDashing) return;
   p.isFrozen = true;
+  // SFX: entering freeze
+  try { if (window.sfx) sfx.play('./sfx/VHS_Laser6.mp3'); } catch(_){}
   // Save current motion state
   p._savedSpeed = p.speed;
   p._savedVy = p.vy;
@@ -86,6 +96,8 @@ function startDash(dir){
   // End freeze if active
   if (p.isFrozen) p.isFrozen = false;
   p.isDashing = true;
+  // SFX: dash start
+  try { if (window.sfx) sfx.play('./sfx/VHS_Deflect4.mp3'); } catch(_){}
   p.dashTime = 0.666; // seconds of gravity ignore
   p.dashUsed = true; // consume dash for this jump
   // During dash we "walk in midair"
@@ -182,6 +194,8 @@ function doJump(){
     p.grounded = false;
     p.jumpStartY = p.y;
     p.dashUsed = false; // new jump allows dash
+  // SFX: normal jump
+  try { if (window.sfx) sfx.play('./sfx/VHS_Jump1.mp3'); } catch(_){}
     return;
   }
   // Midair: handle freeze/dash toggle

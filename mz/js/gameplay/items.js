@@ -61,6 +61,8 @@ function updateItems(dt){
       if (typeof dispatchAction === 'function' && it.payload){
         dispatchAction(it.payload, it);
       }
+  // Play pickup SFX
+  try { if (window.sfx) sfx.play('./sfx/VRUN_HealthGet.mp3'); } catch(_){ }
   // Stop player movement immediately (stationary)
   p.speed = 0.0;
   p.movementMode = 'stationary';

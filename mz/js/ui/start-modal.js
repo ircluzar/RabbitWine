@@ -104,6 +104,8 @@
     // Remove overlay
     const ov = document.getElementById('start-modal-overlay');
     if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  // Unlock SFX and then play close sound (35%)
+  try { if (window.sfx) { if (!sfx.isUnlocked) sfx.unlock(); sfx.play('./sfx/Menu_Action.mp3', { volume: 0.35 }); } } catch(_){}
     // Remove global posterize
     try {
       document.body.classList.remove('mz-posterize');
@@ -115,6 +117,11 @@
         state.player.movementMode = 'accelerate';
       }
     } catch(_){}
+    // Initialize audio volumes and start background music now that we have user gesture
+    try {
+      if (window.music) { music.volume = 0.5; if (!music.isUnlocked) music.unlock('./music/1.mp3'); else music.play('./music/1.mp3'); }
+      if (window.sfx) { sfx.volume = 0.5; }
+    } catch(_){ }
   }
 
   function onKeyDown(e){
