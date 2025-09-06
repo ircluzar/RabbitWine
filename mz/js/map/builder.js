@@ -192,10 +192,27 @@ class MapBuilder {
     return this;
   }
 
-  /** Place a list of [x,y] points with tile value and optional height */
+  /** Place a list of [x,y] points with tile value and optional height.
+   * Accepts formats: [x,y], [[x,y],...], or {x:number,y:number}.
+   */
   pillars(points,tile,height=1.0){
-    for(const [x,y] of points){ 
-      if (this._inBounds(x,y)) {
+    /** @type {Array<[number,number]>} */
+    const list = [];
+    if (Array.isArray(points)){
+      if (points.length === 2 && typeof points[0]==='number' && typeof points[1]==='number'){
+        list.push([points[0], points[1]]);
+      } else if (points.length && Array.isArray(points[0])){
+        for (const p of points){
+          if (Array.isArray(p) && p.length>=2){ list.push([p[0], p[1]]); }
+        }
+      } else if (points.length && typeof points[0]==='object' && points[0]){
+        for (const p of points){ if (p && typeof p.x==='number' && typeof p.y==='number') list.push([p.x,p.y]); }
+      }
+    } else if (points && typeof points.x==='number' && typeof points.y==='number'){
+      list.push([points.x, points.y]);
+    }
+    for(const [x,y] of list){
+      if (this._inBounds(x,y)){
         this.map[this.idx(x,y)] = tile;
         if (height > 1.0) this._setHeight(x,y,height);
       }

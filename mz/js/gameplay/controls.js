@@ -10,6 +10,7 @@
  * Turn player 90 degrees to the left
  */
 function turnLeft(){ 
+  if (!state.player.canTurn) return;
   state.player.angle -= Math.PI/2; 
   showSwipeGlow('left'); 
 }
@@ -18,6 +19,7 @@ function turnLeft(){
  * Turn player 90 degrees to the right
  */
 function turnRight(){ 
+  if (!state.player.canTurn) return;
   state.player.angle += Math.PI/2; 
   showSwipeGlow('right'); 
 }
@@ -35,6 +37,7 @@ function swipeUp(){
  */
 function swipeDown(){
   const p = state.player;
+  if (!p.canBack) return;
   if (p.movementMode === 'stationary' && (p.speed||0) <= 0.001){
     // 180 and start accelerating in opposite direction
     p.angle += Math.PI;
@@ -48,7 +51,7 @@ function swipeDown(){
 // --- Dash helpers ---
 function startFreeze(){
   const p = state.player;
-  if (!p.hasDash) return;
+  if (!p.hasDash || !p.canDash) return;
   if (p.dashUsed) return;
   if (p.isFrozen || p.isDashing) return;
   p.isFrozen = true;
@@ -77,7 +80,7 @@ function resumeFromFreeze(){
  */
 function startDash(dir){
   const p = state.player;
-  if (!p.hasDash || p.dashUsed) return;
+  if (!p.canDash || !p.hasDash || p.dashUsed) return;
   // Must be midair freeze or midair
   if (p.grounded) return;
   // End freeze if active
@@ -129,26 +132,26 @@ function startDash(dir){
 function handleKeyboard(dt){
   const p = state.player;
   if (state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('a')) {
-    if (p.isFrozen && !p.isDashing && p.hasDash && !p.dashUsed) { startDash('left'); }
-    else { turnLeft(); }
+  if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('left'); }
+  else { turnLeft(); }
     state.inputs.keys.delete('ArrowLeft'); 
     state.inputs.keys.delete('a');
   }
   if (state.inputs.keys.has('ArrowRight') || state.inputs.keys.has('d')) {
-    if (p.isFrozen && !p.isDashing && p.hasDash && !p.dashUsed) { startDash('right'); }
-    else { turnRight(); }
+  if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('right'); }
+  else { turnRight(); }
     state.inputs.keys.delete('ArrowRight'); 
     state.inputs.keys.delete('d');
   }
   // Optional keyboard for up/down swipes
   if (state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('w')){
-    if (p.isFrozen && !p.isDashing && p.hasDash && !p.dashUsed) { startDash('up'); }
+  if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('up'); }
     else { swipeUp(); }
     state.inputs.keys.delete('ArrowUp');
     state.inputs.keys.delete('w');
   }
   if (state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('s')){
-    if (p.isFrozen && !p.isDashing && p.hasDash && !p.dashUsed) { startDash('down'); }
+  if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('down'); }
     else { swipeDown(); }
     state.inputs.keys.delete('ArrowDown');
     state.inputs.keys.delete('s');
@@ -166,6 +169,14 @@ function handleKeyboard(dt){
  */
 function doJump(){
   const p = state.player;
+  if (!p.canJump) {
+    // Even without jump, allow toggling freeze/dash if enabled and midair
+    if (p.hasDash && p.canDash && !p.dashUsed){
+      if (p.isFrozen){ resumeFromFreeze(); }
+      else if (!p.isDashing) { startFreeze(); }
+    }
+    return;
+  }
   if (p.grounded){
     p.vy = 8.5;
     p.grounded = false;
@@ -174,7 +185,7 @@ function doJump(){
     return;
   }
   // Midair: handle freeze/dash toggle
-  if (p.hasDash && !p.dashUsed){
+  if (p.hasDash && p.canDash && !p.dashUsed){
     if (p.isFrozen){
       resumeFromFreeze();
     } else if (!p.isDashing) {

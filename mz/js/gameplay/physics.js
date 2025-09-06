@@ -121,6 +121,13 @@ function moveAndCollide(dt){
 
   // If dash hit a wall this frame, cancel any movement and jump immediately
   if (hitWall && wasDashing){
+    if (!state.player.canWallJump) {
+      // If walljump disabled, just cancel dash and stop against wall
+      state.player.isDashing = false;
+      const base2 = 3.0; const max2 = base2 * seamSpeedFactor();
+      if (state.player.speed > max2) state.player.speed = max2;
+      return;
+    }
     // Revert movement from this frame
     p.x = oldX; p.z = oldZ;
     p.isDashing = false;
@@ -140,7 +147,7 @@ function moveAndCollide(dt){
     return;
   }
 
-  if (!p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
+  if (p.canWallJump && !p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
     p.angle += Math.PI;
     p.vy = 8.5;
     p.grounded = false;

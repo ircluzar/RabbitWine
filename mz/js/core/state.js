@@ -34,6 +34,12 @@ const state = {
   // Movement mode: 'stationary' (decelerate/hold 0) or 'accelerate' (accelerate toward seam max)
   movementMode: 'stationary',
     radius: 0.3,
+  // Ability flags (unlockable during gameplay)
+  canBack: true,       // press down to stop/go backwards
+  canTurn: true,       // press left/right to rotate direction
+  canJump: true,       // press jump
+  canWallJump: true,   // auto/triggered walljump
+  canDash: true,       // freeze and dash system
   // Dash powerup (debug: always on)
   hasDash: true,
   dashUsed: false,
