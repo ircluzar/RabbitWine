@@ -5,6 +5,20 @@
  * Dependencies: state.player and state.inputs from state.js, showSwipeGlow() from UI. Side effects: Modifies player angle, velocity, and input state.
  */
 
+// Start background music once, on first movement-related action
+let __mzMusicStarted = false;
+function startMusicOnce(){
+  if (__mzMusicStarted) return;
+  __mzMusicStarted = true;
+  try {
+    if (window.music){
+      music.volume = 0.5;
+      if (!music.isUnlocked) music.unlock('./music/1.mp3');
+      else music.play('./music/1.mp3');
+    }
+  } catch(_){}
+}
+
 // Controls: turns, keyboard, jump, and dash
 /**
  * Turn player 90 degrees to the left
@@ -33,6 +47,8 @@ function turnRight(){
  */
 function swipeUp(){
   state.player.movementMode = 'accelerate';
+  // First movement: start music
+  startMusicOnce();
   if (typeof showSwipeGlow === 'function') showSwipeGlow('up');
   // SFX: move forward (35%)
   try { if (window.sfx) sfx.play('./sfx/Menu_Select.mp3', { volume: 0.35 }); } catch(_){}
@@ -48,6 +64,8 @@ function swipeDown(){
     // 180 and start accelerating in opposite direction
     p.angle += Math.PI;
     p.movementMode = 'accelerate';
+  // First movement: start music
+  startMusicOnce();
   } else {
     p.movementMode = 'stationary';
   }
@@ -96,6 +114,8 @@ function startDash(dir){
   // End freeze if active
   if (p.isFrozen) p.isFrozen = false;
   p.isDashing = true;
+  // Movement event: ensure music started
+  startMusicOnce();
   // SFX: dash start
   try { if (window.sfx) sfx.play('./sfx/VHS_Deflect4.mp3'); } catch(_){}
   p.dashTime = 0.666; // seconds of gravity ignore
@@ -216,3 +236,5 @@ window.swipeUp = swipeUp;
 window.swipeDown = swipeDown;
 window.doJump = doJump;
 window.handleKeyboard = handleKeyboard;
+// Expose music-start helper so other modules (e.g., start-modal) can trigger when they initiate movement
+window.startMusicOnce = startMusicOnce;

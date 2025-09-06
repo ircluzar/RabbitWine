@@ -106,21 +106,23 @@
     if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
   // Unlock SFX and then play close sound (35%)
   try { if (window.sfx) { if (!sfx.isUnlocked) sfx.unlock(); sfx.play('./sfx/Menu_Action.mp3', { volume: 0.35 }); } } catch(_){}
-    // Remove global posterize
+    // Remove global posterize immediately since in-engine effect is already active
     try {
       document.body.classList.remove('mz-posterize');
       document.body.classList.remove('mz-colors-64');
-    } catch(_){}
-    // Begin initial forward movement (turning remains locked until item)
-    try {
-      if (window.state && state.player){
-        state.player.movementMode = 'accelerate';
+      
+      // Ensure in-engine effect is at maximum strength
+      if (window.state) {
+        state.topPosterizeMix = 1.0;
+        state.topPosterizeLevels = 4.0; // crushed but not extreme
+        state.topDitherAmt = 0.6; // moderate dithering
+        state.topPixelSize = 3.0; // moderate pixelation
       }
-    } catch(_){}
-    // Initialize audio volumes and start background music now that we have user gesture
+    } catch(_){ }
+    // Initialize audio volumes but don't auto-start movement - let user initiate
     try {
-      if (window.music) { music.volume = 0.5; if (!music.isUnlocked) music.unlock('./music/1.mp3'); else music.play('./music/1.mp3'); }
       if (window.sfx) { sfx.volume = 0.5; }
+      // Music and movement will start when user actually moves via controls
     } catch(_){ }
   }
 
@@ -172,6 +174,7 @@
   try {
     document.body.classList.add('mz-posterize');
     document.body.classList.add('mz-colors-64');
+    // The in-engine effect is already active from state initialization
   } catch(_){}
 
   // Global listeners to dismiss

@@ -59,9 +59,23 @@ function moveAndCollide(dt){
   if (p.isFrozen) targetSpeed = 0.0;
   // If dashing, lock to 125% of max speed
   if (p.isDashing) targetSpeed = seamMax * 1.25;
-  // Smooth accel/decel toward target; accelerate relatively fast
-  const accelRate = 10.0; // units/sec^2 when speeding up
+  // Detect first acceleration start
+  if (p.movementMode === 'accelerate' && !state.firstAccelFired && (p.speed||0) <= 1e-6) {
+    state.firstAccelFired = true;
+    // Apply a brief slow-acceleration window (longer for a gentler start)
+    state.firstAccelSlowUntil = (state.nowSec || performance.now()/1000) + 1.75;
+    state.firstAccelStartSec = (state.nowSec || performance.now()/1000);
+    state.firstAccelDuration = 1.75;
+    try { window.dispatchEvent(new CustomEvent('firstAccel')); } catch(_){}
+  }
+
+  // Smooth accel/decel toward target; default rates
+  let accelRate = 10.0; // units/sec^2 when speeding up
   const decelRate = 12.0; // units/sec^2 when slowing down
+  // During the first acceleration window, use a gentler acceleration rate
+  if (state.firstAccelFired && (state.nowSec || performance.now()/1000) < (state.firstAccelSlowUntil || 0)) {
+    accelRate = 1.5; // even gentler ramp for first time
+  }
   const rate = (targetSpeed > p.speed + 1e-4) ? accelRate : decelRate;
   const ds = Math.sign(targetSpeed - p.speed) * rate * dt;
   // Clamp to target to avoid oscillation

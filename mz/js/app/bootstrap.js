@@ -149,6 +149,25 @@ function render(now) {
   gl.bindTexture(gl.TEXTURE_2D, offscreen.tex);
   const loc = gl.getUniformLocation(blitProgram, 'u_tex');
   gl.uniform1i(loc, 0);
+  // Set top posterize mix
+  const uTopMix = gl.getUniformLocation(blitProgram, 'u_topMix');
+  gl.uniform1f(uTopMix, state.topPosterizeMix || 0.0);
+  const uTopLevels = gl.getUniformLocation(blitProgram, 'u_topLevels');
+  gl.uniform1f(uTopLevels, state.topPosterizeLevels || 6.0);
+  const uTopDither = gl.getUniformLocation(blitProgram, 'u_topDither');
+  gl.uniform1f(uTopDither, state.topDitherAmt || 0.0);
+  const uTopPixel = gl.getUniformLocation(blitProgram, 'u_topPixel');
+  gl.uniform1f(uTopPixel, state.topPixelSize || 0.0);
+  
+  // Debug: log values when they change
+  if (state.topPosterizeMix > 0.0 && state.frames % 60 === 0) {
+    console.log('Bitcrush state:', {
+      mix: state.topPosterizeMix,
+      levels: state.topPosterizeLevels,
+      dither: state.topDitherAmt,
+      pixel: state.topPixelSize
+    });
+  }
   gl.bindVertexArray(blitVAO);
   gl.viewport(offX, offY, destW, destH);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

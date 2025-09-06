@@ -62,4 +62,14 @@ const state = {
   camYaw: 0.0,
   snapBottomFull: false,
   snapTopFull: false,
+  // First acceleration marker/event state
+  firstAccelFired: false,
+  firstAccelSlowUntil: 0,
+  firstAccelStartSec: 0,
+  firstAccelDuration: 0,
+  // Top-half posterize mix (0 = off, 1 = fully posterized)
+  topPosterizeMix: 1.0, // Start with effect ON
+  topPosterizeLevels: 4.0, // Start crushed but not too extreme
+  topDitherAmt: 0.6, // Moderate dithering
+  topPixelSize: 3.0, // Moderate pixelation
 };
