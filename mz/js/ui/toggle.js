@@ -1,17 +1,23 @@
 /**
- * Fill/native scaling toggle control for viewport scaling mode.
- * Manages the toggle button that switches between fill viewport and native scaling modes.
- * Exports: onToggleFill() function for button click handling.
- * Dependencies: state.fillViewport from state.js, FILL_TOGGLE from dom.js, resizeCanvasToViewport() from resize.js. Side effects: Modifies button state and triggers canvas resize.
+ * Debug HUD toggle control.
+ * Manages the button that toggles visibility of the debug HUD and coordinates display.
+ * Exports: onToggleDebug() function for button click handling.
+ * Dependencies: state.debugVisible from state.js, DEBUG_TOGGLE and HUD from dom.js. Side effects: Modifies button state and HUD aria.
  */
 
-// Fill/native scaling toggle
+// Debug HUD toggle
 /**
- * Toggle between fill viewport and native scaling modes
+ * Toggle debug HUD visibility
  */
-function onToggleFill(){
-  state.fillViewport = !state.fillViewport;
-  FILL_TOGGLE.setAttribute('aria-pressed', state.fillViewport ? 'true' : 'false');
-  FILL_TOGGLE.textContent = `Fill: ${state.fillViewport ? 'ON' : 'OFF'}`;
-  resizeCanvasToViewport();
+function onToggleDebug(){
+  state.debugVisible = !state.debugVisible;
+  DEBUG_TOGGLE.setAttribute('aria-pressed', state.debugVisible ? 'true' : 'false');
+  DEBUG_TOGGLE.textContent = `Debug: ${state.debugVisible ? 'ON' : 'OFF'}`;
+  // Update HUD aria-hidden to reflect visibility; updateHUD will render text when visible
+  HUD.setAttribute('aria-hidden', state.debugVisible ? 'false' : 'true');
+}
+
+// Expose for DOM event listeners
+if (typeof window !== 'undefined'){
+  window.onToggleDebug = onToggleDebug;
 }

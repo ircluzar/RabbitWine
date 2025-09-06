@@ -40,6 +40,7 @@ function render(now) {
   drawTiles(mvp, 'open');
   drawWalls(mvp);
   drawTallColumns(mvp);
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
@@ -62,6 +63,7 @@ function render(now) {
   drawTiles(mvp, 'open');
   drawWalls(mvp);
   drawTallColumns(mvp);
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
@@ -84,6 +86,7 @@ function render(now) {
     drawTiles(mvp, 'open');
     drawWalls(mvp);
     drawTallColumns(mvp);
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
@@ -108,6 +111,7 @@ function render(now) {
     drawTiles(mvp, 'open');
     drawWalls(mvp);
     drawTallColumns(mvp);
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);

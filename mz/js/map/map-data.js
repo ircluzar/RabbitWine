@@ -66,34 +66,40 @@ function buildSampleMap(){
   builder.rect(6, 11, 6, 11, TILE.FILL, 1.0, { y: 4 });
   builder.rect(7, 11, 7, 11, TILE.FILL, 1.0, { y: 5 });
   builder.rect(8, 11, 8, 11, TILE.FILL, 1.0, { y: 6 });
-  // Overhead walkway
-  builder.rect(8, 10, 10, 10, TILE.FILL, 1.0, { y: 7 });
-  // Supports for wall-jumping
-  builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
-  builder.pillars([[6,10]], TILE.WALL, 4.0);
+  // // Overhead walkway
+  // builder.rect(8, 10, 10, 10, TILE.FILL, 1.0, { y: 7 });
+  // // Supports for wall-jumping
+  // builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
+  // builder.pillars([[6,10]], TILE.WALL, 4.0);
 
   // Extremely tall climb with rest platforms (Minecraft-style inspiration)
   // Segment A: vertical ascent north from spawn column (x≈5, yGrid decreasing)
-  for (let lvl=1; lvl<=10; lvl++){
-    const gy = 12 - lvl; // 11..2
-    builder.rect(5, gy, 5, gy, TILE.FILL, 1.0, { y: lvl });
-    if (lvl === 6){
-      // Rest area (3x3) at this height centered near (5,6)
-      builder.rect(4, 5, 6, 7, TILE.FILL, 1.0, { y: lvl });
-    }
-  }
+  // for (let lvl=1; lvl<=10; lvl++){
+  //   const gy = 12 - lvl; // 11..2
+  //   builder.rect(5, gy, 5, gy, TILE.FILL, 1.0, { y: lvl });
+  //   if (lvl === 6){
+  //     // Rest area (3x3) at this height centered near (5,6)
+  //     builder.rect(4, 5, 6, 7, TILE.FILL, 1.0, { y: lvl });
+  //   }
+  // }
   // Segment B: traverse east along row yGrid=2
-  for (let lvl=11; lvl<=20; lvl++){
-    const gx = 5 + (lvl - 10); // 6..15
-    const gy = 2;
-    builder.rect(gx, gy, gx, gy, TILE.FILL, 1.0, { y: lvl });
-    if (lvl === 12) builder.rect(7, 1, 9, 3, TILE.FILL, 1.0, { y: lvl }); // rest pad
-    if (lvl === 16) builder.rect(11, 1, 13, 3, TILE.FILL, 1.0, { y: lvl }); // rest pad
-  }
+  // for (let lvl=11; lvl<=20; lvl++){
+  //   const gx = 5 + (lvl - 10); // 6..15
+  //   const gy = 2;
+  //   builder.rect(gx, gy, gx, gy, TILE.FILL, 1.0, { y: lvl });
+  //   if (lvl === 12) builder.rect(7, 1, 9, 3, TILE.FILL, 1.0, { y: lvl }); // rest pad
+  //   if (lvl === 16) builder.rect(11, 1, 13, 3, TILE.FILL, 1.0, { y: lvl }); // rest pad
+  // }
   // Segment C: sky platform as a large rest area at high altitude
-  builder.rect(12, 2, 16, 6, TILE.FILL, 1.0, { y: 22 });
-  // Decorative high supports at corners (elevated only, to not block the path below)
-  builder.pillars([[12,2],[16,2],[12,6],[16,6]], TILE.WALL, 3.0, { y: 20 });
+  // builder.rect(12, 2, 16, 6, TILE.FILL, 1.0, { y: 22 });
+  // // Decorative high supports at corners (elevated only, to not block the path below)
+  // builder.pillars([[12,2],[16,2],[12,6],[16,6]], TILE.WALL, 3.0, { y: 20 });
+
+
+
+
+
+
 
   builder.spawn(3,12, 'S'); //Player Spawn
 

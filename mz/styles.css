@@ -52,7 +52,7 @@ body {
   white-space: pre-wrap;
 }
 
-#fill-toggle {
+#debug-toggle {
   position: fixed;
   right: 0.5rem;
   bottom: 0.5rem;
@@ -66,8 +66,8 @@ body {
   cursor: pointer;
   z-index: 11;
 }
-#fill-toggle[aria-pressed="false"]{ background:#111622cc; color:#9bb7d6; }
-#fill-toggle:active{ transform: translateY(1px); }
+#debug-toggle[aria-pressed="false"]{ background:#111622cc; color:#9bb7d6; }
+#debug-toggle:active{ transform: translateY(1px); }
 
 #swipe-glow-left, #swipe-glow-right {
   position: fixed;

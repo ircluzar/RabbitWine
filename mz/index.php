@@ -23,11 +23,11 @@ function bust($path) {
       <div id="seam-handle" aria-hidden="true"></div>
     </div>
 
-    <!-- View scaling toggle -->
-    <button id="fill-toggle" type="button" aria-pressed="true" title="Toggle fill viewport (on/off)">Fill: ON</button>
+  <!-- Debug toggle -->
+  <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle debug HUD (on/off)">Debug: OFF</button>
 
     <!-- Lightweight debug overlay for input + stats -->
-    <div id="hud" aria-hidden="true"></div>
+  <div id="hud" aria-hidden="true"></div>
 
     <!-- Swipe feedback glow -->
     <div id="swipe-glow-left" class="swipe-glow left" aria-hidden="true"></div>
@@ -52,6 +52,7 @@ function bust($path) {
     <script src="<?php echo bust('./js/pipelines/tiles.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/trail.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/walls.js'); ?>"></script>
+  <script src="<?php echo bust('./js/pipelines/remove-debug.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/player.js'); ?>"></script>
 
     <!-- UI + input (Milestone 4) -->

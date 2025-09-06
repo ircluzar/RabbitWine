@@ -23,6 +23,7 @@ const state = {
   letterboxCss: { x: 0, y: 0, w: 0, h: 0 },
   timePrev: performance.now(),
   fillViewport: true, // true = scale to fit viewport, false = 1x native centered
+  debugVisible: false, // HUD visibility controlled by Debug button
   player: {
     x: 0, z: 0, y: 0.0,
     vy: 0.0,

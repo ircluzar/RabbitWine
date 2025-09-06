@@ -38,6 +38,12 @@ function showSwipeGlow(dir){
  */
 function updateHUD(now) {
   const elapsed = (now - state.timeStart) / 1000;
+  // Respect debug visibility: hide when off
+  if (!state.debugVisible){
+    if (HUD) HUD.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  if (HUD) HUD.setAttribute('aria-hidden', 'false');
   
   // Update FPS every 500ms
   if (now - state.lastFpsT >= 500) {

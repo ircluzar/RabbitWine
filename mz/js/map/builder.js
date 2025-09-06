@@ -29,6 +29,9 @@ class MapBuilder {
     // Initialize height tracking system for 3D column support
     this.extraColumns = []; // Array of {x,y,h} objects for tall columns
     this.columnHeights = new Map(); // Fast lookup: "x,y" -> height
+  // Debug/remove tracking: record carve directives so we can visualize in debug
+  /** @type {Array<{x:number,y:number,b:number,h:number}>} */
+  this.removals = [];
   // Note: base elevation is carried in extraColumns entries via property `b` and
   // later propagated to columnBases by applyHeightData().
   // Optional spawn metadata (grid coords + facing angle in radians)
@@ -165,6 +168,8 @@ class MapBuilder {
           this.map[this.idx(x,y)] = this.TILE.OPEN;
           const key = `${x},${y}`;
           const curHVal = this.columnHeights.get(key);
+          // Determine the visualized removal base for debug overlay
+          let visualBase = (yR==null ? 0 : yR|0);
           // If there is a tall column registered, adjust its base and height
           if (typeof curHVal === 'number'){
             const curH = Math.max(0, Math.floor(curHVal + 1e-6));
@@ -175,6 +180,8 @@ class MapBuilder {
               const c = this.extraColumns[i];
               if (c && c.x === x && c.y === y){ idx = i; curBase = (c.b|0)||0; break; }
             }
+            // If no explicit base provided, we carved starting from current base
+            if (yR==null) visualBase = curBase|0;
             // Determine overlap range for removal
             const remBase = (yR==null ? curBase : yR|0);
             const spanTop = curBase + curH;
@@ -213,9 +220,13 @@ class MapBuilder {
               if (idx >= 0){ this.extraColumns[idx] = { x, y, h: newH, b: newBase };
               } else { this.extraColumns.push({ x, y, h: newH, b: newBase }); }
             }
+            // Record the removal volume for debug visualization at this cell
+            if (remUnits > 0){ this.removals.push({ x, y, b: visualBase|0, h: remUnits|0 }); }
           } else {
             // No tall column metadata: if this was a base wall (1 unit), OPEN is sufficient.
             // Fractional removals are ignored (integer voxel units only).
+            // Still record the removal volume for debug visualization (from provided base or ground)
+            if (remUnits > 0){ this.removals.push({ x, y, b: (visualBase|0), h: remUnits|0 }); }
           }
         }
       }
@@ -284,7 +295,8 @@ class MapBuilder {
   getHeightData(){ 
     return { 
       extraColumns: [...this.extraColumns], 
-      columnHeights: new Map(this.columnHeights) 
+  columnHeights: new Map(this.columnHeights),
+  removeVolumes: this.removals.slice()
     }; 
   }
 

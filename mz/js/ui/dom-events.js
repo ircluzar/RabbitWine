@@ -23,9 +23,9 @@ window.addEventListener('keyup', onKey);
 window.addEventListener('resize', resizeCanvasToViewport);
 window.addEventListener('orientationchange', resizeCanvasToViewport);
 
-// Toggle button
-if (FILL_TOGGLE){
-  FILL_TOGGLE.addEventListener('click', onToggleFill);
+// Debug toggle button
+if (DEBUG_TOGGLE){
+  DEBUG_TOGGLE.addEventListener('click', onToggleDebug);
 }
 
 // Seam drag

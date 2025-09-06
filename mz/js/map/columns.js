@@ -13,6 +13,8 @@
 const extraColumns = [];
 const columnHeights = new Map();
 const columnBases = new Map();
+// Debug-only: record carved REMOVE volumes for visualization [{x,y,b,h}]
+const removeVolumes = [];
 // Phase 2: multi-span registry per tile: Map key "x,y" -> Array of {b:int,h:int}
 const columnSpans = new Map();
 
@@ -29,6 +31,7 @@ function applyHeightData(heightData, replace=true){
     columnHeights.clear();
     columnBases.clear();
     columnSpans.clear();
+  removeVolumes.length = 0;
   }
   // Phase 2 path: accept provided spans if present
   if (heightData && heightData.columnSpans instanceof Map){
@@ -79,6 +82,17 @@ function applyHeightData(heightData, replace=true){
       }
     }
   }
+
+  // Merge/replace removal debug volumes if provided
+  if (heightData && Array.isArray(heightData.removeVolumes)){
+    if (replace) removeVolumes.length = 0;
+    for (const r of heightData.removeVolumes){
+      if (!r) continue;
+      const x = r.x|0, y = r.y|0;
+      const b = (r.b|0)||0, h = (r.h|0)||0;
+      if (h > 0) removeVolumes.push({ x, y, b, h });
+    }
+  }
 }
 
 // Expose globally (no module system assumed)
@@ -87,6 +101,7 @@ if (typeof window !== 'undefined'){
   window.columnHeights = columnHeights;
   window.columnBases = columnBases;
   window.columnSpans = columnSpans;
+  window.removeVolumes = removeVolumes;
   if (typeof window.VERTICALITY_PHASE2 === 'undefined') window.VERTICALITY_PHASE2 = false;
   window.applyHeightData = applyHeightData;
   if (window._pendingMapHeights){
