@@ -58,6 +58,20 @@ function buildSampleMap(){
   // This should render as a floating segment and be collidable only when player Y is within (3..4)
   builder.rect(8, 8, 9, 8, TILE.FILL, 1.0, { y: 3 });
 
+  // Verticality: climbing path above the spawn (3,12)
+  // Step pads ascending to the east and north
+  builder.rect(4, 12, 4, 12, TILE.FILL, 1.0, { y: 1 });
+  builder.rect(5, 12, 5, 12, TILE.FILL, 1.0, { y: 2 });
+  builder.rect(6, 12, 6, 12, TILE.FILL, 1.0, { y: 3 });
+  builder.rect(6, 11, 6, 11, TILE.FILL, 1.0, { y: 4 });
+  builder.rect(7, 11, 7, 11, TILE.FILL, 1.0, { y: 5 });
+  builder.rect(8, 11, 8, 11, TILE.FILL, 1.0, { y: 6 });
+  // Overhead walkway
+  builder.rect(8, 10, 10, 10, TILE.FILL, 1.0, { y: 7 });
+  // Supports for wall-jumping
+  builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
+  builder.pillars([[6,10]], TILE.WALL, 4.0);
+
   builder.spawn(3,12, 'S'); //Player Spawn
 
   builder.item(3, 19, 'ABILITY_BACK');

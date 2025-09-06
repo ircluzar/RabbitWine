@@ -17,6 +17,23 @@ function groundHeightAt(x, z){
   const gz = Math.floor(z + MAP_H*0.5);
   if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return 0.0;
   const key = `${gx},${gz}`;
+  // Phase 2: spans-based ground (highest span top <= player Y)
+  try {
+    if (typeof VERTICALITY_PHASE2 !== 'undefined' ? VERTICALITY_PHASE2 : (typeof window!== 'undefined' && window.VERTICALITY_PHASE2)){
+      const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                   : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                   : null;
+      if (Array.isArray(spans) && spans.length){
+        const py = state.player ? state.player.y : 0.0;
+        let best = 0.0;
+        for (const s of spans){
+          if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+          const top = b + h; if (top <= py + 1e-6 && top > best) best = top;
+        }
+        if (best > 0.0) return best;
+      }
+    }
+  } catch(_){ }
   // Resolve base offset reliably even if globals are attached on window
   function getBaseFor(key){
     try {
@@ -99,6 +116,23 @@ function moveAndCollide(dt){
     const gz = Math.floor(wz + MAP_H*0.5);
     if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true;
     const key = `${gx},${gz}`;
+    // Phase 2: collide if any span overlaps player Y
+    try {
+      if (typeof VERTICALITY_PHASE2 !== 'undefined' ? VERTICALITY_PHASE2 : (typeof window!== 'undefined' && window.VERTICALITY_PHASE2)){
+        const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                     : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                     : null;
+        if (Array.isArray(spans) && spans.length){
+          const py = state.player.y;
+          for (const s of spans){
+            if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+            const top = b + h;
+            if (py > b - 0.02 && py < top - 0.02) return true;
+          }
+          return false;
+        }
+      }
+    } catch(_){ }
     // Column with optional raised base
     if (columnHeights.has(key)){
       const h = columnHeights.get(key) || 0.0;

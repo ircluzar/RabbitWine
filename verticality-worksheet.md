@@ -57,12 +57,12 @@ Small refactor to add Y/base to builder structures so blocks can float above gro
 Goal: allow multiple vertical spans per (x,z) tile and support true middle-slice `TILE.REMOVE` that splits spans.
 
 ### Data model and storage
-- [ ] Introduce `columnSpans: Map<"x,y", Array<{ b: number, h: number }>>` in `mz/js/map/columns.js`.
-- [ ] Provide adapters to keep `columnHeights`/`columnBases` as derived “dominant span” for legacy consumers.
-- [ ] Migration compatibility in `applyHeightData()`:
-  - [ ] Accept Phase 1 format (`extraColumns`, `columnHeights`) and convert into single-span entries.
-  - [ ] Accept new Phase 2 spans format and populate `columnSpans` directly.
-  - [ ] Keep globals available on `window` for both legacy and new maps.
+- [x] Introduce `columnSpans: Map<"x,y", Array<{ b: number, h: number }>>` in `mz/js/map/columns.js`.
+- [x] Provide adapters to keep `columnHeights`/`columnBases` as derived “dominant span” for legacy consumers.
+- [x] Migration compatibility in `applyHeightData()`:
+  - [x] Accept Phase 1 format (`extraColumns`, `columnHeights`) and convert into single-span entries.
+  - [x] Accept new Phase 2 spans format and populate `columnSpans` directly.
+  - [x] Keep globals available on `window` for both legacy and new maps.
 
 ### Builder API — stacking and split-aware REMOVE
 - [ ] Add stacking support in `mz/js/map/builder.js`:
@@ -78,26 +78,26 @@ Goal: allow multiple vertical spans per (x,z) tile and support true middle-slice
 - [ ] Backward compatibility: existing height-only calls still yield a single span and behave as Phase 1.
 
 ### Columns registry — spans API
-- [ ] Extend `mz/js/map/columns.js`:
-  - [ ] New accessors: `getSpansAt(gx,gy): Array<{b,h}>`, `setSpansAt(gx,gy,spans)`.
-  - [ ] Maintain derived `columnHeights`/`columnBases` from the topmost span or a chosen policy.
-  - [ ] Ensure `window.columnSpans` is exposed for debugging.
+- [x] Extend `mz/js/map/columns.js`:
+  - [x] New accessors: `getSpansAt(gx,gy): Array<{b,h}>`, `setSpansAt(gx,gy,spans)`.
+  - [x] Maintain derived `columnHeights`/`columnBases` from the topmost span or a chosen policy.
+  - [x] Ensure `window.columnSpans` is exposed for debugging.
 
 ### Physics — multi-span queries (`mz/js/gameplay/physics.js`)
-- [ ] Update `groundHeightAt(x,z)`:
-  - [ ] Use spans: choose the highest span top ≤ player Y as ground; if none, ground is 0.
-  - [ ] Preserve previous behavior when only one span exists.
-- [ ] Update lateral collision check (`isWallAt` inner logic in `moveAndCollide`):
-  - [ ] Collide if player Y intersects any span interval (b..b+h) at that cell.
-  - [ ] Preserve pass-under and pass-over behavior when below base or above top.
+- [x] Update `groundHeightAt(x,z)`:
+  - [x] Use spans: choose the highest span top ≤ player Y as ground; if none, ground is 0.
+  - [x] Preserve previous behavior when only one span exists.
+- [x] Update lateral collision check (`isWallAt` inner logic in `moveAndCollide`):
+  - [x] Collide if player Y intersects any span interval (b..b+h) at that cell.
+  - [x] Preserve pass-under and pass-over behavior when below base or above top.
 - [ ] Edge cases: stepping between stacked platforms, dash interactions near edges; keep priority consistent with Phase 1.
 
 ### Rendering — draw all spans (`mz/js/pipelines/walls.js`)
-- [ ] Consume `columnSpans` instead of single `extraColumns`:
-  - [ ] Flatten spans into groups by (b,h) for instancing, as done today.
-  - [ ] Ensure draw order is stable (sort by base, then height).
-  - [ ] Continue skipping `instWall` entries for any cell having spans (including b=0 spans).
-- [ ] Keep outlines per level using the existing outline pass.
+- [x] Consume `columnSpans` instead of single `extraColumns`:
+  - [x] Flatten spans into groups by (b,h) for instancing, as done today.
+  - [x] Ensure draw order is stable (sort by base, then height).
+  - [x] Continue skipping `instWall` entries for any cell having spans (including b=0 spans).
+- [x] Keep outlines per level using the existing outline pass.
 
 ### Sample content and helpers
 - [ ] Add Phase 2 demos in `mz/js/map/map-data.js` (behind a flag):
@@ -107,5 +107,5 @@ Goal: allow multiple vertical spans per (x,z) tile and support true middle-slice
 - [ ] Utility: expose a helper (builder or columns) to get top Y of highest span at (gx,gy) for item placement.
 
 ### Rollout and flagging
-- [ ] Add `VERTICALITY_PHASE2` feature flag to gate spans, physics path, rendering consumption, and sample content.
+- [x] Add `VERTICALITY_PHASE2` feature flag to gate spans, physics path, rendering consumption, and sample content.
 - [ ] Document migration and fallback to Phase 1 if flag is off.

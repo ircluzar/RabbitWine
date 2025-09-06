@@ -180,19 +180,40 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
 }
 
 function drawTallColumns(mvp){
-  if (extraColumns.length === 0) return;
+  // Phase 2: if spans enabled, build temp list of all spans as pillars
+  let spansMode = false;
+  try { spansMode = (typeof VERTICALITY_PHASE2 !== 'undefined' ? VERTICALITY_PHASE2 : (typeof window!== 'undefined' && window.VERTICALITY_PHASE2)); } catch(_){ }
+  if (spansMode && typeof columnSpans !== 'undefined' && columnSpans && columnSpans.size > 0){
+    // Build groups from spans
+  } else if (extraColumns.length === 0) {
+    return;
+  }
 
   // Group pillars/columns by their integer height AND base so we can render stacked from bottom
   /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>}>>} */
   const groups = new Map();
-  for (const c of extraColumns){
-    const h = (c && typeof c.h === 'number') ? (c.h|0) : 0; // visible height
-    const b = (c && typeof c.b === 'number') ? (c.b|0) : 0; // base offset from ground
-    if (h <= 0) continue;
-    const key = `${h}@${b}`;
-    let g = groups.get(key);
-    if (!g){ g = { h, b, pts: [] }; groups.set(key, g); }
-    g.pts.push([c.x, c.y]);
+  if (spansMode && typeof columnSpans !== 'undefined' && columnSpans && columnSpans.size > 0){
+    for (const [key, spans] of columnSpans.entries()){
+      if (!Array.isArray(spans)) continue;
+      const [gx,gy] = key.split(',').map(n=>parseInt(n,10));
+      if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
+      for (const s of spans){
+        if (!s) continue; const h=(s.h|0); const b=(s.b|0); if (h<=0) continue;
+        const gkey = `${h}@${b}`;
+        let g = groups.get(gkey); if (!g){ g = { h, b, pts: [] }; groups.set(gkey, g); }
+        g.pts.push([gx, gy]);
+      }
+    }
+  } else {
+    for (const c of extraColumns){
+      const h = (c && typeof c.h === 'number') ? (c.h|0) : 0; // visible height
+      const b = (c && typeof c.b === 'number') ? (c.b|0) : 0; // base offset from ground
+      if (h <= 0) continue;
+      const key = `${h}@${b}`;
+      let g = groups.get(key);
+      if (!g){ g = { h, b, pts: [] }; groups.set(key, g); }
+      g.pts.push([c.x, c.y]);
+    }
   }
   if (groups.size === 0) return;
 
