@@ -31,7 +31,12 @@ function initItemsFromBuilder(list){
   // inner cube axis (independent random unit axis)
   let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
   const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
-  items.push({ x: w.x, z: w.z, y: 0.65, payload: String(it.payload || ''), spawnT: t0, gone: false, ax, ay, az, ix, iy, iz });
+  // Default Y for legacy/sample content is 0.0; allow optional builder-provided Y
+  const iyOpt = (typeof it.yWorld === 'number') ? it.yWorld
+         : (typeof it.yBase === 'number') ? it.yBase
+         : (typeof it.y0 === 'number') ? it.y0
+         : 0.0;
+  items.push({ x: w.x, z: w.z, y: iyOpt, payload: String(it.payload || ''), spawnT: t0, gone: false, ax, ay, az, ix, iy, iz });
   }
 }
 

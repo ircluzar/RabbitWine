@@ -29,6 +29,8 @@ class MapBuilder {
     // Initialize height tracking system for 3D column support
     this.extraColumns = []; // Array of {x,y,h} objects for tall columns
     this.columnHeights = new Map(); // Fast lookup: "x,y" -> height
+  // Note: base elevation is carried in extraColumns entries via property `b` and
+  // later propagated to columnBases by applyHeightData().
   // Optional spawn metadata (grid coords + facing angle in radians)
   this._spawn = null; // { x:number, y:number, angle:number }
   // Items to spawn: array of {x:number,y:number,payload:string}
@@ -43,8 +45,8 @@ class MapBuilder {
   /** Bounds check (soft) */
   _inBounds(x,y){ return x>=0 && y>=0 && x<this.w && y<this.h; }
 
-  /** Internal: Set height for a coordinate */
-  _setHeight(x,y,height){
+  /** Internal: Set span for a coordinate (height w/ optional base) */
+  _setHeight(x,y,height, base=0){
     if (!this._inBounds(x,y)) return;
     const key = `${x},${y}`;
     this.columnHeights.set(key, height);
@@ -56,10 +58,11 @@ class MapBuilder {
     }
     if (idx >= 0){
       const prev = this.extraColumns[idx];
-      const base = (prev && typeof prev.b === 'number') ? prev.b|0 : 0;
-      this.extraColumns[idx] = { x, y, h: height, b: base };
+      const prevBase = (prev && typeof prev.b === 'number') ? prev.b|0 : 0;
+      const b = (typeof base === 'number') ? (base|0) : prevBase;
+      this.extraColumns[idx] = { x, y, h: height, b };
     } else {
-      this.extraColumns.push({ x, y, h: height, b: 0 });
+      this.extraColumns.push({ x, y, h: height, b: (base|0) });
     }
   }
 
@@ -71,22 +74,26 @@ class MapBuilder {
    * @param {number} tile - tile value to place on the border (e.g., TILE.WALL)
    * @param {number} [height=1.0] - column height in units; >1 registers tall columns
    */
-  border(tile, height=1.0){
+  border(tile, height=1.0, opts){
+    // Overload support: border(tile, opts)
+    if (typeof height === 'object' && height){ opts = height; height = (opts.height!=null ? +opts.height : 1.0); }
+    opts = opts || {};
+    const baseY = (opts.y!=null ? (opts.y|0) : 0);
     const w=this.w,h=this.h,m=this.map;
     for(let x=0;x<w;x++){
-      m[this.idx(x,0)] = tile;
-      m[this.idx(x,h-1)] = tile;
-      if (height > 1.0){
-        this._setHeight(x, 0, height);
-        this._setHeight(x, h-1, height);
+      if (baseY === 0) m[this.idx(x,0)] = tile;
+      if (baseY === 0) m[this.idx(x,h-1)] = tile;
+      if (height > 1.0 || baseY > 0){
+        this._setHeight(x, 0, height, baseY);
+        this._setHeight(x, h-1, height, baseY);
       }
     }
     for(let y=0;y<h;y++){
-      m[this.idx(0,y)] = tile;
-      m[this.idx(w-1,y)] = tile;
-      if (height > 1.0){
-        this._setHeight(0, y, height);
-        this._setHeight(w-1, y, height);
+      if (baseY === 0) m[this.idx(0,y)] = tile;
+      if (baseY === 0) m[this.idx(w-1,y)] = tile;
+      if (height > 1.0 || baseY > 0){
+        this._setHeight(0, y, height, baseY);
+        this._setHeight(w-1, y, height, baseY);
       }
     }
     return this;
@@ -111,12 +118,18 @@ class MapBuilder {
   }
 
   /** Filled rectangle (inclusive) */
-  fillRect(x1,y1,x2,y2,tile){
+  fillRect(x1,y1,x2,y2,tile, opts){
+    opts = opts || {};
+    const baseY = (opts.y!=null ? (opts.y|0) : 0);
+    const height = (opts.height!=null ? +opts.height : 1.0);
     [x1,y1,x2,y2] = this._norm(x1,y1,x2,y2);
     x1=this._clamp(x1,0,this.w-1); x2=this._clamp(x2,0,this.w-1);
     y1=this._clamp(y1,0,this.h-1); y2=this._clamp(y2,0,this.h-1);
     for(let y=y1;y<=y2;y++){
-      for(let x=x1;x<=x2;x++) this.map[this.idx(x,y)] = tile;
+      for(let x=x1;x<=x2;x++){
+        if (baseY === 0) this.map[this.idx(x,y)] = tile;
+        if (height > 1.0 || baseY > 0){ this._setHeight(x,y,height, baseY); }
+      }
     }
     return this;
   }
@@ -126,7 +139,11 @@ class MapBuilder {
    *  - If tile === TILE.REMOVE, carve the area to OPEN and clear any height data.
    *  - Else, draw outline with optional height on outline tiles.
    */
-  rect(x1,y1,x2,y2,tile,height=1.0){
+  rect(x1,y1,x2,y2,tile,height=1.0, opts){
+    // Overloads: rect(..., tile, opts) or rect(..., tile, height, opts)
+    if (typeof height === 'object' && height){ opts = height; height = (opts.height!=null ? +opts.height : 1.0); }
+    opts = opts || {};
+    const baseY = (opts.y!=null ? (opts.y|0) : 0);
     [x1,y1,x2,y2]=this._norm(x1,y1,x2,y2);
     const isFill = (this.TILE && tile === this.TILE.FILL);
     const isRemove = (this.TILE && tile === this.TILE.REMOVE);
@@ -134,14 +151,15 @@ class MapBuilder {
       // Fill entire rect with WALLs (treat FILL as a directive to place WALL tiles)
       for(let y=y1; y<=y2; y++){
         for(let x=x1; x<=x2; x++){
-          this.map[this.idx(x,y)] = this.TILE.WALL;
-          if (height > 1.0) this._setHeight(x,y,height);
+          if (baseY === 0) this.map[this.idx(x,y)] = this.TILE.WALL;
+          if (height > 1.0 || baseY > 0) this._setHeight(x,y,height, baseY);
         }
       }
     } else if (isRemove) {
       // Carve from the BOTTOM: raise base offset and decrease visible height.
       // Always mark map as OPEN so the floor becomes passable beneath any remaining column.
       const remUnits = Math.max(0, Math.floor((+height||0) + 1e-6));
+      const yR = (opts && opts.y!=null) ? (opts.y|0) : null; // removal base when provided
       for(let y=y1; y<=y2; y++){
         for(let x=x1; x<=x2; x++){
           this.map[this.idx(x,y)] = this.TILE.OPEN;
@@ -157,8 +175,34 @@ class MapBuilder {
               const c = this.extraColumns[i];
               if (c && c.x === x && c.y === y){ idx = i; curBase = (c.b|0)||0; break; }
             }
-            const newBase = curBase + remUnits;
-            const newH = Math.max(0, curH - remUnits);
+            // Determine overlap range for removal
+            const remBase = (yR==null ? curBase : yR|0);
+            const spanTop = curBase + curH;
+            const remTop = remBase + remUnits;
+            const overlap = Math.max(0, Math.min(spanTop, remTop) - Math.max(curBase, remBase));
+            if (overlap <= 0){ continue; }
+            let newBase = curBase;
+            let newH = curH;
+            const overlapStart = Math.max(curBase, remBase);
+            const overlapEnd = Math.min(spanTop, remTop);
+            const hitsBottom = overlapStart <= curBase + 0;
+            const hitsTop = overlapEnd >= spanTop - 0;
+            if (hitsBottom && hitsTop){
+              // Full removal
+              newH = 0;
+            } else if (hitsBottom){
+              // Carved from bottom
+              newBase = curBase + overlap;
+              newH = curH - overlap;
+            } else if (hitsTop){
+              // Carved from top
+              newBase = curBase;
+              newH = curH - overlap;
+            } else {
+              // Middle cut (Phase 1): keep the upper segment only
+              newBase = overlapEnd;
+              newH = spanTop - overlapEnd;
+            }
             if (newH <= 0){
               // Entire column removed -> clear height/base metadata
               this.columnHeights.delete(key);
@@ -177,16 +221,18 @@ class MapBuilder {
       }
     } else {
       // Outline only
-      this.hLine(x1,x2,y1,tile);
-      this.hLine(x1,x2,y2,tile);
-      this.vLine(x1,y1,y2,tile);
-      this.vLine(x2,y1,y2,tile);
-      // Height registration for outline tiles
-      if (height > 1.0) {
-        for(let x=x1;x<=x2;x++) this._setHeight(x,y1,height);
-        for(let x=x1;x<=x2;x++) this._setHeight(x,y2,height);
-        for(let y=y1+1;y<y2;y++) this._setHeight(x1,y,height);
-        for(let y=y1+1;y<y2;y++) this._setHeight(x2,y,height);
+      if (baseY === 0){
+        this.hLine(x1,x2,y1,tile);
+        this.hLine(x1,x2,y2,tile);
+        this.vLine(x1,y1,y2,tile);
+        this.vLine(x2,y1,y2,tile);
+      }
+      // Height registration for outline tiles (at ground and/or elevated)
+      if (height > 1.0 || baseY > 0) {
+        for(let x=x1;x<=x2;x++) this._setHeight(x,y1,height, baseY);
+        for(let x=x1;x<=x2;x++) this._setHeight(x,y2,height, baseY);
+        for(let y=y1+1;y<y2;y++) this._setHeight(x1,y,height, baseY);
+        for(let y=y1+1;y<y2;y++) this._setHeight(x2,y,height, baseY);
       }
     }
     return this;
@@ -195,7 +241,11 @@ class MapBuilder {
   /** Place a list of [x,y] points with tile value and optional height.
    * Accepts formats: [x,y], [[x,y],...], or {x:number,y:number}.
    */
-  pillars(points,tile,height=1.0){
+  pillars(points,tile,height=1.0, opts){
+    // Overload support: pillars(points,tile,opts)
+    if (typeof height === 'object' && height){ opts = height; height = (opts.height!=null ? +opts.height : 1.0); }
+    opts = opts || {};
+    const baseY = (opts.y!=null ? (opts.y|0) : 0);
     /** @type {Array<[number,number]>} */
     const list = [];
     if (Array.isArray(points)){
@@ -211,10 +261,10 @@ class MapBuilder {
     } else if (points && typeof points.x==='number' && typeof points.y==='number'){
       list.push([points.x, points.y]);
     }
-    for(const [x,y] of list){
+  for(const [x,y] of list){
       if (this._inBounds(x,y)){
-        this.map[this.idx(x,y)] = tile;
-        if (height > 1.0) this._setHeight(x,y,height);
+    if (baseY === 0) this.map[this.idx(x,y)] = tile;
+    if (height > 1.0 || baseY > 0) this._setHeight(x,y,height, baseY);
       }
     }
     return this;
@@ -256,8 +306,18 @@ class MapBuilder {
   /** Return spawn metadata if set: {x,y,angle} in grid coords and radians */
   getSpawn(){ return this._spawn ? { ...this._spawn } : null; }
 
-  /** Add an item at grid coords with a string payload */
-  item(gx, gy, payload=""){ gx=this._clamp(Math.floor(gx),0,this.w-1); gy=this._clamp(Math.floor(gy),0,this.h-1); this._items.push({x:gx,y:gy,payload:String(payload||"")}); return this; }
+  /** Add an item at grid coords with a string payload; optional opts.y sets world Y */
+  item(gx, gy, payload="", opts){
+    if (typeof payload === 'object' && payload){ opts = payload; payload = (opts.payload!=null ? opts.payload : ""); }
+    gx=this._clamp(Math.floor(gx),0,this.w-1); gy=this._clamp(Math.floor(gy),0,this.h-1);
+    const it = { x: gx, y: gy, payload: String(payload||"") };
+    if (opts && typeof opts.y === 'number'){
+      // Provide multiple key aliases for forward compatibility with items module
+      it.yWorld = +opts.y;
+    }
+    this._items.push(it);
+    return this;
+  }
   /** Add multiple items from array of {x,y,payload} or [x,y,payload] */
   items(arr){ if(Array.isArray(arr)){ for(const e of arr){ if(Array.isArray(e)) this.item(e[0], e[1], e[2]||""); else if (e && typeof e.x==='number' && typeof e.y==='number') this.item(e.x, e.y, e.payload||""); } } return this; }
   /** Get items array */

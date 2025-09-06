@@ -35,6 +35,11 @@ function buildSampleMap(){
   const builder = new MapBuilder(MAP_W, MAP_H, map, TILE);
 
   builder.clear(TILE.OPEN);  // Establish base terrain - Fill entire grid with open walkable space
+
+
+
+
+  //---------------------------------
   builder.border(TILE.WALL,2.0); // Create outer boundary walls for map containment
 
   builder.rect(6, 6, 17, 17, TILE.WALL, 5.0); // central wall
@@ -44,22 +49,27 @@ function buildSampleMap(){
 
   builder.rect(11, 6, 12,6, TILE.REMOVE, 2.0); // hole in central wall
 
-
-
   builder.pillars([10, 10], TILE.WALL, 1.0 ); // Northwest pillar - ground level (height 1.0)
   builder.pillars([13, 10], TILE.WALL, 2.0 ); // Northeast pillar - low elevation (height 2.0)
   builder.pillars([10, 13], TILE.WALL, 3.0 ); // Southwest pillar - medium elevation (height 3.0)
   builder.pillars([13, 13], TILE.WALL, 4.0 ); // Southeast pillar - high elevation (height 4.0)
 
+  // Elevated example: a short floating slab above ground (y=3, 1 unit thick)
+  // This should render as a floating segment and be collidable only when player Y is within (3..4)
+  builder.rect(8, 8, 9, 8, TILE.FILL, 1.0, { y: 3 });
 
   builder.spawn(3,12, 'S'); //Player Spawn
-
 
   builder.item(3, 19, 'ABILITY_BACK');
   builder.item(3, 3, 'ABILITY_MOVE');
   builder.item(14, 20, 'ABILITY_JUMP');
   builder.item(8, 11, 'ABILITY_WALLJUMP');
   builder.item(15, 15, 'ABILITY_DASH');
+
+  // Elevated item example (above the floating slab)
+  builder.item(8, 8, { payload: 'ABILITY_MOVE', y: 3.5 });
+
+//---------------------------------
 
 
   // Step 6: Export & apply height data (defer if applyHeightData not yet loaded)
