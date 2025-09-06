@@ -155,7 +155,13 @@ class MapBuilder {
       for(let y=y1; y<=y2; y++){
         for(let x=x1; x<=x2; x++){
           if (baseY === 0) this.map[this.idx(x,y)] = this.TILE.WALL;
-          if (height > 1.0 || baseY > 0) this._setHeight(x,y,height, baseY);
+          if (height > 1.0 || baseY > 0){
+            // If we're drawing an elevated slab over an existing ground wall,
+            // don't overwrite that wall's column metadata. The wall already occupies this cell.
+            const cell = this.map[this.idx(x,y)];
+            const isGroundWall = (cell === this.TILE.WALL) && (baseY > 0);
+            if (!isGroundWall){ this._setHeight(x,y,height, baseY); }
+          }
         }
       }
     } else if (isRemove) {
