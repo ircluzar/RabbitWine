@@ -10,6 +10,8 @@
 
 // Internal store
 const items = [];
+// Default visual float height for items without explicit Y
+const ITEM_DEFAULT_FLOAT_Y = 0.75;
 
 function gridToWorld(gx, gy){
   return {
@@ -32,10 +34,11 @@ function initItemsFromBuilder(list){
   let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
   const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
   // Default Y for legacy/sample content is 0.0; allow optional builder-provided Y
+  // Default float height when not explicitly provided
   const iyOpt = (typeof it.yWorld === 'number') ? it.yWorld
          : (typeof it.yBase === 'number') ? it.yBase
          : (typeof it.y0 === 'number') ? it.y0
-         : 0.0;
+         : ITEM_DEFAULT_FLOAT_Y;
   items.push({ x: w.x, z: w.z, y: iyOpt, payload: String(it.payload || ''), spawnT: t0, gone: false, ax, ay, az, ix, iy, iz });
   }
 }
@@ -57,9 +60,16 @@ function updateItems(dt){
     if (it.gone) continue;
     const dx = it.x - p.x;
     const dz = it.z - p.z;
-    const dy = (it.y) - (p.y + 0.25);
+    // Use the item's vertical extent so the hit reaches the bottom of the block area
+  const itemHalf = 0.24; // half-height of the drawn cube (~0.46 scale)
+  const pTop = p.y + 0.25; // player's top
+  const itemBottom = it.y - itemHalf;
+  const itemTop = it.y + itemHalf;
+  let dy = 0.0;
+  if (pTop < itemBottom) dy = itemBottom - pTop;
+  else if (pTop > itemTop) dy = pTop - itemTop;
     const dist2 = dx*dx + dz*dz + dy*dy;
-    const r = pr + 0.22; // item ~0.22 radius (a bit smaller than player cube 0.25)
+    const r = pr + 0.26; // slightly larger pickup radius so it feels forgiving
     if (dist2 <= r*r){
       it.gone = true;
       // Dispatch payload action immediately (unlock abilities etc.)
