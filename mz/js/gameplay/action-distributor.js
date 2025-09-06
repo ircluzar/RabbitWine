@@ -27,32 +27,32 @@ function dispatchAction(key, ...args){
 registerAction('ABILITY_MOVE', function(){
   if (!state || !state.player) return;
   state.player.canTurn = true;
-  if (typeof showTopNotification === 'function') showTopNotification('Ability Unlocked: Move', { body: 'You can now change direction.' });
+  if (typeof showTopNotification === 'function') showTopNotification('Wandering around', { body: 'You can now change direction.' });
 });
 
 registerAction('ABILITY_BACK', function(){
   if (!state || !state.player) return;
   state.player.canBack = true;
-  if (typeof showTopNotification === 'function') showTopNotification('Ability Unlocked: Back', { body: 'Press down to stop or flip.' });
+  if (typeof showTopNotification === 'function') showTopNotification('You can go back', { body: 'Go down to stop or flip.' });
 });
 
 registerAction('ABILITY_JUMP', function(){
   if (!state || !state.player) return;
   state.player.canJump = true;
-  if (typeof showTopNotification === 'function') showTopNotification('Ability Unlocked: Jump', { body: 'Press Space to jump.' });
+  if (typeof showTopNotification === 'function') showTopNotification('Verticality', { body: 'You can press the action button to jump.' });
 });
 
 registerAction('ABILITY_WALLJUMP', function(){
   if (!state || !state.player) return;
   state.player.canWallJump = true;
-  if (typeof showTopNotification === 'function') showTopNotification('Ability Unlocked: Wall Jump', { body: 'Bounce off walls midair.' });
+  if (typeof showTopNotification === 'function') showTopNotification('Jumping Off Walls', { body: 'You will now automatically jump when hitting a wall during ascent.' });
 });
 
 registerAction('ABILITY_DASH', function(){
   if (!state || !state.player) return;
   state.player.hasDash = true;
   state.player.canDash = true;
-  if (typeof showTopNotification === 'function') showTopNotification('Ability Unlocked: Dash', { body: 'Freeze midair, then dash with arrows.' });
+  if (typeof showTopNotification === 'function') showTopNotification('Horizontality', { body: 'Freeze midair, then dash in a direction.' });
 });
 
 // Expose
