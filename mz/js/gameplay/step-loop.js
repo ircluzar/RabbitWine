@@ -16,6 +16,7 @@ function stepGame(dt){
   moveAndCollide(dt);
   updateCameraFollow(dt);
   updateCameraYaw(dt);
+  if (typeof updateItems === 'function') updateItems(dt);
   
   // Update cooldowns
   if (state.player.wallJumpCooldown > 0) {

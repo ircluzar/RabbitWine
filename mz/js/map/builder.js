@@ -31,6 +31,8 @@ class MapBuilder {
     this.columnHeights = new Map(); // Fast lookup: "x,y" -> height
   // Optional spawn metadata (grid coords + facing angle in radians)
   this._spawn = null; // { x:number, y:number, angle:number }
+  // Items to spawn: array of {x:number,y:number,payload:string}
+  this._items = [];
   }
   /** Convert (x,y) to linear index */
   idx(x,y){ return y * this.w + x; }
@@ -155,6 +157,13 @@ class MapBuilder {
 
   /** Return spawn metadata if set: {x,y,angle} in grid coords and radians */
   getSpawn(){ return this._spawn ? { ...this._spawn } : null; }
+
+  /** Add an item at grid coords with a string payload */
+  item(gx, gy, payload=""){ gx=this._clamp(Math.floor(gx),0,this.w-1); gy=this._clamp(Math.floor(gy),0,this.h-1); this._items.push({x:gx,y:gy,payload:String(payload||"")}); return this; }
+  /** Add multiple items from array of {x,y,payload} or [x,y,payload] */
+  items(arr){ if(Array.isArray(arr)){ for(const e of arr){ if(Array.isArray(e)) this.item(e[0], e[1], e[2]||""); else if (e && typeof e.x==='number' && typeof e.y==='number') this.item(e.x, e.y, e.payload||""); } } return this; }
+  /** Get items array */
+  getItems(){ return this._items.map(it=>({ ...it })); }
 
   /** Internal: normalize dir into radians where 0 faces -Z */
   _parseDir(dir){

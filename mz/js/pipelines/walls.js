@@ -160,6 +160,7 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
   gl.uniform1f(tc_u_ttl, 1.0);
   gl.uniform1i(tc_u_dashMode, 0);
   gl.uniform3f(tc_u_lineColor, 0.0, 0.0, 0.0);
+  if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
   gl.bindVertexArray(trailCubeVAO);
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);

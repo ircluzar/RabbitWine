@@ -36,6 +36,7 @@ function drawPlayerAndTrail(mvp){
     gl.uniform1i(tc_u_dashMode, 0);
     gl.uniform1f(tc_u_mulAlpha, 1.0);
     gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+  if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
     gl.bindVertexArray(trailCubeVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
@@ -96,6 +97,7 @@ function drawPlayerAndTrail(mvp){
   gl.uniform1i(tc_u_dashMode, 1);
   gl.uniform1f(tc_u_mulAlpha, 0.85);
   gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+  if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
   gl.bindVertexArray(trailCubeVAO);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

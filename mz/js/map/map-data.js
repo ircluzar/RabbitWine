@@ -73,7 +73,13 @@ function buildSampleMap(){
 
   // Step 5: Default player spawn (grid 12,12 facing East)
   // Converts later to world coords (center of tile) and applied to state.player
-  builder.spawn(3,6, 'S');
+  builder.spawn(3,12, 'S');
+
+  // Step 5.5: Place a few items with payload strings
+  builder
+    .item(12, 12, 'center-key')
+    .item(3, 19, 'orb-a')
+    .item(3, 3, 'orb-b');
 
   // Step 6: Export & apply height data (defer if applyHeightData not yet loaded)
   const heightData = builder.getHeightData();
@@ -93,6 +99,13 @@ function buildSampleMap(){
     state.player.z = (sp.y + 0.5) - MAP_H * 0.5;
     state.player.angle = sp.angle || 0.0; // 0 faces -Z
     // Leave y=0 so vertical physics will settle to ground height on first frame
+  }
+
+  // Initialize items into gameplay system
+  const itemList = builder.getItems && builder.getItems();
+  if (itemList && itemList.length){
+    if (typeof initItemsFromBuilder === 'function') initItemsFromBuilder(itemList);
+    else if (typeof window !== 'undefined') window._pendingItems = itemList;
   }
 }
 buildSampleMap();

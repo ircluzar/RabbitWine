@@ -6,7 +6,7 @@
  */
 
 // Trail wireframe pipeline (extracted from gameplay.js)
-const TRAIL_CUBE_VS = `#version 300 es\nlayout(location=0) in vec3 a_pos;\nlayout(location=1) in vec4 a_inst;\nlayout(location=2) in float a_t;\nuniform mat4 u_mvp;\nuniform float u_scale;\nuniform float u_now;\nuniform float u_ttl;\nout float v_alpha;\nout float v_t;\nvoid main(){\n  vec3 world = a_inst.xyz + a_pos * u_scale;\n  gl_Position = u_mvp * vec4(world,1.0);\n  float age = clamp((u_now - a_inst.w)/u_ttl, 0.0, 1.0);\n  v_alpha = 1.0 - age;\n  v_t = a_t;\n}`;
+const TRAIL_CUBE_VS = `#version 300 es\nlayout(location=0) in vec3 a_pos;\nlayout(location=1) in vec4 a_inst;\nlayout(location=2) in float a_t;\nuniform mat4 u_mvp;\nuniform float u_scale;\nuniform float u_now;\nuniform float u_ttl;\n// Optional animation controls (default 0 for legacy behavior)\nuniform int u_useAnim;        // 0=off, 1=apply rotate+wobble\nuniform float u_rotSpeed;     // radians/sec (Y axis)\nuniform float u_wobbleAmp;    // vertical wobble amplitude\nuniform float u_wobbleSpeed;  // wobble frequency in Hz (cycles/sec)\nout float v_alpha;\nout float v_t;\nvoid main(){\n  // Base position from instance\n  vec3 pos = a_pos;\n  if (u_useAnim == 1){\n    float t = u_now;\n    float seed = a_inst.w; // use instance w as spawnTime/phase seed\n    float ang = u_rotSpeed * (t - seed);\n    float s = sin(ang);\n    float c = cos(ang);\n    // Rotate around Y\n    pos = vec3( c*pos.x + 0.0*pos.y + s*pos.z, pos.y, -s*pos.x + 0.0*pos.y + c*pos.z );\n    // Gentle vertical wobble\n    float wob = sin(6.2831853 * u_wobbleSpeed * (t - seed)) * u_wobbleAmp;\n    pos.y += wob;\n  }\n  vec3 world = a_inst.xyz + pos * u_scale;\n  gl_Position = u_mvp * vec4(world,1.0);\n  float age = clamp((u_now - a_inst.w)/u_ttl, 0.0, 1.0);\n  v_alpha = 1.0 - age;\n  v_t = a_t;\n}`;
 
 const TRAIL_CUBE_FS = `#version 300 es\nprecision mediump float;\nin float v_alpha;\nin float v_t;\nuniform int u_dashMode;\nuniform float u_mulAlpha;\nuniform vec3 u_lineColor;\nout vec4 outColor;\nvoid main(){\n  if (u_dashMode == 1) { if (v_t > 0.10 && v_t < 0.90) discard; }\n  outColor = vec4(u_lineColor, v_alpha * u_mulAlpha);\n}`;
 
@@ -18,6 +18,11 @@ const tc_u_ttl = gl.getUniformLocation(trailCubeProgram, 'u_ttl');
 const tc_u_dashMode = gl.getUniformLocation(trailCubeProgram, 'u_dashMode');
 const tc_u_mulAlpha = gl.getUniformLocation(trailCubeProgram, 'u_mulAlpha');
 const tc_u_lineColor = gl.getUniformLocation(trailCubeProgram, 'u_lineColor');
+// New optional animation uniforms (existence check not needed in WebGL2)
+const tc_u_useAnim = gl.getUniformLocation(trailCubeProgram, 'u_useAnim');
+const tc_u_rotSpeed = gl.getUniformLocation(trailCubeProgram, 'u_rotSpeed');
+const tc_u_wobbleAmp = gl.getUniformLocation(trailCubeProgram, 'u_wobbleAmp');
+const tc_u_wobbleSpeed = gl.getUniformLocation(trailCubeProgram, 'u_wobbleSpeed');
 
 const trailCubeVAO = gl.createVertexArray();
 const trailCubeVBO_Pos = gl.createBuffer();

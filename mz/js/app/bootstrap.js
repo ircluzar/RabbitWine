@@ -41,6 +41,7 @@ function render(now) {
   drawTiles(mvp, 'open');
   drawWalls(mvp);
   drawTallColumns(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, false);
   } else if (state.snapTopFull) {
@@ -61,6 +62,7 @@ function render(now) {
   drawTiles(mvp, 'open');
   drawWalls(mvp);
   drawTallColumns(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, true);
   } else {
@@ -81,6 +83,7 @@ function render(now) {
     drawTiles(mvp, 'open');
     drawWalls(mvp);
     drawTallColumns(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, false);
     }
@@ -103,6 +106,7 @@ function render(now) {
     drawTiles(mvp, 'open');
     drawWalls(mvp);
     drawTallColumns(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, true);
     }
