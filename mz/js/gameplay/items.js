@@ -57,8 +57,10 @@ function updateItems(dt){
     const r = pr + 0.22; // item ~0.22 radius (a bit smaller than player cube 0.25)
     if (dist2 <= r*r){
       it.gone = true;
-      // Hook for future gameplay: we keep payload string available
-      // Optionally dispatch an event later using it.payload
+      // Dispatch payload action immediately (unlock abilities etc.)
+      if (typeof dispatchAction === 'function' && it.payload){
+        dispatchAction(it.payload, it);
+      }
   // Stop player movement immediately (stationary)
   p.speed = 0.0;
   p.movementMode = 'stationary';

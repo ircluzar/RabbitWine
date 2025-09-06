@@ -35,13 +35,13 @@ const state = {
   movementMode: 'stationary',
     radius: 0.3,
   // Ability flags (unlockable during gameplay)
-  canBack: true,       // press down to stop/go backwards
-  canTurn: true,       // press left/right to rotate direction
-  canJump: true,       // press jump
-  canWallJump: true,   // auto/triggered walljump
-  canDash: true,       // freeze and dash system
-  // Dash powerup (debug: always on)
-  hasDash: true,
+  canBack: false,      // press down to stop/go backwards (ABILITY_BACK)
+  canTurn: false,      // turning locked until unlocked by an ability
+  canJump: false,      // press jump (ABILITY_JUMP)
+  canWallJump: false,  // wall jump (ABILITY_WALLJUMP)
+  canDash: false,      // freeze and dash system (ABILITY_DASH)
+  // Dash powerup ownership
+  hasDash: false,
   dashUsed: false,
   isFrozen: false,
   isDashing: false,

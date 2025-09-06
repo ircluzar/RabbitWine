@@ -58,8 +58,8 @@ function buildSampleMap(){
   builder.item(3, 19, 'ABILITY_BACK');
   builder.item(3, 3, 'ABILITY_MOVE');
   builder.item(14, 20, 'ABILITY_JUMP');
-  builder.item(12, 12, 'center-key');
-
+  builder.item(12, 12, 'ABILITY_WALLJUMP');
+  builder.item(13, 12, 'ABILITY_DASH');
 
 
   // Step 6: Export & apply height data (defer if applyHeightData not yet loaded)
@@ -89,6 +89,6 @@ function buildSampleMap(){
     else if (typeof window !== 'undefined') window._pendingItems = itemList;
   }
 
-  
+
 }
 buildSampleMap();
