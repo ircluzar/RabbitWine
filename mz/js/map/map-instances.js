@@ -16,8 +16,9 @@ function rebuildInstances(){
   const opens=[], walls=[];
   for(let y=0;y<MAP_H;y++){
     for(let x=0;x<MAP_W;x++){
-      const v = map[mapIdx(x,y)];
-      if (v === TILE.WALL) walls.push(x,y); 
+  const v = map[mapIdx(x,y)];
+  const isWall = (v === TILE.WALL) || (v === TILE.FILL);
+  if (isWall) walls.push(x,y); 
       else opens.push(x,y);
     }
   }

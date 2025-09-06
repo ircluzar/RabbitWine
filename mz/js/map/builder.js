@@ -48,7 +48,19 @@ class MapBuilder {
     if (!this._inBounds(x,y)) return;
     const key = `${x},${y}`;
     this.columnHeights.set(key, height);
-    this.extraColumns.push({x,y,h:height});
+    // Update existing extraColumn entry if present; else add new
+    let idx = -1;
+    for (let i=this.extraColumns.length-1; i>=0; i--){
+      const c = this.extraColumns[i];
+      if (c && c.x === x && c.y === y){ idx = i; break; }
+    }
+    if (idx >= 0){
+      const prev = this.extraColumns[idx];
+      const base = (prev && typeof prev.b === 'number') ? prev.b|0 : 0;
+      this.extraColumns[idx] = { x, y, h: height, b: base };
+    } else {
+      this.extraColumns.push({ x, y, h: height, b: 0 });
+    }
   }
 
   /** Fill entire map with a tile value */
@@ -91,22 +103,73 @@ class MapBuilder {
     return this;
   }
 
-  /** Rectangle outline (inclusive) with optional height for 3D columns */
+  /** Rectangle (inclusive).
+   *  - If tile === TILE.FILL, fill the area with WALLs (and set heights if >1).
+   *  - If tile === TILE.REMOVE, carve the area to OPEN and clear any height data.
+   *  - Else, draw outline with optional height on outline tiles.
+   */
   rect(x1,y1,x2,y2,tile,height=1.0){
     [x1,y1,x2,y2]=this._norm(x1,y1,x2,y2);
-    this.hLine(x1,x2,y1,tile);
-    this.hLine(x1,x2,y2,tile);
-    this.vLine(x1,y1,y2,tile);
-    this.vLine(x2,y1,y2,tile);
-    
-    // If height specified and > 1.0, register all wall tiles as tall columns
-    if (height > 1.0) {
-      // Top and bottom horizontal lines
-      for(let x=x1;x<=x2;x++) this._setHeight(x,y1,height);
-      for(let x=x1;x<=x2;x++) this._setHeight(x,y2,height);
-      // Left and right vertical lines (excluding corners to avoid duplicates)
-      for(let y=y1+1;y<y2;y++) this._setHeight(x1,y,height);
-      for(let y=y1+1;y<y2;y++) this._setHeight(x2,y,height);
+    const isFill = (this.TILE && tile === this.TILE.FILL);
+    const isRemove = (this.TILE && tile === this.TILE.REMOVE);
+    if (isFill) {
+      // Fill entire rect with WALLs (treat FILL as a directive to place WALL tiles)
+      for(let y=y1; y<=y2; y++){
+        for(let x=x1; x<=x2; x++){
+          this.map[this.idx(x,y)] = this.TILE.WALL;
+          if (height > 1.0) this._setHeight(x,y,height);
+        }
+      }
+    } else if (isRemove) {
+      // Carve from the BOTTOM: raise base offset and decrease visible height.
+      // Always mark map as OPEN so the floor becomes passable beneath any remaining column.
+      const remUnits = Math.max(0, Math.floor((+height||0) + 1e-6));
+      for(let y=y1; y<=y2; y++){
+        for(let x=x1; x<=x2; x++){
+          this.map[this.idx(x,y)] = this.TILE.OPEN;
+          const key = `${x},${y}`;
+          const curHVal = this.columnHeights.get(key);
+          // If there is a tall column registered, adjust its base and height
+          if (typeof curHVal === 'number'){
+            const curH = Math.max(0, Math.floor(curHVal + 1e-6));
+            if (remUnits <= 0){ continue; }
+            // Find or create the matching extraColumn entry for base (b)
+            let idx = -1; let curBase = 0;
+            for (let i=this.extraColumns.length-1; i>=0; i--){
+              const c = this.extraColumns[i];
+              if (c && c.x === x && c.y === y){ idx = i; curBase = (c.b|0)||0; break; }
+            }
+            const newBase = curBase + remUnits;
+            const newH = Math.max(0, curH - remUnits);
+            if (newH <= 0){
+              // Entire column removed -> clear height/base metadata
+              this.columnHeights.delete(key);
+              if (idx >= 0) this.extraColumns.splice(idx,1);
+            } else {
+              // Update height map and extraColumns with raised base
+              this.columnHeights.set(key, newH);
+              if (idx >= 0){ this.extraColumns[idx] = { x, y, h: newH, b: newBase };
+              } else { this.extraColumns.push({ x, y, h: newH, b: newBase }); }
+            }
+          } else {
+            // No tall column metadata: if this was a base wall (1 unit), OPEN is sufficient.
+            // Fractional removals are ignored (integer voxel units only).
+          }
+        }
+      }
+    } else {
+      // Outline only
+      this.hLine(x1,x2,y1,tile);
+      this.hLine(x1,x2,y2,tile);
+      this.vLine(x1,y1,y2,tile);
+      this.vLine(x2,y1,y2,tile);
+      // Height registration for outline tiles
+      if (height > 1.0) {
+        for(let x=x1;x<=x2;x++) this._setHeight(x,y1,height);
+        for(let x=x1;x<=x2;x++) this._setHeight(x,y2,height);
+        for(let y=y1+1;y<y2;y++) this._setHeight(x1,y,height);
+        for(let y=y1+1;y<y2;y++) this._setHeight(x2,y,height);
+      }
     }
     return this;
   }

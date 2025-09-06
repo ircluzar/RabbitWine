@@ -40,6 +40,11 @@ function drawPlayerAndTrail(mvp){
     gl.bindVertexArray(trailCubeVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+    // Satisfy a_axis per-instance attrib (layout=3) with zeros; u_useAnim=0 makes it unused
+    if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts.length * 3), gl.DYNAMIC_DRAW);
+    }
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);

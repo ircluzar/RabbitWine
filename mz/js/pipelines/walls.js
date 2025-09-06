@@ -78,15 +78,16 @@ gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
 function drawWalls(mvp){
-  // Filter out wall tiles that are represented as tall columns (height > 1.0)
+  // Filter out wall tiles that are represented as tall columns (any registered height)
   let data = instWall;
   if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.size > 0 && data.length) {
     const filtered = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
-      const h = columnHeights.get(key);
-      if (!(typeof h === 'number' && h > 1.0)) {
+      // Exclude any tile that has a column entry (even if height==1),
+      // since tall/elevated rendering will handle it.
+      if (!columnHeights.has(key)) {
         filtered.push(x,y);
       }
     }
@@ -181,15 +182,17 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
 function drawTallColumns(mvp){
   if (extraColumns.length === 0) return;
 
-  // Group pillars/columns by their integer height so we respect per-column heights
-  /** @type {Map<number, Array<[number,number]>>} */
+  // Group pillars/columns by their integer height AND base so we can render stacked from bottom
+  /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>}>>} */
   const groups = new Map();
   for (const c of extraColumns){
-    const h = (c && typeof c.h === 'number') ? (c.h|0) : 0; // floor
+    const h = (c && typeof c.h === 'number') ? (c.h|0) : 0; // visible height
+    const b = (c && typeof c.b === 'number') ? (c.b|0) : 0; // base offset from ground
     if (h <= 0) continue;
-    const arr = groups.get(h) || [];
-    arr.push([c.x, c.y]);
-    groups.set(h, arr);
+    const key = `${h}@${b}`;
+    let g = groups.get(key);
+    if (!g){ g = { h, b, pts: [] }; groups.set(key, g); }
+    g.pts.push([c.x, c.y]);
   }
   if (groups.size === 0) return;
 
@@ -204,11 +207,17 @@ function drawTallColumns(mvp){
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
 
-  // For determinism, draw groups in ascending height
-  const heights = Array.from(groups.keys()).sort((a,b)=>a-b);
-  for (const h of heights){
-    const pillars = groups.get(h);
-    if (!pillars || pillars.length === 0) continue;
+  // For determinism, draw groups sorted by (base, height)
+  const keys = Array.from(groups.keys()).sort((ka,kb)=>{
+    const [ha,ba] = ka.split('@').map(n=>parseInt(n,10));
+    const [hb,bb] = kb.split('@').map(n=>parseInt(n,10));
+    if (ba!==bb) return ba-bb;
+    return ha-hb;
+  });
+  for (const key of keys){
+    const g = groups.get(key);
+    if (!g || !g.pts || g.pts.length === 0) continue;
+    const pillars = g.pts;
     const offs = new Float32Array(pillars.length * 2);
     for (let i=0;i<pillars.length;i++){ offs[i*2+0]=pillars[i][0]; offs[i*2+1]=pillars[i][1]; }
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
@@ -219,8 +228,8 @@ function drawTallColumns(mvp){
     gl.colorMask(false,false,false,false);
     gl.depthMask(true);
     gl.depthFunc(gl.LESS);
-    for (let level=0; level<h; level++){
-      gl.uniform1f(wall_u_yBase, level * 1.0);
+    for (let level=0; level<g.h; level++){
+      gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0);
       gl.uniform3f(wall_u_voxOff, 0,0,0);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
     }
@@ -231,15 +240,15 @@ function drawTallColumns(mvp){
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
     gl.depthFunc(gl.LEQUAL);
-    for (let level=0; level<h; level++){
-      gl.uniform1f(wall_u_yBase, level * 1.0);
+    for (let level=0; level<g.h; level++){
+      gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0);
       gl.uniform3f(wall_u_voxOff, 0,0,0);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
     }
 
     // Silhouette outlines per level for this group
-    for (let level=0; level<h; level++){
-      const yCenter = level + 0.5;
+    for (let level=0; level<g.h; level++){
+      const yCenter = (g.b + level) + 0.5;
       const offs2 = new Float32Array(pillars.length * 2);
       for (let i=0;i<pillars.length;i++){ offs2[i*2+0]=pillars[i][0]; offs2[i*2+1]=pillars[i][1]; }
       drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0);

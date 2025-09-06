@@ -6,7 +6,7 @@
  */
 
 // Tilemap representation (moved from scene.js)
-const TILE = { OPEN: 0, WALL: 1 };
+const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
 
@@ -46,8 +46,12 @@ function buildSampleMap(){
   // Height: 10.0 units (significantly taller than standard 1.0 wall height)
   // Purpose: Defines a contained room within the larger map area with imposing tall walls
   // Wall pattern: Hollow rectangle (outline only, interior remains open)
-  builder.rect(6, 6, 17, 17, TILE.WALL, 3.0);
+  builder.rect(6, 6, 17, 17, TILE.WALL, 5.0);
 
+  builder.rect(6, 1, 6, 5, TILE.WALL, 1.0);
+  builder.rect(17, 17, 24,24, TILE.FILL, 1.0);
+
+  builder.rect(11, 6, 12,6, TILE.REMOVE, 2.0);
   // Step 4: Decorative pillar obstacles within the interior room at varying heights
   // Pattern: 2x2 symmetric arrangement in room center quadrants
   // Height variation: Progressive elevation from 1.0 to 4.0 units for testing

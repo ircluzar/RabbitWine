@@ -1,5 +1,4 @@
 /**
- * DUPLICATE FILE - This appears to be an exact copy of js/bootstrap.js
  * Main render loop and application bootstrap for the MZ game.
  * TODO: Remove this duplicate file and update imports to use js/bootstrap.js instead.
  * Dependencies: All core modules, state management, WebGL pipelines. Side effects: Modifies WebGL state, calls requestAnimationFrame.
@@ -42,6 +41,7 @@ function render(now) {
   drawWalls(mvp);
   drawTallColumns(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, false);
   } else if (state.snapTopFull) {
@@ -63,6 +63,7 @@ function render(now) {
   drawWalls(mvp);
   drawTallColumns(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, true);
   } else {
@@ -84,6 +85,7 @@ function render(now) {
     drawWalls(mvp);
     drawTallColumns(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, false);
     }
@@ -107,6 +109,7 @@ function render(now) {
     drawWalls(mvp);
     drawTallColumns(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
   drawGridOverlay(mvp, eye, true);
     }

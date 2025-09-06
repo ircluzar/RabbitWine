@@ -63,6 +63,19 @@ function updateItems(dt){
   p.speed = 0.0;
   p.movementMode = 'stationary';
   p.isDashing = false;
+      // Spawn floating edge lines FX at the item's location with proper rotation
+      const nowSec = state.nowSec || (performance.now()/1000);
+      const age = Math.max(0, nowSec - (it.spawnT || nowSec));
+      const outerAxis = { x: it.ax || 0, y: it.ay || 1, z: it.az || 0 };
+      const innerAxis = { x: it.ix || 0, y: it.iy || 1, z: it.iz || 0 };
+      const outerAngle = 0.35 * age;
+      const innerAngle = 0.55 * age;
+      if (typeof spawnPickupFloatingLinesWithRotation === 'function'){
+        spawnPickupFloatingLinesWithRotation(it.x, it.y, it.z, 0.46, 0.28, outerAxis, outerAngle, innerAxis, innerAngle);
+      } else if (typeof spawnPickupFloatingLines === 'function'){
+        // Fallback: no rotation alignment available
+        spawnPickupFloatingLines(it.x, it.y, it.z, 0.46, 0.28);
+      }
     }
   }
 }
