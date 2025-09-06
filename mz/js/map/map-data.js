@@ -68,7 +68,7 @@ function buildSampleMap(){
   
   // Place pillars individually to assign different heights
   pillarPositions.forEach((pos, index) => {
-    builder.pillars([pos], TILE.WALL, pillarHeights[index]);
+    builder.pillars([pos], TILE.WALL, pillarHeights[index] );
   });
 
   // Step 5: Export & apply height data (defer if applyHeightData not yet loaded)
