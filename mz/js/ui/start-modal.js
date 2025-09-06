@@ -66,23 +66,25 @@
     svg.style.width = '0';
     svg.style.height = '0';
     svg.style.visibility = 'hidden';
-    // Define 16-color and 64-color posterize filters
+    // Define 16-color and 64-color posterize filters with nearest-level mapping
     svg.innerHTML = `
       <defs>
-        <!-- 16 colors: 4 levels R, 2 levels G, 2 levels B (approximate palette) -->
+        <!-- 16-ish colors: 4 levels R, 3 levels G/B; nearest mapping via step tables -->
         <filter id="mz-posterize-16" color-interpolation-filters="sRGB">
           <feComponentTransfer>
-            <feFuncR type="discrete" tableValues="0 0.34 0.67 1" />
-            <feFuncG type="discrete" tableValues="0 1" />
-            <feFuncB type="discrete" tableValues="0 1" />
+            <!-- 4-level nearest (3-5-5-4) at ~0.166/0.5/0.833 -->
+            <feFuncR type="table" tableValues="0 0 0 0.333 0.333 0.333 0.333 0.333 0.666 0.666 0.666 0.666 0.666 1 1 1 1" />
+            <!-- 3-level nearest (4-8-4) at 0.25/0.75 -->
+            <feFuncG type="table" tableValues="0 0 0 0 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 1 1 1 1 1" />
+            <feFuncB type="table" tableValues="0 0 0 0 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 1 1 1 1 1" />
           </feComponentTransfer>
         </filter>
-        <!-- 64 colors: 4 levels per channel -->
+        <!-- 64 colors: 4 levels per channel; nearest mapping -->
         <filter id="mz-posterize-64" color-interpolation-filters="sRGB">
           <feComponentTransfer>
-            <feFuncR type="discrete" tableValues="0 0.333 0.666 1" />
-            <feFuncG type="discrete" tableValues="0 0.333 0.666 1" />
-            <feFuncB type="discrete" tableValues="0 0.333 0.666 1" />
+            <feFuncR type="table" tableValues="0 0 0 0.333 0.333 0.333 0.333 0.333 0.666 0.666 0.666 0.666 0.666 1 1 1 1" />
+            <feFuncG type="table" tableValues="0 0 0 0.333 0.333 0.333 0.333 0.333 0.666 0.666 0.666 0.666 0.666 1 1 1 1" />
+            <feFuncB type="table" tableValues="0 0 0 0.333 0.333 0.333 0.333 0.333 0.666 0.666 0.666 0.666 0.666 1 1 1 1" />
           </feComponentTransfer>
         </filter>
       </defs>`;
@@ -105,6 +107,7 @@
     // Remove global posterize
     try {
       document.body.classList.remove('mz-posterize');
+      document.body.classList.remove('mz-colors-64');
     } catch(_){}
     // Begin initial forward movement (turning remains locked until item)
     try {
@@ -161,6 +164,7 @@
   // Enable global posterize while modal is open
   try {
     document.body.classList.add('mz-posterize');
+    document.body.classList.add('mz-colors-64');
   } catch(_){}
 
   // Global listeners to dismiss
