@@ -1,6 +1,6 @@
 # VRUN MZ — Engine Architecture
 
-This document captures the current (M0) engine architecture implemented in `mz/index.html` and `mz/main.js`. It focuses on what exists today: rendering, input, simulation, view management, and debug UX.
+This document captures the current (M0) engine architecture implemented in `mz/index.php` and `mz/main.js`. It focuses on what exists today: rendering, input, simulation, view management, and debug UX.
 
 Status: minimal app shell with functional rendering, split views, input handling, simple physics, and basic content pipelines.
 
@@ -8,7 +8,7 @@ Status: minimal app shell with functional rendering, split views, input handling
 ## Runtime shell and DOM integration
 
 - Files
-  - `index.html`: single-page shell hosting a `<canvas id="app">`, a draggable seam (`#seam`/`#seam-handle`) for split views, a fill toggle button (`#fill-toggle`), a debug HUD (`#hud`), and swipe feedback glows.
+  - `index.php`: single-page shell hosting a `<canvas id="app">`, a draggable seam (`#seam`/`#seam-handle`) for split views, a fill toggle button (`#fill-toggle`), a debug HUD (`#hud`), and swipe feedback glows.
   - `main.js`: initializes WebGL2, sets up render pipelines, input, simulation, and draw loop.
 - Accessibility
   - Canvas has `aria-label` and is focusable (`tabindex=0`).
@@ -271,7 +271,7 @@ Status: minimal app shell with functional rendering, split views, input handling
 
 ## File map and responsibilities
 
-- `mz/index.html`
+- `mz/index.php`
   - Hosts canvas and interactive controls (seam, fill toggle, HUD, swipe glows).
   - Wires ARIA attributes for minimal accessibility.
 - `mz/main.js`
@@ -290,4 +290,4 @@ Status: minimal app shell with functional rendering, split views, input handling
 
 ---
 
-This document reflects the current code as of the attached `main.js` summary and `index.html`. It will evolve as systems mature and new subsystems (animation, audio, UI, tooling) are added.
+This document reflects the current code as of the attached `main.js` summary and `index.php`. It will evolve as systems mature and new subsystems (animation, audio, UI, tooling) are added.
