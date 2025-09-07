@@ -35,4 +35,21 @@ function onToggleDebug(){
 // Expose for DOM event listeners
 if (typeof window !== 'undefined'){
   window.onToggleDebug = onToggleDebug;
+  // Alt control lock toggle: when on, use bottom-fullscreen controls without bottom being fullscreen.
+  window.onToggleAltControlLock = function onToggleAltControlLock(){
+    try {
+      state.altBottomControlLocked = !state.altBottomControlLocked;
+      // When locking, freeze camera yaw; when unlocking, allow normal yaw follow
+      state.lockCameraYaw = !!state.altBottomControlLocked;
+      // On unlock, snap camera yaw back to player's facing immediately
+      if (!state.lockCameraYaw && state.player){
+        const target = (typeof normalizeAngle === 'function') ? normalizeAngle(state.player.angle) : state.player.angle;
+        state.camYaw = target;
+      }
+      if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN){
+        ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
+        ALT_LOCK_BTN.textContent = state.altBottomControlLocked ? 'Unlock' : 'Lock';
+      }
+    } catch(_){ }
+  };
 }

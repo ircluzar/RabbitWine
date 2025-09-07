@@ -58,4 +58,8 @@ function resizeCanvasToViewport() {
     const topPx = Math.floor(offYcss + state.seamRatio * destHcss);
     SEAM.style.top = `${topPx}px`;
   }
+  // Update lock button visibility immediately on resize
+  try {
+    if (ALT_LOCK_BTN){ ALT_LOCK_BTN.dataset.hidden = state.snapBottomFull ? 'true' : 'false'; }
+  } catch(_){ }
 }

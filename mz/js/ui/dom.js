@@ -13,6 +13,7 @@ const SEAM_HANDLE = document.getElementById('seam-handle');
 const GLOW_L = document.getElementById('swipe-glow-left');
 const GLOW_R = document.getElementById('swipe-glow-right');
 const DEBUG_TOGGLE = document.getElementById('debug-toggle');
+const ALT_LOCK_BTN = document.getElementById('alt-control-lock');
 
 // Expose references globally (for simpler interop and debugging)
 if (typeof window !== 'undefined'){
@@ -23,4 +24,5 @@ if (typeof window !== 'undefined'){
 	window.GLOW_L = GLOW_L;
 	window.GLOW_R = GLOW_R;
 	window.DEBUG_TOGGLE = DEBUG_TOGGLE;
+		window.ALT_LOCK_BTN = ALT_LOCK_BTN;
 }

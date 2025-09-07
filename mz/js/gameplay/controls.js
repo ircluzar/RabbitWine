@@ -216,7 +216,7 @@ function handleKeyboard(dt){
   const p = state.player;
   if (p.isBallMode) return; // no controls in ball mode
   // Alt control mapping when bottom view is maximized: arrow/WASD map to cardinals
-  if (state.snapBottomFull){
+  if (state.snapBottomFull || state.altBottomControlLocked){
     const wantNorth = state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('arrowup') || state.inputs.keys.has('w');
     const wantSouth = state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('arrowdown') || state.inputs.keys.has('s');
     const wantWest  = state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('arrowleft') || state.inputs.keys.has('a');

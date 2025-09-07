@@ -35,11 +35,30 @@ if (EDITOR_TOGGLE){
   EDITOR_TOGGLE.addEventListener('click', onToggleEditorMode);
 }
 
+// Alt control lock button
+if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
+  ALT_LOCK_BTN.addEventListener('click', onToggleAltControlLock);
+}
+
 // Seam drag
 SEAM_HANDLE.addEventListener('pointerdown', onSeamPointerDown);
 SEAM_HANDLE.addEventListener('pointermove', onSeamPointerMove);
 SEAM_HANDLE.addEventListener('pointerup', onSeamPointerEnd);
 SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
+
+// Keep the lock button visibility synced each frame via a lightweight rAF
+(function syncAltLockBtn(){
+  try {
+    if (ALT_LOCK_BTN){
+      const hide = !!state.snapBottomFull;
+      ALT_LOCK_BTN.dataset.hidden = hide ? 'true' : 'false';
+      ALT_LOCK_BTN.setAttribute('aria-hidden', hide ? 'true' : 'false');
+      ALT_LOCK_BTN.textContent = state.altBottomControlLocked ? 'Unlock' : 'Lock';
+      ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
+    }
+  } catch(_){}
+  requestAnimationFrame(syncAltLockBtn);
+})();
 
 // Pointer lock state tracking for editor
 document.addEventListener('pointerlockchange', onPointerLockChange);

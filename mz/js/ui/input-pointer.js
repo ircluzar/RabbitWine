@@ -50,7 +50,7 @@ function onPointerMove(e) {
     const totalDx = p.x - p.startX;
     const totalDy = p.y - p.startY;
     if (!p.turned) {
-      const useAlt = !!state.snapBottomFull;
+  const useAlt = !!(state.snapBottomFull || state.altBottomControlLocked);
       // Horizontal swipe
       if (Math.abs(totalDx) > 36 && Math.abs(totalDx) > Math.abs(totalDy) * 1.3) {
         if (useAlt) {
@@ -100,7 +100,7 @@ function onPointerUpOrCancel(e) {
       const dy = p.y - p.startY;
       const mag = Math.hypot(dx, dy);
       if (mag > 24) {
-        const useAlt = !!state.snapBottomFull;
+  const useAlt = !!(state.snapBottomFull || state.altBottomControlLocked);
         if (Math.abs(dx) > Math.abs(dy) * 1.2) {
           if (useAlt) {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {

@@ -25,6 +25,9 @@ function bust($path) {
       <div id="seam-handle" aria-hidden="true"></div>
     </div>
 
+  <!-- Alt control lock button (bottom-center) -->
+  <button id="alt-control-lock" type="button" aria-pressed="false" title="Lock bottom controls (toggle)">Lock</button>
+
   <!-- Debug toggle -->
   <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle debug HUD (on/off)">Debug: OFF</button>
   <button id="editor-toggle" type="button" aria-pressed="false" title="Enter FPS Editor (desktop only)">Editor</button>

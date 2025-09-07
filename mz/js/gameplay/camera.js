@@ -32,6 +32,7 @@ function updateCameraFollow(dt){
  */
 function updateCameraYaw(dt){
   if (state.player && state.player.isBallMode) return; // freeze camera yaw in ball mode
+  if (state.lockCameraYaw) return; // lock yaw when alt control lock is enabled
   const target = state.player.angle;
   let dyaw = normalizeAngle(target - state.camYaw);
   const yawK = 10.0;

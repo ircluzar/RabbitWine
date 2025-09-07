@@ -74,6 +74,10 @@ const state = {
   camYaw: 0.0,
   snapBottomFull: false,
   snapTopFull: false,
+  // Alt control lock: when true, use bottom-fullscreen controls without fullscreen
+  altBottomControlLocked: false,
+  // Camera yaw lock (freeze top camera yaw when true)
+  lockCameraYaw: false,
   // First acceleration marker/event state
   firstAccelFired: false,
   firstAccelSlowUntil: 0,

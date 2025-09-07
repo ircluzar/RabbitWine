@@ -91,6 +91,28 @@ body {
 }
 #editor-toggle:active{ transform: translateY(1px); }
 
+/* Alt control lock button - bottom center */
+#alt-control-lock{
+  position: fixed;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  background: #252a3acc;
+  color: #cfe4ff;
+  border: 1px solid #41506e;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+  z-index: 11;
+}
+#alt-control-lock[aria-pressed="true"]{ background:#33405fcc; color:#e9f3ff; }
+#alt-control-lock:active{ transform: translateX(-50%) translateY(1px); }
+
+/* Hide the lock when bottom is full-screen to avoid redundancy */
+#alt-control-lock[data-hidden="true"]{ display: none !important; }
+
 /* Editor modal root; positioned to avoid the top screen (sits above bottom viewport) */
 #mz-editor-modal-root{ position:fixed; left:0; right:0; bottom:0; z-index:12000; pointer-events:none; }
 
