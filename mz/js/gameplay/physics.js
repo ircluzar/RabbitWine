@@ -77,6 +77,52 @@ function groundHeightAt(x, z){
 }
 
 /**
+ * Calculate the nearest ceiling (bottom of a span) above the player's current Y
+ * Returns +Infinity if no ceiling above at this (x,z).
+ * @param {number} x - World X coordinate
+ * @param {number} z - World Z coordinate
+ * @param {number} py - Player Y reference (current Y)
+ * @returns {number} Ceiling height (bottom of span) or +Infinity if none
+ */
+function ceilingHeightAt(x, z, py){
+  const gx = Math.floor(x + MAP_W*0.5);
+  const gz = Math.floor(z + MAP_H*0.5);
+  if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return Infinity;
+  const key = `${gx},${gz}`;
+  let spans = null;
+  try {
+    spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+          : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+          : null;
+  } catch(_){ spans = null; }
+  /** @type {Array<{b:number,h:number}>} */
+  let spanList = Array.isArray(spans) ? spans.slice() : [];
+  if (!spanList.length){
+    // Synthesize from column data
+    try {
+      if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+        let b = 0; let h = columnHeights.get(key) || 0;
+        try {
+          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+        } catch(_){ }
+        if (h > 0) spanList.push({ b: b|0, h: h|0 });
+      }
+    } catch(_){ }
+    // Include ground wall tile as span if present
+    if (map[mapIdx(gx,gz)] === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+  }
+  if (!spanList.length) return Infinity;
+  let best = Infinity;
+  const eps = 1e-6;
+  for (const s of spanList){
+    if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+    if (b > py + eps && b < best) best = b;
+  }
+  return best;
+}
+
+/**
  * Update player position with collision detection and physics
  * @param {number} dt - Delta time in seconds
  */
@@ -276,6 +322,19 @@ function applyVerticalPhysics(dt){
   } else {
     if (p.grounded) { p.jumpStartY = p.y; }
     p.grounded = false;
+  }
+  // Ceiling collision: if moving upward into a span above, clamp to its bottom and stop upward motion
+  if (p.vy > 0.0){
+    const cH = ceilingHeightAt(p.x, p.z, p.y);
+    if (isFinite(cH)){
+      const eps = 1e-4;
+      if (newY >= cH - eps){
+        newY = cH - eps;
+        p.vy = 0.0;
+        // Keep air state; this is a head-bump, not a landing
+        p.grounded = false;
+      }
+    }
   }
   p.y = newY;
   // Track previous grounded state for landing SFX
