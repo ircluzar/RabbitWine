@@ -22,7 +22,7 @@ function bust($path) {
     <!-- Editor crosshair (center dot) -->
     <div id="editor-crosshair" aria-hidden="true"></div>
     <div id="seam" role="separator" aria-orientation="horizontal" aria-label="View seam">
-      <div id="seam-handle" aria-hidden="true"></div>
+      <div id="seam-handle" aria-hidden="true" data-hidden="true" style="display:none"></div>
     </div>
 
   <!-- Alt control lock button (bottom-center) -->

@@ -67,5 +67,11 @@ function resizeCanvasToViewport() {
       ALT_LOCK_BTN.style.display = hide ? 'none' : 'inline-flex';
     }
     if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
+    if (SEAM_HANDLE){
+      const canTurn2 = !!(state.player && state.player.canTurn);
+      const seamHide = !canTurn2;
+      SEAM_HANDLE.dataset.hidden = seamHide ? 'true' : 'false';
+      SEAM_HANDLE.style.display = seamHide ? 'none' : 'block';
+    }
   } catch(_){ }
 }

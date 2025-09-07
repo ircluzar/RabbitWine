@@ -8,13 +8,22 @@
 // Seam drag logic
 let draggingSeam = false;
 
+function seamUnlocked(){
+  try {
+    const canTurn = !!(state.player && state.player.canTurn);
+    return canTurn; // same unlock condition as alt lock button (turning unlocked or via Debug which sets canTurn)
+  } catch(_){ return false; }
+}
+
 /**
  * Start seam dragging interaction
  * @param {PointerEvent} e - Pointer down event
  */
 function onSeamPointerDown(e){
+  if (!seamUnlocked()) return;
+  e.preventDefault();
   draggingSeam = true;
-  SEAM_HANDLE.setPointerCapture(e.pointerId);
+  try { SEAM_HANDLE.setPointerCapture(e.pointerId); } catch(_){ }
 }
 
 /**
@@ -22,7 +31,7 @@ function onSeamPointerDown(e){
  * @param {PointerEvent} e - Pointer move event
  */
 function onSeamPointerMove(e){
-  if (!draggingSeam) return;
+  if (!draggingSeam || !seamUnlocked()) return;
   const lb = state.letterboxCss;
   const cssH = Math.max(1, Math.floor(window.innerHeight));
   const y = Math.max(0, Math.min(cssH, e.clientY));

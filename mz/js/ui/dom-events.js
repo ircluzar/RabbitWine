@@ -59,6 +59,14 @@ SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
   if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
       ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
     }
+    if (SEAM_HANDLE){
+      const canTurn = !!(state.player && state.player.canTurn);
+      const seamHide = !canTurn; // hide until unlocked; remains visible even if bottom fullscreen so user can unsnap
+      const hiddenStr2 = seamHide ? 'true' : 'false';
+      SEAM_HANDLE.dataset.hidden = hiddenStr2;
+      SEAM_HANDLE.setAttribute('aria-hidden', hiddenStr2);
+      SEAM_HANDLE.style.display = seamHide ? 'none' : 'block';
+    }
   } catch(_){}
   requestAnimationFrame(syncAltLockBtn);
 })();

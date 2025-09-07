@@ -62,7 +62,7 @@ function render(now) {
         fx = (o.gx - MAP_W * 0.5 + 0.5);
         fz = (o.gy - MAP_H * 0.5 + 0.5);
       }
-    let eye, center;
+  let eye, center;
     if (state.editor && state.editor.mode === 'fps' && !state.editor.modalOpen){
       // True first-person camera using FPS yaw+pitch
       const e = state.editor.fps;
@@ -74,7 +74,7 @@ function render(now) {
     } else {
       const dirX = Math.sin(state.camYaw);
       const dirZ = -Math.cos(state.camYaw);
-      const dist = 4.0;
+  const dist = 4.0 * 1.69; // 33% further when top view is fullscreen
       const baseHeight = 2.6;
       eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
       center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];

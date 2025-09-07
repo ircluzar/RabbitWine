@@ -97,9 +97,8 @@ body {
   align-items: center;
   justify-content: center;
   position: fixed;
-  left: 50%;
-  bottom: 0.75rem;
-  transform: translateX(-50%);
+  left: 0.5rem;
+  bottom: 0.5rem;
   background: #252a3acc;
   color: #cfe4ff;
   border: 1px solid #41506e;
@@ -112,7 +111,7 @@ body {
   z-index: 11;
 }
 #alt-control-lock[aria-pressed="true"]{ background:#33405fcc; color:#e9f3ff; }
-#alt-control-lock:active{ transform: translateX(-50%) translateY(1px); }
+#alt-control-lock:active{ transform: translateY(1px); }
 
 /* Hide the lock when bottom is full-screen to avoid redundancy */
 #alt-control-lock[data-hidden="true"]{ display: none !important; }
@@ -167,37 +166,36 @@ body {
   z-index: 10;
 }
 
+/* Slim, wide metal seam handle (darker, sharper) */
 #seam-handle {
   position: absolute;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 48px;  /* square, chunky */
-  height: 48px;
-  border-radius: 4px; /* slightly softened corners, still square-ish */
-  background: #333; /* flat, crude */
-  border: 3px solid #000; /* thick, harsh outline */
-  /* blocky shadow to feel more primitive */
-  box-shadow: 3px 3px 0 #0008;
-  pointer-events: auto; /* only the handle captures pointer */
+  width: 120px;            /* wide */
+  height: 16px;            /* slim */
+  border-radius: 2px;      /* sharper corners */
+  background: #2b2b2b;     /* dark, flat metal */
+  border: 3px solid #000;  /* bold, harsh outline */
+  box-shadow: 3px 3px 0 #000; /* blocky shadow for crude feel */
+  pointer-events: auto;    /* only the handle captures pointer */
   touch-action: none;
   cursor: ns-resize;
 }
 
-/* add a rough "grip" using fat stripes */
+/* Visibility gating for seam handle */
+#seam-handle[data-hidden="true"] { display: none !important; pointer-events: none !important; }
+#seam-handle[data-hidden="false"] { display: block; }
+
+/* single crisp line in the middle */
 #seam-handle::before {
   content: "";
   position: absolute;
-  left: 6px;
-  right: 6px;
+  left: 10px;
+  right: 10px;
   top: 50%;
-  height: 10px;
+  height: 1px;
   transform: translateY(-50%);
-  background: repeating-linear-gradient(
-    90deg,
-    #111 0 6px,
-    #444 6px 12px
-  );
-  border: 2px solid #000;
+  background: #9a9a9a; /* sharp contrast line */
 }
 
 #seam-handle:active {
