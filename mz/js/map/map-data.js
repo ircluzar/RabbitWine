@@ -56,25 +56,25 @@ function buildSampleMap(){
 
   // Elevated example: a short floating slab above ground (y=3, 1 unit thick)
   // This should render as a floating segment and be collidable only when player Y is within (3..4)
-  builder.rect(8, 8, 9, 8, TILE.FILL, 1.0, { y: 3 });
+  //builder.rect(8, 8, 9, 8, TILE.FILL, 1.0, { y: 3 });
 
   // Verticality: climbing path above the spawn (3,12)
   // Step pads ascending to the east and north
-  builder.rect(4, 12, 4, 12, TILE.FILL, 1.0, { y: 1 });
-  builder.rect(5, 12, 5, 12, TILE.FILL, 1.0, { y: 2 });
-  builder.rect(6, 12, 6, 12, TILE.FILL, 1.0, { y: 3 });
-  builder.rect(6, 11, 6, 11, TILE.FILL, 1.0, { y: 4 });
-  builder.rect(7, 11, 7, 11, TILE.FILL, 1.0, { y: 5 });
-  builder.rect(8, 11, 8, 11, TILE.FILL, 1.0, { y: 6 });
+  // builder.rect(4, 12, 4, 12, TILE.FILL, 1.0, { y: 1 });
+  // builder.rect(5, 12, 5, 12, TILE.FILL, 1.0, { y: 2 });
+  // builder.rect(6, 12, 6, 12, TILE.FILL, 1.0, { y: 3 });
+  // builder.rect(6, 11, 6, 11, TILE.FILL, 1.0, { y: 4 });
+  // builder.rect(7, 11, 7, 11, TILE.FILL, 1.0, { y: 5 });
+  // builder.rect(8, 11, 8, 11, TILE.FILL, 1.0, { y: 6 });
   // // Overhead walkway
   builder.rect(8, 10, 10, 10, TILE.FILL, 1.0, { y: 7 });
   // // Supports for wall-jumping
-  builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
-  builder.pillars([[6,10]], TILE.WALL, 4.0);
+  //builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
+  //builder.pillars([[6,10]], TILE.WALL, 4.0);
 
   // Extremely tall climb with rest platforms (Minecraft-style inspiration)
   // Segment A: vertical ascent north from spawn column (x≈5, yGrid decreasing)
-   for (let lvl=1; lvl<=10; lvl++){
+   for (let lvl=3; lvl<=10; lvl++){
      const gy = 12 - lvl; // 11..2
      builder.rect(5, gy, 5, gy, TILE.FILL, 1.0, { y: lvl });
      if (lvl === 6){
@@ -108,9 +108,6 @@ function buildSampleMap(){
   builder.item(14, 20, 'ABILITY_JUMP');
   builder.item(8, 11, 'ABILITY_WALLJUMP');
   builder.item(15, 15, 'ABILITY_DASH');
-
-  // Elevated item example (above the floating slab)
-  builder.item(8, 8, { payload: 'ABILITY_MOVE', y: 3.5 });
 
 //---------------------------------
 

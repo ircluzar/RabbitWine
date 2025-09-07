@@ -28,77 +28,50 @@
 
   function enterEditor(){
     state.editor.mode = 'fps';
+    state.editor.modalOpen = false;
     state.snapTopFull = false; state.snapBottomFull = false; // keep split by default
     const EDITOR_TOGGLE = document.getElementById('editor-toggle');
     if (EDITOR_TOGGLE){
       EDITOR_TOGGLE.setAttribute('aria-pressed','true');
       EDITOR_TOGGLE.textContent = 'Editor: FPS';
       // Avoid keeping focus on the button so Space doesn't trigger it again
-      try { EDITOR_TOGGLE.blur(); } catch(_){}
+      try { EDITOR_TOGGLE.blur(); } catch(_){ }
     }
     // Seed camera from player
     const p = state.player; const e = state.editor.fps;
     e.x = p.x; e.y = Math.max(0.6, p.y + 1.8); e.z = p.z; e.yaw = p.angle; e.pitch = 0;
     // Hide player while editing
     state._hidePlayer = true;
-  // Try to lock pointer on canvas click
+    // Try to lock pointer on canvas click
     CANVAS.requestPointerLock = CANVAS.requestPointerLock || CANVAS.mozRequestPointerLock;
     if (document.pointerLockElement !== CANVAS) {
-      try { CANVAS.requestPointerLock(); } catch(_){}
+      try { CANVAS.requestPointerLock(); } catch(_){ }
     }
     // Ensure keyboard focus goes to the canvas
-    try { CANVAS.focus(); } catch(_){}
-  // Clear any lingering inputs to avoid stuck movement upon transition
-  try { state.inputs.keys.clear(); } catch(_){}
-  // Show crosshair
-  try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'block'; } catch(_){}
+    try { CANVAS.focus(); } catch(_){ }
+    // Clear any lingering inputs to avoid stuck movement upon transition
+    try { state.inputs.keys.clear(); } catch(_){ }
+    // Show crosshair
+    try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'block'; } catch(_){ }
   }
-
-  function exitEditor(){
-    state.editor.mode = 'none';
-    state.editor.modalOpen = false;
-    const EDITOR_TOGGLE = document.getElementById('editor-toggle');
-    if (EDITOR_TOGGLE){ EDITOR_TOGGLE.setAttribute('aria-pressed','false'); EDITOR_TOGGLE.textContent = 'Editor'; }
-    state._hidePlayer = false;
-    if (document.exitPointerLock) try { document.exitPointerLock(); } catch(_){}
-    closeEditorModal();
-  // Clear inputs on exit to avoid stuck movement
-  try { state.inputs.keys.clear(); } catch(_){}
-  // Hide crosshair
-  try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'none'; } catch(_){}
-  }
-
-  // Keyboard + mouse for FPS when active
-  function handleEditorInput(dt){
+  // Mouse wheel to pull/push visor distance along the view ray (zoom the interaction point)
+  window.addEventListener('wheel', (ev)=>{
     if (state.editor.mode !== 'fps' || state.editor.modalOpen) return;
-    const e = state.editor.fps;
-    const sp = e.moveSpeed;
-    let vx=0, vz=0, vy=0;
-  // WASD using normalized tokens from input-keyboard to avoid stuck-keys from mismatched variants
-  if (state.inputs.keys.has('w')) vz += 1;
-  if (state.inputs.keys.has('s')) vz -= 1;
-  if (state.inputs.keys.has('a')) vx -= 1;
-  if (state.inputs.keys.has('d')) vx += 1;
-  if (state.inputs.keys.has('space')) vy += 1; // space up
-  if (state.inputs.keys.has('shift')) vy -= 1; // shift down
-    if (vx||vy||vz){
-      const len = Math.hypot(vx,vz) || 1; const nx = vx/len, nz = vz/len;
-      const sinY = Math.sin(e.yaw), cosY = Math.cos(e.yaw);
-      const fwdX = sinY, fwdZ = -cosY; const rightX = cosY, rightZ = sinY;
-      const moveX = (fwdX*nz + rightX*nx) * sp * dt;
-      const moveZ = (fwdZ*nz + rightZ*nx) * sp * dt;
-      e.x += moveX; e.z += moveZ; e.y += vy * sp * 0.75 * dt;
-    }
-  }
-
-  // Mouse move to look when locked
-  window.addEventListener('mousemove', (ev)=>{
-    if (state.editor.mode !== 'fps' || !state.editor.pointerLocked || state.editor.modalOpen) return;
-    const e = state.editor.fps;
-    const sens = 0.0025; // radians per px
-    e.yaw += ev.movementX * sens;
-    e.pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01, e.pitch - ev.movementY * sens));
-  });
+    // Only act when the canvas is the intended target area to avoid conflicting with other UI
+    // If the event originated within the editor modal panel, ignore.
+    const root = document.getElementById('mz-editor-modal-root');
+    if (root && root.contains(ev.target)) return;
+  // Adjust distance in world units; invert so wheel up pushes visor away
+  const dz = (ev.deltaY || 0) * 0.01; // positive = push back, negative = pull closer
+  const e = state.editor;
+  const prev = e.visorDist || 6.0;
+  let next = prev - dz; // wheel up (negative deltaY) increases distance
+    // Clamp to reasonable range
+    next = Math.max(0.5, Math.min(60.0, next));
+    e.visorDist = next;
+    // Prevent page scrolling when editing
+    ev.preventDefault();
+  }, { passive: false });
 
   // Helpers to mutate spans at the visor
   function __getSpans(gx, gy){
@@ -120,6 +93,60 @@
       } else out.push(s);
     }
     return out;
+  }
+
+  // World solidity query at (x,z) for a given y-level (treat spans and walls as solid if y is inside)
+  function __isSolidAtWorld(x, y, z){
+    const gx = Math.floor(x + MAP_W*0.5);
+    const gy = Math.floor(z + MAP_H*0.5);
+    if (gx<0||gy<0||gx>=MAP_W||gy>=MAP_H) return true; // outside == solid bounds
+    const key = `${gx},${gy}`;
+    let spans = null;
+    try {
+      spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+            : null;
+    } catch(_){ spans = null; }
+    let list = Array.isArray(spans) ? spans : [];
+    if (!list.length){
+      // synthesize from columns and map wall
+      try {
+        if (columnHeights && columnHeights.has(key)){
+          let b = 0; let h = columnHeights.get(key) || 0;
+          if (h>0){
+            try {
+              if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+              else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+            } catch(_){ }
+            list = [{ b: b|0, h: h|0 }];
+          }
+        }
+      } catch(_){ }
+      try { if (map[mapIdx(gx,gy)] === TILE.WALL) list.push({ b:0, h:1 }); } catch(_){ }
+    }
+    if (!list.length) return false;
+    for (const s of list){ if (!s) continue; const b=s.b|0, h=s.h|0; if (h>0 && y > b - 1e-3 && y < (b+h) - 1e-3) return true; }
+    return false;
+  }
+
+  // Ray march along axis from origin to first solid, returns distance (max if none)
+  function __castDistance(x, y, z, dx, dy, dz, maxDist){
+    const step = 0.05; // meters
+    const eps = 1e-3;
+    let t = eps; // start a hair away so we don't hit our own cube
+    const maxT = Math.max(0.0, maxDist||60.0);
+    while (t <= maxT){
+      const wx = x + dx * t;
+      const wy = y + dy * t;
+      const wz = z + dz * t;
+      if (__isSolidAtWorld(wx, wy, wz)) return t;
+      // stop if out of bounds
+      const gx = Math.floor(wx + MAP_W*0.5);
+      const gy = Math.floor(wz + MAP_H*0.5);
+      if (gx<0||gy<0||gx>=MAP_W||gy>=MAP_H) return t;
+      t += step;
+    }
+    return maxT;
   }
   function addBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
@@ -164,6 +191,60 @@
     return true;
   }
 
+  // FPS input handler (noclip fly and look)
+  function handleEditorInput(dt){
+    if (state.editor.mode !== 'fps' || state.editor.modalOpen) return;
+    const e = state.editor.fps;
+    const keys = state.inputs.keys;
+    // WASD / arrows
+    let fwd = 0, strafe = 0;
+    if (keys.has('w') || keys.has('ArrowUp')) fwd += 1;
+    if (keys.has('s') || keys.has('ArrowDown')) fwd -= 1;
+    if (keys.has('a') || keys.has('ArrowLeft')) strafe -= 1;
+    if (keys.has('d') || keys.has('ArrowRight')) strafe += 1;
+    // Vertical: space up, ctrl down
+    let up = 0;
+    if (keys.has('space')) up += 1;
+    if (keys.has('Control') || keys.has('control')) up -= 1;
+    // Speed modifiers
+    const boost = (keys.has('shift') || keys.has('Shift')) ? 2.0 : 1.0;
+    const sp = (e.moveSpeed || 6.0) * boost;
+    // Move relative to yaw (ignore pitch for horizontal plane)
+    const yaw = e.yaw;
+    const dirX = Math.sin(yaw);
+    const dirZ = -Math.cos(yaw);
+    const rightX = Math.cos(yaw);
+    const rightZ = Math.sin(yaw);
+    const velX = (dirX * fwd + rightX * strafe) * sp * dt;
+    const velZ = (dirZ * fwd + rightZ * strafe) * sp * dt;
+    const velY = up * sp * dt;
+    e.x += velX; e.z += velZ; e.y = Math.max(0.1, e.y + velY);
+  }
+
+  // Mouse look while pointer-locked
+  function onEditorMouseMove(ev){
+    if (state.editor.mode !== 'fps' || state.editor.modalOpen) return;
+    if (document.pointerLockElement !== CANVAS) return;
+    const e = state.editor.fps;
+    const sens = 0.0025;
+    e.yaw += (ev.movementX || 0) * sens;
+    e.pitch -= (ev.movementY || 0) * sens;
+    const lim = Math.PI/2 - 0.01;
+    if (e.pitch >  lim) e.pitch =  lim;
+    if (e.pitch < -lim) e.pitch = -lim;
+  }
+  window.addEventListener('mousemove', onEditorMouseMove);
+
+  // Exit editor and restore gameplay
+  function exitEditor(){
+    state.editor.mode = 'none';
+    state.editor.modalOpen = false;
+    state._hidePlayer = false;
+    try { state.editor.preview = []; } catch(_){}
+    try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'none'; } catch(_){}
+    try { if (document.pointerLockElement === CANVAS && document.exitPointerLock) document.exitPointerLock(); } catch(_){}
+  }
+
   // Mouse buttons while in editor:
   // - Left (0): place a single block at visor if absent
   // - Middle (1): open modal (release pointer lock first)
@@ -182,10 +263,13 @@
   const dirX = Math.sin(e.yaw) * Math.cos(e.pitch);
   const dirY = Math.sin(e.pitch);
   const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch);
+    // Choose target distance along the ray, but keep old DDA stepping as fallback to keep last-in-bounds cell
+    const targetDist = Math.max(0.01, Math.min(60.0, (state.editor.visorDist || 6.0)));
     // DDA-ish stepping, small step for stable selection
     let t=0, hitGX=-1, hitGY=-1, hitBase=0;
-    const maxT = 60.0;
+    const maxT = Math.min(60.0, targetDist + 8.0); // allow a bit beyond target for stability
     const step = 0.075;
+    let bestAtTarget = null;
     for (; t<maxT; t+=step){
       const wx = e.x + dirX * t;
       const wy = e.y + dirY * t;
@@ -193,44 +277,72 @@
       const gx = Math.floor(wx + MAP_W*0.5);
       const gy = Math.floor(wz + MAP_H*0.5);
       if (gx<0||gy<0||gx>=MAP_W||gy>=MAP_H) break;
+      // Track the sample closest to the requested distance
+      const distErr = Math.abs(t - targetDist);
+      if (!bestAtTarget || distErr < bestAtTarget.err){ bestAtTarget = { gx, gy, base: Math.max(0, Math.floor(wy)), err: distErr }; }
       hitGX = gx; hitGY = gy; hitBase = Math.max(0, Math.floor(wy));
     }
-    // If we didn’t hit anything in range, fallback to camera cell and base per camera height
-    if (hitGX < 0 || hitGY < 0){
-      hitGX = Math.floor(e.x + MAP_W*0.5);
-      hitGY = Math.floor(e.z + MAP_H*0.5);
-      hitBase = Math.max(0, Math.floor(e.y));
+    let outGX, outGY, outBase;
+    if (bestAtTarget){ outGX = bestAtTarget.gx; outGY = bestAtTarget.gy; outBase = bestAtTarget.base; }
+    else if (hitGX >= 0){ outGX = hitGX; outGY = hitGY; outBase = hitBase; }
+    else {
+      // If we didn’t hit anything in range, fallback to camera cell and base per camera height
+      outGX = Math.floor(e.x + MAP_W*0.5);
+      outGY = Math.floor(e.z + MAP_H*0.5);
+      outBase = Math.max(0, Math.floor(e.y));
     }
-    state.editor.visor = { gx: hitGX, gy: hitGY, yCenter: hitBase + 0.5, base: hitBase, height: 1 };
+    state.editor.visor = { gx: outGX, gy: outGY, yCenter: outBase + 0.5, base: outBase, height: 1 };
   }
 
   // Modal builder
   function openEditorModal(){
-    if (state.editor.modalOpen) return;
-    state.editor.modalOpen = true;
-    const root = ensureRoot();
-    const wrap = document.createElement('div');
-  wrap.style.pointerEvents = 'auto';
-  wrap.style.padding = '8px';
-  wrap.style.display = 'flex';
-  // Anchor modal at the bottom; center horizontally
-  wrap.style.width = '100%';
-  wrap.style.boxSizing = 'border-box';
-  wrap.style.justifyContent = 'center';
-  wrap.style.alignItems = 'flex-end';
-  const panel = document.createElement('div'); panel.id = 'mz-editor-modal-panel';
-    panel.style.minWidth = 'min(96vw, 560px)';
-    panel.style.maxWidth = 'min(96vw, 560px)';
-    panel.style.background = 'rgba(10,15,20,0.9)';
-    panel.style.border = '2px solid #234';
-    panel.style.color = '#cfe4ff';
-    panel.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif';
-    panel.style.borderRadius = '6px 6px 0 0';
-    panel.style.boxShadow = '0 0 0 3px rgba(0,0,0,0.6)';
-  // Sit at the bottom of the window so the top screen remains unobstructed
-  panel.style.margin = '0 auto 8px auto';
-    const title = document.createElement('div'); title.textContent = 'Structure Builder'; title.style.fontWeight='700'; title.style.padding='10px 12px'; title.style.borderBottom='1px solid #2a3a4a';
-  const form = document.createElement('div'); form.style.padding='10px 12px'; form.style.display='grid'; form.style.gridTemplateColumns='1fr 1fr'; form.style.gap='8px';
+  state.editor.mode = 'fps';
+    state.snapTopFull = false; state.snapBottomFull = false; // keep split by default
+    const EDITOR_TOGGLE = document.getElementById('editor-toggle');
+    if (EDITOR_TOGGLE){
+      EDITOR_TOGGLE.setAttribute('aria-pressed','true');
+      EDITOR_TOGGLE.textContent = 'Editor: FPS';
+      // Avoid keeping focus on the button so Space doesn't trigger it again
+      try { EDITOR_TOGGLE.blur(); } catch(_){ }
+    }
+  state.editor.modalOpen = true;
+    // Seed camera from player
+    const p = state.player; const e = state.editor.fps;
+    e.x = p.x; e.y = Math.max(0.6, p.y + 1.8); e.z = p.z; e.yaw = p.angle; e.pitch = 0;
+    // Hide player while editing
+    state._hidePlayer = true;
+    // Ensure keyboard focus goes to the canvas
+    try { CANVAS.focus(); } catch(_){ }
+    // Clear any lingering inputs to avoid stuck movement upon transition
+    try { state.inputs.keys.clear(); } catch(_){ }
+    // Show crosshair
+  try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'none'; } catch(_){ }
+
+  // Build modal DOM
+  const root = ensureRoot();
+  const wrap = document.createElement('div');
+  wrap.style.position = 'fixed';
+  wrap.style.inset = '0';
+  wrap.style.background = 'rgba(0,0,0,0.3)';
+  wrap.style.zIndex = '1000';
+  const panel = document.createElement('div');
+  panel.style.position = 'absolute';
+  panel.style.right = '16px';
+  panel.style.top = '16px';
+  panel.style.minWidth = '260px';
+  panel.style.maxWidth = '40vw';
+  panel.style.padding = '12px';
+  panel.style.background = '#0f1722cc';
+  panel.style.border = '1px solid #2a3a4a';
+  panel.style.borderRadius = '8px';
+  const title = document.createElement('div');
+  title.textContent = 'Structure Builder';
+  title.style.fontWeight = '700';
+  title.style.margin = '0 0 8px 0';
+  const form = document.createElement('div');
+  form.style.display = 'grid';
+  form.style.gridTemplateColumns = '1fr 1fr';
+  form.style.gap = '6px 8px';
 
     function addField(label, input){
       const L = document.createElement('label'); L.textContent = label; L.style.opacity='0.85';
@@ -253,7 +365,7 @@
     addField('Height (tiles)', fH);
     addField('Base Y', fY);
     addField('Column Height', fHeight);
-    const btnRow = document.createElement('div'); btnRow.style.display='flex'; btnRow.style.gap='8px'; btnRow.style.padding='10px 12px'; btnRow.style.borderTop='1px solid #2a3a4a';
+  const btnRow = document.createElement('div'); btnRow.style.display='flex'; btnRow.style.gap='8px'; btnRow.style.padding='10px 12px'; btnRow.style.borderTop='1px solid #2a3a4a';
     const btnSave = document.createElement('button'); btnSave.textContent='Save'; btnSave.style.padding='6px 10px';
   const btnCancel = document.createElement('button'); btnCancel.textContent='Cancel'; btnCancel.style.padding='6px 10px';
   const btnQuit = document.createElement('button'); btnQuit.textContent='Quit FPS'; btnQuit.style.padding='6px 10px'; btnQuit.style.marginLeft='auto';
@@ -386,6 +498,23 @@
       const cx = (vs.gx - MAP_W*0.5 + 0.5);
       const cz = (vs.gy - MAP_H*0.5 + 0.5);
       const y = (vs.base|0) + 0.5;
+
+      // Check if a block already exists at this grid cell and base Y
+      let occupied = false;
+      try {
+        const key = `${vs.gx},${vs.gy}`;
+        const spans = (window.columnSpans.get(key) || []);
+        for (const s of spans){ const b=s.b|0, h=s.h|0; if ((vs.base|0) >= b && (vs.base|0) < b+h){ occupied = true; break; } }
+      } catch(_){ occupied = false; }
+
+      // If occupied, draw a soft translucent white fill as a highlight
+      try {
+        if (occupied && typeof window._drawSolidCubeOnceForEditor === 'function'){
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          window._drawSolidCubeOnceForEditor(mvp, vs.gx, vs.gy, (vs.base|0), 1, [1,1,1], 0.30);
+        }
+      } catch(_){ }
       gl.useProgram(trailCubeProgram);
       gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
       gl.uniform1f(tc_u_scale, 1.0);
@@ -414,6 +543,92 @@
       }
       // leave blend enabled for previews, restore after
       gl.bindVertexArray(null);
+
+      // If empty, add slim collision-aware guide lines along visor edges for better 3D localization
+      if (!occupied && typeof fxLinesProgram !== 'undefined' && fxLinesProgram && typeof fxLinesVAO !== 'undefined'){
+        try {
+          gl.useProgram(fxLinesProgram);
+          gl.uniformMatrix4fv(fxl_u_mvp, false, mvp);
+          gl.uniform1f(fxl_u_now, state.nowSec || (performance.now()/1000));
+          gl.uniform1f(fxl_u_speed, 0.0);
+          gl.uniform1f(fxl_u_rotSpeed, 0.0);
+          gl.uniform1f(fxl_u_mulAlpha, 0.85);
+          gl.bindVertexArray(fxLinesVAO);
+          const ttl = 1e6;  // very long TTL so alpha ~1
+          const spawnT = state.nowSec || (performance.now()/1000);
+          const ox=cx, oy=y, oz=cz;
+          const edges = [];
+          const maxLen = 200.0;
+          const ttlPer = ttl;
+          // Helper to add a one-sided segment along axis with color
+          const addSegment = (px,py,pz, axis, len, col)=>{
+            // Orient along axis (edge), drift dir unused, spin zero
+            // Shift origin by +len/2 along axis to make segment from midpoint -> +axis
+            const ox2 = px + axis[0]*(len*0.5);
+            const oy2 = py + axis[1]*(len*0.5);
+            const oz2 = pz + axis[2]*(len*0.5);
+            edges.push(
+              ox2,oy2,oz2,spawnT,   0,0,0,   axis[0],axis[1],axis[2],   0,0,0,   len,ttlPer,   col[0],col[1],col[2]
+            );
+          };
+          // For each of the 12 cube edges, cast in +axis and -axis and add segments with RGB coloring by axis
+          // X-axis edges
+          for (let sy of [-0.5, 0.5]) for (let sz of [-0.5, 0.5]){
+            const ex = ox, ey = oy+sy, ez = oz+sz;
+            const plus = __castDistance(ex, ey, ez, 1,0,0, maxLen);
+            const minus = __castDistance(ex, ey, ez, -1,0,0, maxLen);
+            if (plus>1e-3) addSegment(ex,ey,ez, [1,0,0], plus, [1.0,0.25,0.25]);
+            if (minus>1e-3) addSegment(ex,ey,ez, [-1,0,0], minus, [1.0,0.25,0.25]);
+          }
+          // Y-axis edges
+          for (let sx of [-0.5, 0.5]) for (let sz of [-0.5, 0.5]){
+            const ex = ox+sx, ey = oy, ez = oz+sz;
+            const plus = __castDistance(ex, ey, ez, 0,1,0, maxLen);
+            const minus = __castDistance(ex, ey, ez, 0,-1,0, maxLen);
+            if (plus>1e-3) addSegment(ex,ey,ez, [0,1,0], plus, [0.25,1.0,0.25]);
+            if (minus>1e-3) addSegment(ex,ey,ez, [0,-1,0], minus, [0.25,1.0,0.25]);
+          }
+          // Z-axis edges
+          for (let sx of [-0.5, 0.5]) for (let sy of [-0.5, 0.5]){
+            const ex = ox+sx, ey = oy+sy, ez = oz;
+            const plus = __castDistance(ex, ey, ez, 0,0,1, maxLen);
+            const minus = __castDistance(ex, ey, ez, 0,0,-1, maxLen);
+            if (plus>1e-3) addSegment(ex,ey,ez, [0,0,1], plus, [0.25,0.45,1.0]);
+            if (minus>1e-3) addSegment(ex,ey,ez, [0,0,-1], minus, [0.25,0.45,1.0]);
+          }
+          const STRIDE = (4+3+3+3+2+3);
+          const N = edges.length / STRIDE;
+          const arr = new Float32Array(edges);
+          // inst (4)
+          const bufInst = new Float32Array(N*4);
+          for (let i=0;i<N;i++) for (let k=0;k<4;k++) bufInst[i*4+k] = arr[i*STRIDE + k];
+          gl.bindBuffer(gl.ARRAY_BUFFER, fxlVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, bufInst, gl.DYNAMIC_DRAW);
+          // dir (3) - outward drift dir is unused (speed=0), keep zeros
+          const bufDir = new Float32Array(N*3);
+          for (let i=0;i<N;i++) for (let k=0;k<3;k++) bufDir[i*3+k] = arr[i*STRIDE + 4 + k];
+          gl.bindBuffer(gl.ARRAY_BUFFER, fxlVBO_Dir); gl.bufferData(gl.ARRAY_BUFFER, bufDir, gl.DYNAMIC_DRAW);
+          // edge (3) - orientation axis (we use the same axis as direction)
+          const bufEdge = new Float32Array(N*3);
+          for (let i=0;i<N;i++) for (let k=0;k<3;k++) bufEdge[i*3+k] = arr[i*STRIDE + 7 + k];
+          gl.bindBuffer(gl.ARRAY_BUFFER, fxlVBO_Edge); gl.bufferData(gl.ARRAY_BUFFER, bufEdge, gl.DYNAMIC_DRAW);
+          // spin (3) zeros
+          const bufSpin = new Float32Array(N*3);
+          gl.bindBuffer(gl.ARRAY_BUFFER, fxlVBO_Spin); gl.bufferData(gl.ARRAY_BUFFER, bufSpin, gl.DYNAMIC_DRAW);
+          // len/ttl (2)
+          const bufLenTtl = new Float32Array(N*2);
+          for (let i=0;i<N;i++) for (let k=0;k<2;k++) bufLenTtl[i*2+k] = arr[i*STRIDE + 13 + k];
+          gl.bindBuffer(gl.ARRAY_BUFFER, fxlVBO_LenTtl); gl.bufferData(gl.ARRAY_BUFFER, bufLenTtl, gl.DYNAMIC_DRAW);
+          // color (3)
+          const bufColor = new Float32Array(N*3);
+          for (let i=0;i<N;i++) for (let k=0;k<3;k++) bufColor[i*3+k] = arr[i*STRIDE + 15 + k];
+          gl.bindBuffer(gl.ARRAY_BUFFER, fxlVBO_Color); gl.bufferData(gl.ARRAY_BUFFER, bufColor, gl.DYNAMIC_DRAW);
+          // draw
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          gl.drawArraysInstanced(gl.LINES, 0, 2, N);
+          gl.bindVertexArray(null);
+        } catch(_){ }
+      }
     }
     // Preview stacks as outlines for each voxel height
     const prev = state.editor.preview || [];

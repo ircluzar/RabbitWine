@@ -67,6 +67,26 @@ let remVAO, remVBO_Pos, remVBO_Inst;
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
 })();
 
+/** Draw a single solid cube at (gx,gy) with baseY and height using the remove pipeline. */
+function _drawSolidCubeOnceForEditor(mvp, gx, gy, baseY, height, color /*[r,g,b]*/, alpha /*0..1*/){
+  if (!remProg) return;
+  const instArr = new Float32Array([ (gx|0), (gy|0), (baseY|0), Math.max(1, height|0) ]);
+  gl.useProgram(remProg);
+  gl.uniformMatrix4fv(rem_u_mvp, false, mvp);
+  gl.uniform2f(rem_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+  gl.uniform1f(rem_u_scale, 1.0);
+  const r = (color && color[0] != null) ? color[0] : 1.0;
+  const g = (color && color[1] != null) ? color[1] : 1.0;
+  const b = (color && color[2] != null) ? color[2] : 1.0;
+  gl.uniform3f(rem_u_color, r, g, b);
+  gl.uniform1f(rem_u_alpha, Math.max(0.0, Math.min(1.0, alpha==null?0.3:alpha)));
+  gl.bindVertexArray(remVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, remVBO_Inst);
+  gl.bufferData(gl.ARRAY_BUFFER, instArr, gl.DYNAMIC_DRAW);
+  gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, 1);
+  gl.bindVertexArray(null);
+}
+
 function drawRemoveDebug(mvp){
   if (!remProg || !window.removeVolumes || !state || !state.debugVisible) return;
   const vols = window.removeVolumes;
