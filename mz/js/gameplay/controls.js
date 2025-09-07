@@ -59,6 +59,17 @@ function swipeUp(){
  */
 function swipeDown(){
   const p = state.player;
+  // If currently dashing, cancel immediately regardless of back ability
+  if (p.isDashing){
+    p.isDashing = false;
+    p.dashTime = 0.0;
+    // Clamp speed to normal max (exit dash boost)
+    try {
+      const base = 3.0; const max = base * seamSpeedFactor();
+      if (p.speed > max) p.speed = max;
+    } catch(_){ /* ignore */ }
+  }
+  // If back ability is locked, only perform dash cancel above
   if (!p.canBack) return;
   if (p.movementMode === 'stationary' && (p.speed||0) <= 0.001){
     // 180 and start accelerating in opposite direction

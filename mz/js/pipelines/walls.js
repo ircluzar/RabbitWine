@@ -16,20 +16,36 @@ uniform float u_height;
 uniform vec3 u_voxCount; // voxel counts per axis (x,y,z)
 uniform vec3 u_voxOff;   // current voxel offset (x,y,z) in [0..count-1]
 uniform float u_yBase;   // additional vertical base offset (stacking)
+out float v_worldY;
 void main(){
   float lx = (a_pos.x + u_voxOff.x) / u_voxCount.x;
   float ly = (a_pos.y + u_voxOff.y) / u_voxCount.y;
   float lz = (a_pos.z + u_voxOff.z) / u_voxCount.z;
   vec2 xz = (vec2(lx, lz) + a_off + u_originXZ) * u_scale;
   float y = ly * u_height + u_yBase;
+  v_worldY = y;
   gl_Position = u_mvp * vec4(xz.x, y, xz.y, 1.0);
 }`;
 const WALL_FS = `#version 300 es
 precision mediump float;
 uniform vec3 u_color;
 uniform float u_alpha;
+uniform int u_useHeightFade; // 1 = enable fade
+uniform float u_playerY;     // player vertical position
+uniform float u_fadeBand;    // band size (e.g., 5.0 blocks)
+uniform float u_minAlpha;    // minimum alpha multiplier
+in float v_worldY;
 out vec4 outColor;
-void main(){ outColor = vec4(u_color, u_alpha); }`;
+void main(){
+  float aMul = 1.0;
+  if (u_useHeightFade == 1) {
+    float d = abs(v_worldY - u_playerY);
+    // Linear fade: 0..fadeBand maps to 1..minAlpha, clamp below
+    float t = clamp(d / max(0.0001, u_fadeBand), 0.0, 1.0);
+    aMul = mix(1.0, max(0.0, u_minAlpha), t);
+  }
+  outColor = vec4(u_color, u_alpha * aMul);
+}`;
 const wallProgram = createProgram(WALL_VS, WALL_FS);
 const wall_u_mvp = gl.getUniformLocation(wallProgram, 'u_mvp');
 const wall_u_origin = gl.getUniformLocation(wallProgram, 'u_originXZ');
@@ -40,6 +56,10 @@ const wall_u_alpha = gl.getUniformLocation(wallProgram, 'u_alpha');
 const wall_u_voxCount = gl.getUniformLocation(wallProgram, 'u_voxCount');
 const wall_u_voxOff = gl.getUniformLocation(wallProgram, 'u_voxOff');
 const wall_u_yBase = gl.getUniformLocation(wallProgram, 'u_yBase');
+const wall_u_useFade = gl.getUniformLocation(wallProgram, 'u_useHeightFade');
+const wall_u_playerY = gl.getUniformLocation(wallProgram, 'u_playerY');
+const wall_u_fadeBand = gl.getUniformLocation(wallProgram, 'u_fadeBand');
+const wall_u_minAlpha = gl.getUniformLocation(wallProgram, 'u_minAlpha');
 
 const wallVAO = gl.createVertexArray();
 const wallVBO_Pos = gl.createBuffer();
@@ -77,7 +97,7 @@ gl.vertexAttribDivisor(1, 1);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-function drawWalls(mvp){
+function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // Filter out ground-level wall tiles that are represented as tall columns.
   // Important: do NOT hide a ground wall if only elevated spans (base>0) exist there.
   let data = instWall;
@@ -119,6 +139,12 @@ function drawWalls(mvp){
   gl.uniform1f(wall_u_yBase, 0.0);
   gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
   gl.uniform1f(wall_u_alpha, 0.65);
+  // Height-based fade config (enabled only for bottom view)
+  const useFade = (viewKind === 'bottom') ? 1 : 0;
+  gl.uniform1i(wall_u_useFade, useFade);
+  gl.uniform1f(wall_u_playerY, state.player ? (state.player.y || 0.0) : 0.0);
+  gl.uniform1f(wall_u_fadeBand, 5.0);
+  gl.uniform1f(wall_u_minAlpha, 0.15);
   const voxX=2, voxY=2, voxZ=2;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
@@ -196,7 +222,7 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
   gl.bindVertexArray(null);
 }
 
-function drawTallColumns(mvp){
+function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // Prefer spans when available regardless of feature flag
   const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.entries === 'function' && columnSpans.size > 0;
   if (!hasSpans && (!extraColumns || extraColumns.length === 0)) return;
@@ -236,6 +262,12 @@ function drawTallColumns(mvp){
   gl.uniform1f(wall_u_height, 1.0);
   gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
   gl.uniform1f(wall_u_alpha, 0.65);
+  // Height-based fade config (enabled only for bottom view)
+  const useFade = (viewKind === 'bottom') ? 1 : 0;
+  gl.uniform1i(wall_u_useFade, useFade);
+  gl.uniform1f(wall_u_playerY, state.player ? (state.player.y || 0.0) : 0.0);
+  gl.uniform1f(wall_u_fadeBand, 5.0);
+  gl.uniform1f(wall_u_minAlpha, 0.15);
   const voxX=1, voxY=1, voxZ=1;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);

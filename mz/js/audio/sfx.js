@@ -2,7 +2,7 @@
 // Simple SFX wrapper: fire-and-forget one-shots with configurable master volume (default 50%).
 (function(){
   if (typeof window === 'undefined') return;
-  let _volume = 0.5; // default 50%
+  let _volume = 0.45; // default 50%
   let _unlocked = false; // block SFX until start modal closes
 
   function clamp01(v){ return Math.max(0, Math.min(1, Number(v)||0)); }

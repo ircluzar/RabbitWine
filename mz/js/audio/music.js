@@ -8,7 +8,7 @@
   if (typeof window === 'undefined') return;
 
   let _audio = null;
-  let _volume = 0.5; // default 50%
+  let _volume = 0.20; // default 50%
   let _currentSrc = "";
   let _unlocked = false;
   let _pendingSrc = "";

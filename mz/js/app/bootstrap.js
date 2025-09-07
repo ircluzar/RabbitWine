@@ -38,8 +38,8 @@ function render(now) {
     const view = mat4LookAt(eye, center, [0, 0, -1]);
     const mvp = mat4Multiply(proj, view);
   drawTiles(mvp, 'open');
-  drawWalls(mvp);
-  drawTallColumns(mvp);
+  drawWalls(mvp, 'bottom');
+  drawTallColumns(mvp, 'bottom');
   if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
@@ -79,8 +79,8 @@ function render(now) {
     const view = mat4LookAt(eye, center, [0, 1, 0]);
     const mvp = mat4Multiply(proj, view);
   drawTiles(mvp, 'open');
-  drawWalls(mvp);
-  drawTallColumns(mvp);
+  drawWalls(mvp, 'top');
+  drawTallColumns(mvp, 'top');
   if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
@@ -102,9 +102,9 @@ function render(now) {
       const view = mat4LookAt(eye, center, [0, 0, -1]);
       const mvp = mat4Multiply(proj, view);
     // Draw floor tiles then 3D walls
-    drawTiles(mvp, 'open');
-    drawWalls(mvp);
-    drawTallColumns(mvp);
+  drawTiles(mvp, 'open');
+  drawWalls(mvp, 'bottom');
+  drawTallColumns(mvp, 'bottom');
   if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
@@ -139,9 +139,9 @@ function render(now) {
       }
       const view = mat4LookAt(eye, center, [0, 1, 0]);
       const mvp = mat4Multiply(proj, view);
-    drawTiles(mvp, 'open');
-    drawWalls(mvp);
-    drawTallColumns(mvp);
+  drawTiles(mvp, 'open');
+  drawWalls(mvp, 'top');
+  drawTallColumns(mvp, 'top');
   if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
