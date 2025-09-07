@@ -37,7 +37,17 @@ if (EDITOR_TOGGLE){
 
 // Alt control lock button
 if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
-  ALT_LOCK_BTN.addEventListener('click', onToggleAltControlLock);
+  // Prevent canvas pointer handlers from interfering with the button on desktop
+  ALT_LOCK_BTN.addEventListener('pointerdown', (e)=>{
+    e.stopPropagation();
+  }, { passive: true });
+  ALT_LOCK_BTN.addEventListener('pointerup', (e)=>{
+    e.stopPropagation();
+  }, { passive: true });
+  ALT_LOCK_BTN.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    onToggleAltControlLock(e);
+  });
 }
 
 // Seam drag
@@ -56,7 +66,7 @@ SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
   ALT_LOCK_BTN.dataset.hidden = hiddenStr;
   ALT_LOCK_BTN.setAttribute('aria-hidden', hiddenStr);
   ALT_LOCK_BTN.style.display = hide ? 'none' : 'inline-flex';
-  if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
+  // Only update text/icon when visibility state changes or pressed changes; avoid frequent rewrites
       ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
     }
     if (SEAM_HANDLE){

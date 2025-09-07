@@ -217,16 +217,7 @@ function render(now) {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.bindVertexArray(null);
   gl.bindTexture(gl.TEXTURE_2D, null);
-  // Optional: sync lock button aria quickly each frame in case state changes via keyboard/gameplay
-  try {
-    if (ALT_LOCK_BTN){
-      const hide = !!state.snapBottomFull;
-      ALT_LOCK_BTN.dataset.hidden = hide ? 'true' : 'false';
-      ALT_LOCK_BTN.setAttribute('aria-hidden', hide ? 'true' : 'false');
-  if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
-      ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
-    }
-  } catch(_){ }
+  // Avoid touching UI button DOM here; updates occur in UI modules to prevent click interruptions.
 
   updateHUD(now);
   requestAnimationFrame(render);

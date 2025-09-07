@@ -93,9 +93,11 @@ if (typeof window !== 'undefined'){
         state.camYaw = target;
       }
   if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
-  // Remove focus from the button to avoid accidental Space re-activation; return focus to canvas
-  try { if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN) ALT_LOCK_BTN.blur(); } catch(_){ }
-  try { if (typeof CANVAS !== 'undefined' && CANVAS && typeof CANVAS.focus === 'function') CANVAS.focus(); } catch(_){ }
+  // Remove focus from the button to avoid accidental Space re-activation; return focus to canvas (next tick)
+  setTimeout(()=>{
+    try { if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN) ALT_LOCK_BTN.blur(); } catch(_){ }
+    try { if (typeof CANVAS !== 'undefined' && CANVAS && typeof CANVAS.focus === 'function') CANVAS.focus(); } catch(_){ }
+  }, 0);
     } catch(_){ }
   };
 }

@@ -109,6 +109,11 @@ body {
   line-height: 1;
   cursor: pointer;
   z-index: 11;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 #alt-control-lock[aria-pressed="true"]{ background:#33405fcc; color:#e9f3ff; }
 #alt-control-lock:active{ transform: translateY(1px); }

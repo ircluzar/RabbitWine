@@ -22,7 +22,10 @@ function normalizeEventPosition(e) {
  */
 function onPointerDown(e) {
   if (state && state.editor && state.editor.mode === 'fps') return; // editor handles
-  CANVAS.focus();
+  // Avoid stealing focus when interacting with UI controls like the lock button
+  if (!(e.target && (e.target.id === 'alt-control-lock' || e.target.closest && e.target.closest('#alt-control-lock')))){
+    CANVAS.focus();
+  }
   const pos = normalizeEventPosition(e);
   const id = e.pointerId || 0;
   state.inputs.pointers.set(id, { 
