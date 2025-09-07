@@ -1,4 +1,5 @@
 <?php
+// HTTPS downgrade disabled to avoid redirect loops behind proxies/HSTS.
 // Cache-bust all linked resources by appending a random version parameter per request
 $v = random_int(1, PHP_INT_MAX);
 function bust($path) {
@@ -12,6 +13,17 @@ function bust($path) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0f" />
+    <script>
+      (function(){
+        try {
+          if (location.protocol === 'https:') {
+            var target = 'http://' + location.host + location.pathname + location.search + location.hash;
+            // Use replace to avoid history pollution
+            window.location.replace(target);
+          }
+        } catch(e){}
+      })();
+    </script>
     <title>VRUN MZ</title>
     <link rel="preload" href="<?php echo bust('./styles.css'); ?>" as="style" />
     <link rel="stylesheet" href="<?php echo bust('./styles.css'); ?>" />
@@ -94,6 +106,10 @@ function bust($path) {
 
     <!-- Existing shim (temporary) -->
     <script src="<?php echo bust('./js/gameplay.js'); ?>"></script>
+  <!-- Multiplayer: use same-origin /update (proxied by update.php) to avoid mixed content on HTTPS pages -->
+  <script>window.MP_SERVER = "";</script>
+  <!-- Multiplayer client -->
+  <script src="<?php echo bust('./js/app/multiplayer.js'); ?>"></script>
     <!-- App bootstrap (Milestone 6) -->
     <script src="<?php echo bust('./js/app/bootstrap.js'); ?>"></script>
   </body>

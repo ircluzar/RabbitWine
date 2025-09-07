@@ -14,6 +14,8 @@ function render(now) {
   state.timePrev = now;
   state.nowSec = now / 1000;
   stepGame(dt);
+  // Multiplayer net tick + ghost interpolation
+  try { if (typeof __mp_onFrame === 'function') __mp_onFrame(dt, now); } catch(_){}
   // 1) Render into offscreen low-res target (480x720)
   gl.bindFramebuffer(gl.FRAMEBUFFER, offscreen.fbo);
   gl.viewport(0, 0, offscreen.w, offscreen.h);
@@ -45,6 +47,8 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  // Draw ghosts in this viewport
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, false);
   if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, false);
@@ -88,6 +92,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, true);
   if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
@@ -114,6 +119,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, false);
   if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, false);
@@ -153,6 +159,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, true);
   if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
