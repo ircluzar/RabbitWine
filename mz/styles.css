@@ -144,6 +144,41 @@ body {
 /* Editor modal root; positioned to avoid the top screen (sits above bottom viewport) */
 #mz-editor-modal-root{ position:fixed; left:0; right:0; bottom:0; z-index:12000; pointer-events:none; }
 
+/* Settings button (top-left) */
+#settings-button{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  left: 0.5rem;
+  top: 0.5rem;
+  width: 44px;
+  height: 44px;
+  background: #1c2233cc;
+  color: #cfe4ff;
+  border: 1px solid #3a4764;
+  border-radius: 999px;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 12;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
+}
+#settings-button:active{ transform: translateY(1px); }
+#settings-button svg{ display:block; width: 2.1em; height:2.1em; }
+
+/* Settings modal */
+.mz-settings-overlay{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:11000; background:rgba(0,0,0,0.45);}
+.mz-settings-card{ position:relative; width:min(92vw, 420px); padding:18px 16px; background:#111827cc; color:#e6e9f9; border:2px solid #000; box-shadow:3px 3px 0 #000; }
+.mz-settings-title{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-weight:800; letter-spacing:0.5px; margin:0 0 10px; }
+.mz-settings-actions{ display:flex; gap:10px; }
+.mz-settings-btn{ flex:1 0 auto; font:inherit; font-weight:800; color:#fff; background:#1b2030; border:2px solid #343a52; padding:10px 14px; cursor:pointer; box-shadow:0 2px 0 #0b0d16; }
+.mz-settings-btn:active{ transform: translateY(1px); box-shadow:none; }
+
 #swipe-glow-left, #swipe-glow-right {
   position: fixed;
   top: 0;

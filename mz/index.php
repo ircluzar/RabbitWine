@@ -28,6 +28,12 @@ function bust($path) {
   <!-- Alt control lock button (bottom-center) -->
   <button id="alt-control-lock" type="button" aria-pressed="false" aria-hidden="true" data-hidden="true" style="display:none" title="Lock bottom controls (toggle)">⬍⬌</button>
 
+  <!-- Settings (top-left) -->
+  <button id="settings-button" type="button" aria-haspopup="dialog" aria-expanded="false" title="Settings">
+    <!-- Cog icon will be injected via JS for consistency; fallback glyph: -->
+    ⚙
+  </button>
+
   <!-- Debug toggle -->
   <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle debug HUD (on/off)">Debug: OFF</button>
   <button id="editor-toggle" type="button" aria-pressed="false" title="Enter FPS Editor (desktop only)">Editor</button>

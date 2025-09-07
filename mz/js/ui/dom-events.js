@@ -50,6 +50,72 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
   });
 }
 
+// Settings button + modal
+(function setupSettings(){
+  if (!SETTINGS_BTN) return;
+  // Inject cog icon SVG once
+  try {
+    const cogSVG = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g fill="none" stroke="#fff" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter"><path d="M30 10 h40 M85 35 v30 M70 90 h-40 M15 65 v-30" opacity="0.0001"/></g><g fill="none" stroke="#e9f3ff" stroke-width="8"><path d="M50 28 l8 3 l6 -6 l10 6 l-2 9 l7 7 l-7 7 l2 9 l-10 6 l-6 -6 l-8 3 l-8 -3 l-6 6 l-10 -6 l2 -9 l-7 -7 l7 -7 l-2 -9 l10 -6 l6 6 l8 -3 z"/><circle cx="50" cy="50" r="10"/></g></svg>';
+    SETTINGS_BTN.innerHTML = cogSVG;
+  } catch(_){ }
+
+  function closeSettings(){
+    const ov = document.getElementById('mz-settings-overlay');
+    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    try { SETTINGS_BTN.setAttribute('aria-expanded','false'); } catch(_){}
+    // Return focus to canvas so keys work
+    setTimeout(()=>{ try { if (CANVAS && CANVAS.focus) CANVAS.focus(); } catch(_){} }, 0);
+  }
+
+  function openSettings(){
+    // Overlay
+    const ov = document.createElement('div');
+    ov.className = 'mz-settings-overlay';
+    ov.id = 'mz-settings-overlay';
+    ov.setAttribute('role','dialog');
+    ov.setAttribute('aria-modal','true');
+    // Card
+    const card = document.createElement('div');
+    card.className = 'mz-settings-card';
+    const h = document.createElement('div');
+    h.className = 'mz-settings-title';
+    h.textContent = 'Settings';
+    const actions = document.createElement('div');
+    actions.className = 'mz-settings-actions';
+    const btnRestart = document.createElement('button');
+    btnRestart.type = 'button';
+    btnRestart.className = 'mz-settings-btn';
+    btnRestart.textContent = 'Restart the game';
+    const btnReturn = document.createElement('button');
+    btnReturn.type = 'button';
+    btnReturn.className = 'mz-settings-btn';
+    btnReturn.textContent = 'Return';
+    actions.appendChild(btnRestart);
+    actions.appendChild(btnReturn);
+    card.appendChild(h);
+    card.appendChild(actions);
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+    SETTINGS_BTN.setAttribute('aria-expanded','true');
+
+    // Wire actions
+    btnReturn.addEventListener('click', (e)=>{ e.stopPropagation(); closeSettings(); });
+    btnRestart.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      try { if (window.location && window.location.reload) window.location.reload(); } catch(_){}
+    });
+    // Close by clicking backdrop
+    ov.addEventListener('click', (e)=>{ if (e.target === ov) closeSettings(); });
+    // Close with Escape
+    window.addEventListener('keydown', function esc(e){ if (e.key === 'Escape'){ closeSettings(); window.removeEventListener('keydown', esc, true); } }, true);
+  }
+
+  // Prevent canvas focus stealing and bubbling
+  SETTINGS_BTN.addEventListener('pointerdown', (e)=>{ e.stopPropagation(); });
+  SETTINGS_BTN.addEventListener('pointerup', (e)=>{ e.stopPropagation(); });
+  SETTINGS_BTN.addEventListener('click', (e)=>{ e.stopPropagation(); openSettings(); });
+})();
+
 // Seam drag
 SEAM_HANDLE.addEventListener('pointerdown', onSeamPointerDown);
 SEAM_HANDLE.addEventListener('pointermove', onSeamPointerMove);
