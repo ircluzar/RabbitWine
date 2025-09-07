@@ -15,7 +15,7 @@ const columnHeights = new Map();
 const columnBases = new Map();
 // Debug-only: record carved REMOVE volumes for visualization [{x,y,b,h}]
 const removeVolumes = [];
-// Phase 2: multi-span registry per tile: Map key "x,y" -> Array of {b:int,h:int}
+// Phase 2: multi-span registry per tile: Map key "x,y" -> Array of {b:int,h:int,t?:int}
 const columnSpans = new Map();
 
 /**
@@ -40,7 +40,7 @@ function applyHeightData(heightData, replace=true){
       // Normalize: only integer, positive heights
       const norm = spans
         .filter(s => s && typeof s.b === 'number' && typeof s.h === 'number')
-        .map(s => ({ b: (s.b|0), h: Math.max(0, s.h|0) }))
+        .map(s => ({ b: (s.b|0), h: Math.max(0, s.h|0), t: ((s.t|0)||0) }))
         .filter(s => s.h > 0);
       if (norm.length){ columnSpans.set(key, norm); }
       // Derive topmost span for legacy maps
@@ -67,7 +67,7 @@ function applyHeightData(heightData, replace=true){
           const key = `${c.x},${c.y}`;
           const b = (typeof c.b === 'number') ? (c.b|0) : 0;
           const h = (typeof c.h === 'number') ? (c.h|0) : 0;
-          if (h > 0){ columnSpans.set(key, [{ b, h }]); }
+          if (h > 0){ columnSpans.set(key, [{ b, h, t: 0 }]); }
         }
       }
     }
@@ -77,7 +77,7 @@ function applyHeightData(heightData, replace=true){
         if (!columnSpans.has(k)){
           const b = (columnBases.has(k) ? (columnBases.get(k)|0) : 0);
           const h = (v|0);
-          if (h > 0) columnSpans.set(k, [{ b, h }]);
+          if (h > 0) columnSpans.set(k, [{ b, h, t: 0 }]);
         }
       }
     }

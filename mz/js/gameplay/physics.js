@@ -215,7 +215,8 @@ function moveAndCollide(dt){
       for (const s of spanList){
         if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
         const top = b + h;
-        if (py > b - 0.02 && py < top - 0.02) return true;
+        // Only collide laterally when player Y lies strictly within the span slab
+        if (py >= b && py <= top - 0.02) return true;
       }
       return false;
     }
@@ -236,17 +237,35 @@ function moveAndCollide(dt){
       if (h <= 0.0) return false;
       const top = b + h;
       const py = state.player.y;
-      // If below the base or above the top, not colliding laterally.
-      if (py <= b - 0.02) return false;
-      if (py >= top - 0.02) return false;
+    // If below the base or above the top, not colliding laterally.
+    if (py < b) return false;
+    if (py > top - 0.02) return false;
       return true;
     }
   // No spans/columns: fallback to ground wall tile only (WALL and ground-level BAD)
   const cv2 = map[mapIdx(gx,gz)];
-  if (cv2 === TILE.WALL || cv2 === TILE.BAD){ return state.player.y < 1.0 - 0.02; }
+  if (cv2 === TILE.WALL || cv2 === TILE.BAD){ return state.player.y <= 1.0 - 0.02; }
     return false;
   }
   let hitWall = false;
+  // Helper: check if the current grid cell contains a hazardous span at the player's Y
+  function isHazardAtCellY(gx, gz, py){
+    if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return false;
+    const key = `${gx},${gz}`;
+    let spans = null;
+    try {
+      spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+            : null;
+    } catch(_){ spans = null; }
+    if (Array.isArray(spans)){
+      for (const s of spans){
+        if (!s) continue; const b=(s.b||0), h=(s.h||0), t=((s.t|0)||0); if (h<=0) continue;
+        if (t===1 && py >= b && py <= (b + h - 0.02)) return true;
+      }
+    }
+    return false;
+  }
   // Ball mode should only trigger on touching the grid edge (true out-of-bounds),
   // not when colliding with blocks that happen to be placed in border cells.
   function isBorderCell(gx, gz){
@@ -274,10 +293,11 @@ function moveAndCollide(dt){
         const gxCell = gxCur;
         const gzCell = gzNew;
         if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
-          const cv = map[mapIdx(gxCell,gzCell)];
-          if (cv === TILE.BAD){
+          // Prefer span hazard at current Y; fallback to ground-level BAD map tile
+          const hazardous = isHazardAtCellY(gxCell, gzCell, p.y) || (map[mapIdx(gxCell,gzCell)] === TILE.BAD);
+          if (hazardous){
             const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
-            enterBallMode(n);
+            enterBallMode(n, { downward: false });
             p.x = oldX; p.z = oldZ;
             return;
           }
@@ -305,10 +325,10 @@ function moveAndCollide(dt){
         const gxCell = gxNew;
         const gzCell = gzCur;
         if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
-          const cv = map[mapIdx(gxCell,gzCell)];
-          if (cv === TILE.BAD){
+          const hazardous = isHazardAtCellY(gxCell, gzCell, p.y) || (map[mapIdx(gxCell,gzCell)] === TILE.BAD);
+          if (hazardous){
             const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
-            enterBallMode(n);
+            enterBallMode(n, { downward: false });
             p.x = oldX; p.z = oldZ;
             return;
           }
@@ -389,12 +409,26 @@ function applyVerticalPhysics(dt){
   const gH = groundHeightAt(p.x, p.z);
   if (p.vy <= 0.0 && newY <= gH){
     newY = gH;
-    // If landing on a BAD cell, trigger damage immediately
+    // If landing on a BAD cell (hazardous span top or ground BAD), trigger damage immediately
     try {
       const gx = Math.floor(p.x + MAP_W*0.5);
       const gz = Math.floor(p.z + MAP_H*0.5);
       if (gx>=0&&gz>=0&&gx<MAP_W&&gz<MAP_H){
-        if (map[mapIdx(gx,gz)] === TILE.BAD){
+        // Prefer span hazard: check if the top we landed on is a hazardous span top
+        let hazardous = false;
+        try {
+          const key = `${gx},${gz}`;
+          let spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                    : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                    : null;
+          if (Array.isArray(spans)){
+            const topY = Math.round(gH); // integer voxel top
+            hazardous = spans.some(s => s && ((s.t|0)===1) && (((s.b|0)+(s.h|0))===topY));
+          }
+        } catch(_){ }
+        // Fallback: ground-level BAD tile
+        if (!hazardous && map[mapIdx(gx,gz)] === TILE.BAD){ hazardous = true; }
+        if (hazardous){
           enterBallMode({ nx: 0, nz: 0 });
           p.y = newY; // settle to ground before exiting
           return;
@@ -418,20 +452,37 @@ function applyVerticalPhysics(dt){
   if (p.vy > 0.0){
     const cH = ceilingHeightAt(p.x, p.z, p.y);
     if (isFinite(cH)){
-      const eps = 1e-4;
+  const eps = 1e-4;
       if (newY >= cH - eps){
-        // If hitting a BAD ceiling in current grid, trigger damage
-        try {
+        // If hitting a BAD ceiling in current grid, trigger damage (prefer span hazard at the ceiling base)
+  try {
           const gx = Math.floor(p.x + MAP_W*0.5);
           const gz = Math.floor(p.z + MAP_H*0.5);
           if (gx>=0&&gz>=0&&gx<MAP_W&&gz<MAP_H){
-            if (map[mapIdx(gx,gz)] === TILE.BAD){
-              enterBallMode({ nx: 0, nz: 0 });
+            // Check if the ceiling base belongs to a hazardous span
+            let hazardous = false;
+            try {
+              const key = `${gx},${gz}`;
+              let spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                        : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                        : null;
+              if (Array.isArray(spans)){
+    // Find any span whose base is within a tiny epsilon of the computed ceiling
+    const epsB = 1e-3;
+    hazardous = spans.some(s => s && ((s.t|0)===1) && Math.abs((s.b|0) - cH) <= epsB);
+              }
+            } catch(_){ }
+            // Fallback: ground-level BAD tile
+            if (!hazardous && map[mapIdx(gx,gz)] === TILE.BAD){ hazardous = true; }
+            if (hazardous){
+              // Apply downward recoil on ceiling damage to prevent zipping upward through the block
+              enterBallMode({ nx: 0, nz: 0 }, { downward: true });
             }
           }
         } catch(_){ }
         newY = cH - eps;
-        p.vy = 0.0;
+        // Do not forcibly zero vy before damage; ball-mode handler will set appropriate vertical velocity
+        if (!p.isBallMode) p.vy = 0.0;
         // Keep air state; this is a head-bump, not a landing
         p.grounded = false;
       }
@@ -447,7 +498,7 @@ function applyVerticalPhysics(dt){
  * Trigger player damage and enter ball mode with an impulse away from a hit normal.
  * @param {{nx:number,nz:number}} hitNormalXZ - Unit normal in XZ pointing from wall into free space.
  */
-function enterBallMode(hitNormalXZ){
+function enterBallMode(hitNormalXZ, opts){
   const p = state.player;
   if (p.isBallMode) return;
   // Freeze inputs and camera yaw during ball mode
@@ -467,12 +518,18 @@ function enterBallMode(hitNormalXZ){
   const baseAng = Math.atan2(iz, ix);
   const ang = baseAng + jitter;
   const dirX = Math.cos(ang), dirZ = Math.sin(ang);
-  // Impulse magnitudes (less upward jump on first recoil)
+  // Impulse magnitudes
   const lateral = 4.5; // m/s sideways
-  const up = 4.0;      // m/s upward, reduced for subtler pop
+  const up = 4.0;      // m/s upward
+  const down = 4.0;    // m/s downward for ceiling hazards
   p._ballVX = dirX * lateral;
   p._ballVZ = dirZ * lateral;
-  p.vy = up;
+  // Special-case: if caller flags downward (ceiling hit), push down instead of up
+  if (opts && opts.downward === true){
+    p.vy = -down;
+  } else {
+    p.vy = up;
+  }
   p.grounded = false;
   p._ballBouncesLeft = 3;
   // Fewer total ground bounces feels snappier and less chaotic

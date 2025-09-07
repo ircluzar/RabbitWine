@@ -50,29 +50,30 @@ class MapBuilder {
   /** Bounds check (soft) */
   _inBounds(x,y){ return x>=0 && y>=0 && x<this.w && y<this.h; }
 
-  /** Internal: Set span for a coordinate (height w/ optional base) */
-  _setHeight(x,y,height, base=0){
+  /** Internal: Set span for a coordinate (height w/ optional base and hazard flag) */
+  _setHeight(x,y,height, base=0, isBad=false){
     if (!this._inBounds(x,y)) return;
     const key = `${x},${y}`;
     const newBase = (typeof base === 'number') ? (base|0) : 0;
     const newH = Math.max(0, +height);
+    const newT = isBad ? 1 : 0; // 0 = normal, 1 = hazardous (BAD)
 
     // Update multi-span registry
     let spans = this.columnSpans.get(key);
     if (!spans){ spans = []; this.columnSpans.set(key, spans); }
-    // Try to find existing span with same base; keep the taller/topmost for that base
+    // Try to find existing span with same base and same hazard flag; keep the taller/topmost for that base
     let foundSameBase = false;
     for (let i=0;i<spans.length;i++){
       const s = spans[i]; if (!s) continue;
-      if ((s.b|0) === newBase){
+      if ((s.b|0) === newBase && ((s.t|0) === newT)){
         foundSameBase = true;
         const prevTop = (s.b|0) + (+s.h||0);
         const newTop = newBase + newH;
-        if (newTop >= prevTop){ spans[i] = { b: newBase, h: newH }; }
+        if (newTop >= prevTop){ spans[i] = { b: newBase, h: newH, t: newT }; }
         break;
       }
     }
-    if (!foundSameBase){ spans.push({ b: newBase, h: newH }); }
+    if (!foundSameBase){ spans.push({ b: newBase, h: newH, t: newT }); }
     // Normalize: remove non-positive and sort by base then height
     for (let i=spans.length-1;i>=0;i--){ const s=spans[i]; if (!s || !(s.h>0)) spans.splice(i,1); }
     spans.sort((a,b)=> (a.b-b.b) || (a.h-b.h));
@@ -156,7 +157,7 @@ class MapBuilder {
     for(let y=y1;y<=y2;y++){
       for(let x=x1;x<=x2;x++){
         if (baseY === 0) this.map[this.idx(x,y)] = tile;
-        if (height > 1.0 || baseY > 0){ this._setHeight(x,y,height, baseY); }
+  if (height > 1.0 || baseY > 0){ this._setHeight(x,y,height, baseY, false); }
       }
     }
     return this;
@@ -187,7 +188,7 @@ class MapBuilder {
             // don't overwrite that wall's column metadata. The wall already occupies this cell.
             const cell = this.map[this.idx(x,y)];
             const isGroundWall = (cell === this.TILE.WALL) && (baseY > 0);
-            if (!isGroundWall){ this._setHeight(x,y,height, baseY); }
+            if (!isGroundWall){ this._setHeight(x,y,height, baseY, false); }
           }
         }
       }
@@ -317,13 +318,13 @@ class MapBuilder {
         }
       }
     } else if (isBad) {
-      // BAD behaves like a wall segment for geometry/collision but flagged hazardous in map
+      // BAD behaves like a wall segment for geometry/collision but flagged hazardous in spans
       for(let y=y1; y<=y2; y++){
         for(let x=x1; x<=x2; x++){
-          // Mark map BAD so renderers/logic can identify regardless of base
-          this.map[this.idx(x,y)] = this.TILE.BAD;
-          // Register spans if elevated or thicker than 1
-          if (height > 1.0 || baseY > 0){ this._setHeight(x,y,height, baseY); }
+          // Only mark the ground tile BAD when the hazard is at ground level
+          if (baseY === 0) this.map[this.idx(x,y)] = this.TILE.BAD;
+          // Register hazardous spans (including ground-level BAD) for 3D logic/rendering
+          this._setHeight(x,y,height, baseY, true);
         }
       }
     } else {
@@ -336,10 +337,10 @@ class MapBuilder {
       }
       // Height registration for outline tiles (at ground and/or elevated)
       if (height > 1.0 || baseY > 0) {
-        for(let x=x1;x<=x2;x++) this._setHeight(x,y1,height, baseY);
-        for(let x=x1;x<=x2;x++) this._setHeight(x,y2,height, baseY);
-        for(let y=y1+1;y<y2;y++) this._setHeight(x1,y,height, baseY);
-        for(let y=y1+1;y<y2;y++) this._setHeight(x2,y,height, baseY);
+        for(let x=x1;x<=x2;x++) this._setHeight(x,y1,height, baseY, false);
+        for(let x=x1;x<=x2;x++) this._setHeight(x,y2,height, baseY, false);
+        for(let y=y1+1;y<y2;y++) this._setHeight(x1,y,height, baseY, false);
+        for(let y=y1+1;y<y2;y++) this._setHeight(x2,y,height, baseY, false);
       }
     }
     return this;
@@ -370,8 +371,8 @@ class MapBuilder {
     }
   for(const [x,y] of list){
       if (this._inBounds(x,y)){
-    if (baseY === 0) this.map[this.idx(x,y)] = tile;
-    if (height > 1.0 || baseY > 0) this._setHeight(x,y,height, baseY);
+  if (baseY === 0) this.map[this.idx(x,y)] = tile;
+  if (height > 1.0 || baseY > 0) this._setHeight(x,y,height, baseY, false);
       }
     }
     return this;

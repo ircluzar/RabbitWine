@@ -185,17 +185,16 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
       let hideGroundWall = false;
-      const isBadTile = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(x,y)] === TILE.BAD) : false;
+      // Determine if the ground cube itself should be flagged BAD: either map says BAD for ground level
+      // or spans report a hazardous span at base 0.
+      let isBadTile = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(x,y)] === TILE.BAD) : false;
       if (hasSpans){
         const spans = columnSpans.get(key);
         if (Array.isArray(spans)){
-          if (isBadTile){
-            // For BAD tiles, any span means draw only the elevated/tall version (no ground cube)
-            hideGroundWall = spans.length > 0;
-          } else {
-            // For normal walls, hide ground only if a base-0 span exists (ground represented by tall columns)
-            hideGroundWall = spans.some(s => s && ((s.b|0) === 0) && ((s.h|0) > 0));
-          }
+          // If any span at base 0 exists, ground cube is represented by tall columns
+          hideGroundWall = spans.some(s => s && ((s.b|0) === 0) && ((s.h|0) > 0));
+          // If any hazardous span sits at base 0, treat ground cube as BAD even if map isn't BAD
+          if (!isBadTile){ isBadTile = spans.some(s => s && ((s.b|0)===0) && ((s.h|0)>0) && ((s.t|0)===1)); }
         }
       } else if (hasHeights && columnHeights.has(key)){
         if (hasBases && columnBases.has(key)){
@@ -386,8 +385,8 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       const [gx,gy] = key.split(',').map(n=>parseInt(n,10));
       if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
       for (const s of spans){
-        if (!s) continue; const h=(s.h|0); const b=(s.b|0); if (h<=0) continue;
-        const gkey = `${h}@${b}`;
+        if (!s) continue; const h=(s.h|0); const b=(s.b|0); const t=(s.t|0)||0; if (h<=0) continue;
+        const gkey = `${h}@${b}@${t}`;
         let g = groups.get(gkey); if (!g){ g = { h, b, pts: [] }; groups.set(gkey, g); }
         g.pts.push([gx, gy]);
       }
@@ -428,21 +427,39 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
 
   // For determinism, draw groups sorted by (base, height)
   const keys = Array.from(groups.keys()).sort((ka,kb)=>{
-    const [ha,ba] = ka.split('@').map(n=>parseInt(n,10));
-    const [hb,bb] = kb.split('@').map(n=>parseInt(n,10));
+    const [ha,ba/*b*/,ta/*t*/] = ka.split('@').map(n=>parseInt(n,10));
+    const [hb,bb/*b*/,tb/*t*/] = kb.split('@').map(n=>parseInt(n,10));
     if (ba!==bb) return ba-bb;
-    return ha-hb;
+    if (ha!==hb) return ha-hb;
+    return (ta|0) - (tb|0);
   });
   for (const key of keys){
     const g = groups.get(key);
     if (!g || !g.pts || g.pts.length === 0) continue;
-    // Split pillars by BAD vs normal
+    // Split pillars by BAD vs normal: prefer span hazard flag; fallback to map for ground-only
     const pillars = g.pts;
     const normPts = [];
     const badPts = [];
     for (let i=0;i<pillars.length;i++){
       const gx = pillars[i][0], gy = pillars[i][1];
-      const isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false;
+      let isBad = false;
+      // If spans exist, look for a matching span with this group's base/height and hazard flag.
+      if ((typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function'){
+        const skey = `${gx},${gy}`;
+        const spans = columnSpans.get(skey);
+        if (Array.isArray(spans)){
+          // Extract hazard from key third segment when present
+          const parts = key.split('@');
+          const bKey = parseInt(parts[1],10)|0;
+          const hKey = parseInt(parts[0],10)|0;
+          const tKey = (parts.length>=3 ? (parseInt(parts[2],10)|0) : 0);
+          isBad = spans.some(s => s && ((s.b|0)===bKey) && ((s.h|0)===hKey) && (((s.t|0)||0)===tKey) && tKey===1);
+        }
+      }
+      if (!isBad){
+        // Fallback: ground-level map BAD with no spans
+        isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false;
+      }
       (isBad ? badPts : normPts).push([gx,gy]);
     }
   function drawGroupPts(pts, color, alpha, glitter){
