@@ -318,23 +318,22 @@
     // Show crosshair
   try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'none'; } catch(_){ }
 
-  // Build modal DOM
+  // Build modal DOM (bottom-center, non-blocking overlay)
   const root = ensureRoot();
-  const wrap = document.createElement('div');
-  wrap.style.position = 'fixed';
-  wrap.style.inset = '0';
-  wrap.style.background = 'rgba(0,0,0,0.3)';
-  wrap.style.zIndex = '1000';
+  try { root.style.pointerEvents = 'auto'; } catch(_){ }
   const panel = document.createElement('div');
-  panel.style.position = 'absolute';
-  panel.style.right = '16px';
-  panel.style.top = '16px';
+  panel.style.position = 'fixed';
+  panel.style.left = '50%';
+  panel.style.bottom = '16px';
+  panel.style.transform = 'translateX(-50%)';
   panel.style.minWidth = '260px';
-  panel.style.maxWidth = '40vw';
+  panel.style.maxWidth = '80vw';
   panel.style.padding = '12px';
   panel.style.background = '#0f1722cc';
   panel.style.border = '1px solid #2a3a4a';
   panel.style.borderRadius = '8px';
+  panel.style.zIndex = '2000';
+  panel.style.pointerEvents = 'auto';
   const title = document.createElement('div');
   title.textContent = 'Structure Builder';
   title.style.fontWeight = '700';
@@ -370,8 +369,8 @@
   const btnCancel = document.createElement('button'); btnCancel.textContent='Cancel'; btnCancel.style.padding='6px 10px';
   const btnQuit = document.createElement('button'); btnQuit.textContent='Quit FPS'; btnQuit.style.padding='6px 10px'; btnQuit.style.marginLeft='auto';
   btnRow.appendChild(btnSave); btnRow.appendChild(btnCancel); btnRow.appendChild(btnQuit);
-    panel.appendChild(title); panel.appendChild(form); panel.appendChild(btnRow);
-    wrap.appendChild(panel); root.appendChild(wrap);
+  panel.appendChild(title); panel.appendChild(form); panel.appendChild(btnRow);
+  root.appendChild(panel);
 
     function clampInt(v, lo, hi){ v|=0; if (v<lo) v=lo; if (v>hi) v=hi; return v; }
     function updatePreview(){
@@ -429,34 +428,13 @@
     // Hide visor while editing
     try { state.editor._hideVisorWhileEditing = true; } catch(_){}
 
-    // Allow dragging the top camera by clicking outside the modal and dragging
-    // We’ll capture mousedown/move/up on the root; ignore events over the panel
-    function isOverPanel(ev){ return panel.contains(ev.target); }
-    let lastPos = null;
-    wrap.addEventListener('mousedown', (ev)=>{
-      if (isOverPanel(ev)) return;
-      state.editor.draggingTopCam = true;
-      lastPos = { x: ev.clientX, y: ev.clientY };
-      ev.preventDefault();
-    });
-    window.addEventListener('mousemove', (ev)=>{
-      if (!state.editor.draggingTopCam) return;
-      if (!lastPos) { lastPos = { x: ev.clientX, y: ev.clientY }; return; }
-      // Convert drag delta to small yaw/position delta for the top camera follow
-      const dx = ev.clientX - lastPos.x;
-      const dy = ev.clientY - lastPos.y;
-      lastPos = { x: ev.clientX, y: ev.clientY };
-      // Adjust the editor FPS camera yaw/pitch subtly to provide view control
-      const sens = 0.003;
-      state.editor.fps.yaw += dx * sens;
-      state.editor.fps.pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01, state.editor.fps.pitch - dy * sens * 0.5));
-    });
-    window.addEventListener('mouseup', ()=>{ state.editor.draggingTopCam = false; lastPos = null; });
+  // Optional: could add a small drag handle on the panel header if needed
   }
 
   function closeEditorModal(){
     const root = document.getElementById(rootId);
     if (root) root.innerHTML = '';
+  try { if (root) root.style.pointerEvents = 'none'; } catch(_){ }
     state.editor.modalOpen = false;
   // Restore visor drawing
   try { state.editor._hideVisorWhileEditing = false; } catch(_){}
