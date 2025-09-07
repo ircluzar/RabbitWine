@@ -3,6 +3,7 @@
 (function(){
   if (typeof window === 'undefined') return;
   let dismissed = false;
+  // Always show start modal to ensure a user gesture unlocks audio
   // Inject stylesheet once for glitch/scanline aesthetics
   function ensureStyle(){
     if (document.getElementById('start-modal-style')) return;

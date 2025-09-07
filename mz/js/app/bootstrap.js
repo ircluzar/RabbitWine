@@ -228,3 +228,12 @@ resizeCanvasToViewport();
 // Initialize camera yaw to player angle to avoid initial snap
 state.camYaw = state.player.angle;
 requestAnimationFrame(render);
+
+// If a save restored player position, sync camera follow point immediately
+try {
+  if (state && state.camFollow && state.player){
+    state.camFollow.x = state.player.x;
+    state.camFollow.y = state.player.y;
+    state.camFollow.z = state.player.z;
+  }
+} catch(_){ }

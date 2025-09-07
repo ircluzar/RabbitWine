@@ -27,6 +27,8 @@ function initItemsFromBuilder(list){
   for (const it of list){
     if (!it || typeof it.x !== 'number' || typeof it.y !== 'number') continue;
     const w = gridToWorld(it.x, it.y);
+  // Skip items previously collected (from save)
+  try { if (window.gameSave && gameSave.isItemCollected(w.x, w.z)) continue; } catch(_){ }
     // random unit axis for 3D spin
     let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
     const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
@@ -71,7 +73,9 @@ function updateItems(dt){
     const dist2 = dx*dx + dz*dz + dy*dy;
     const r = pr + 0.26; // slightly larger pickup radius so it feels forgiving
     if (dist2 <= r*r){
-      it.gone = true;
+  it.gone = true;
+  // Mark as collected in save
+  try { if (window.gameSave) gameSave.markItemCollected(it); } catch(_){ }
       // Dispatch payload action immediately (unlock abilities etc.)
       if (typeof dispatchAction === 'function' && it.payload){
         dispatchAction(it.payload, it);

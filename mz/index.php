@@ -82,6 +82,7 @@ function bust($path) {
     <script src="<?php echo bust('./js/ui/notification-modal.js'); ?>"></script>
 
     <!-- Gameplay logic (Milestone 5) -->
+  <script src="<?php echo bust('./js/app/save.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/controls.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/physics.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/trail-logic.js'); ?>"></script>

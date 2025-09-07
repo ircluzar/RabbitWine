@@ -16,6 +16,7 @@
   let _ctx = null; // AudioContext
   let _srcNode = null; // MediaElementSourceNode
   let _filterNode = null; // BiquadFilterNode (lowpass)
+  let _wired = false; // whether the graph is connected
 
   function clamp01(v){ return Math.max(0, Math.min(1, Number(v)||0)); }
 
@@ -71,7 +72,14 @@
     try {
       if (!_ctx){
         const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (Ctx) _ctx = new Ctx();
+        if (Ctx){
+          try {
+            // Prefer higher-latency playback mode to reduce risk of underflow/pops
+            _ctx = new Ctx({ latencyHint: 'playback' });
+          } catch(_){
+            _ctx = new Ctx();
+          }
+        }
       }
       if (_ctx && _audio && !_srcNode){
         _srcNode = _ctx.createMediaElementSource(_audio);
@@ -82,12 +90,11 @@
         _filterNode.frequency.value = 18000;
         _filterNode.Q.value = 0.707;
       }
-      if (_ctx && _srcNode && _filterNode){
-        // Connect if not already connected: source -> filter -> destination
-        try { _srcNode.disconnect(); } catch(_){}
-        try { _filterNode.disconnect(); } catch(_){}
+      if (_ctx && _srcNode && _filterNode && !_wired){
+        // Connect once: source -> filter -> destination
         _srcNode.connect(_filterNode);
         _filterNode.connect(_ctx.destination);
+        _wired = true;
       }
       if (_ctx && _ctx.state === 'suspended'){
         _ctx.resume().catch(()=>{});
@@ -124,7 +131,7 @@
     _setSrcIfNeeded(a, resolved);
     a.loop = true;
     a.volume = _volume;
-  _ensureWebAudio();
+    _ensureWebAudio();
     // Attempt immediate playback inside the gesture call stack
     _attemptPlay(a);
     _pendingSrc = "";

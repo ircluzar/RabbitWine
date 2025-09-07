@@ -80,17 +80,22 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     const h = document.createElement('div');
     h.className = 'mz-settings-title';
     h.textContent = 'Settings';
-    const actions = document.createElement('div');
+  const actions = document.createElement('div');
     actions.className = 'mz-settings-actions';
-    const btnRestart = document.createElement('button');
-    btnRestart.type = 'button';
-    btnRestart.className = 'mz-settings-btn';
-    btnRestart.textContent = 'Restart the game';
+  const btnRestart = document.createElement('button');
+  btnRestart.type = 'button';
+  btnRestart.className = 'mz-settings-btn';
+  btnRestart.textContent = 'Restart the game';
+  const btnReset = document.createElement('button');
+  btnReset.type = 'button';
+  btnReset.className = 'mz-settings-btn';
+  btnReset.textContent = 'Reset Progress';
     const btnReturn = document.createElement('button');
     btnReturn.type = 'button';
     btnReturn.className = 'mz-settings-btn';
     btnReturn.textContent = 'Return';
-    actions.appendChild(btnRestart);
+  actions.appendChild(btnRestart);
+  actions.appendChild(btnReset);
     actions.appendChild(btnReturn);
     card.appendChild(h);
     card.appendChild(actions);
@@ -102,6 +107,11 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     btnReturn.addEventListener('click', (e)=>{ e.stopPropagation(); closeSettings(); });
     btnRestart.addEventListener('click', (e)=>{
       e.stopPropagation();
+      try { if (window.location && window.location.reload) window.location.reload(); } catch(_){}
+    });
+    btnReset.addEventListener('click', (e)=>{
+      e.stopPropagation();
+  try { if (window.gameSave) { gameSave.suspendSaving(); gameSave.stopAuto(); gameSave.clear(); } } catch(_){ }
       try { if (window.location && window.location.reload) window.location.reload(); } catch(_){}
     });
     // Close by clicking backdrop
