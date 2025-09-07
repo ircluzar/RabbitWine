@@ -31,7 +31,9 @@ function drawPlayerAndTrail(mvp){
       const p=pts[i]; 
       inst[i*4+0]=p[0]; inst[i*4+1]=p[1]; inst[i*4+2]=p[2]; inst[i*4+3]=p[3]; 
     }
-    gl.useProgram(trailCubeProgram);
+  // Persisted edge jitter update (~16ms bucket)
+  if (typeof ensureTrailEdgeJitterTick === 'function') ensureTrailEdgeJitterTick(state.nowSec || (performance.now()/1000));
+  gl.useProgram(trailCubeProgram);
     gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
     gl.uniform1f(tc_u_scale, 0.12);
     gl.uniform1f(tc_u_now, state.nowSec || (performance.now()/1000));
@@ -39,10 +41,27 @@ function drawPlayerAndTrail(mvp){
     gl.uniform1i(tc_u_dashMode, 0);
     gl.uniform1f(tc_u_mulAlpha, 1.0);
     gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+  // Shader jitter disabled; we mutate VBO persistently instead
   if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
     gl.bindVertexArray(trailCubeVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  // Upload per-instance corner offsets only for top view; zeros for bottom
+  if (typeof trailCubeVBO_Corners !== 'undefined'){
+    if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
+      const now = state.nowSec || (performance.now()/1000);
+      const keys = new Array(pts.length);
+      for (let i=0;i<pts.length;i++){ const p=pts[i]; keys[i] = `trail@${p[3]||0}`; }
+      const packed = getTrailCornerOffsetsBuffer(keys, now);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+    } else {
+      // Bottom view: zero offsets
+      const zeros = new Float32Array(pts.length * 8 * 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+    }
+    }
     // Satisfy a_axis per-instance attrib (layout=3) with zeros; u_useAnim=0 makes it unused
     if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
@@ -97,6 +116,8 @@ function drawPlayerAndTrail(mvp){
   gl.bindVertexArray(null);
 
   // White wireframe contour slightly larger than the cube, floating around it
+  // Persisted edge jitter update (~16ms bucket)
+  if (typeof ensureTrailEdgeJitterTick === 'function') ensureTrailEdgeJitterTick(state.nowSec || (performance.now()/1000));
   gl.useProgram(trailCubeProgram);
   gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
   gl.uniform1f(tc_u_scale, 0.54);
@@ -105,8 +126,21 @@ function drawPlayerAndTrail(mvp){
   gl.uniform1i(tc_u_dashMode, 1);
   gl.uniform1f(tc_u_mulAlpha, 0.85);
   gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+  // Shader jitter disabled; VBO already carries persistent jitter
   if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
   gl.bindVertexArray(trailCubeVAO);
+  // Per-instance corners for the player's outline (single instance)
+  if (typeof trailCubeVBO_Corners !== 'undefined'){
+    if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
+      const packed = getTrailCornerOffsetsBuffer([`player-wire`], state.nowSec || (performance.now()/1000));
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+    } else {
+      const zeros = new Float32Array(8 * 3); // one instance
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+    }
+  }
   // Bind a zeroed axis stream sized for 1 instance to satisfy attrib 3 layout
   if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);

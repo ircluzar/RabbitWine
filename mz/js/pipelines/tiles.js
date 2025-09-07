@@ -17,14 +17,25 @@ const tile_u_y = gl.getUniformLocation(tileProgram, 'u_y');
 const tile_u_color = gl.getUniformLocation(tileProgram, 'u_color');
 
 const tileVAO = gl.createVertexArray();
-const tileVBO_Pos = gl.createBuffer();
+// Separate base and jitter position buffers so bottom view can be steady
+const tileVBO_PosBase = gl.createBuffer();
+const tileVBO_PosJitter = gl.createBuffer();
 const tileVBO_Inst = gl.createBuffer();
-gl.bindVertexArray(tileVAO);
-gl.bindBuffer(gl.ARRAY_BUFFER, tileVBO_Pos);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+// Base and current geometry for a unit tile (2 triangles)
+const tileBasePosData = new Float32Array([
   0,0,0,  1,0,0,  1,0,1,
   0,0,0,  1,0,1,  0,0,1,
-]), gl.STATIC_DRAW);
+]);
+let tileCurrPosData = new Float32Array(tileBasePosData);
+
+gl.bindVertexArray(tileVAO);
+// Initialize base buffer with immutable base positions
+gl.bindBuffer(gl.ARRAY_BUFFER, tileVBO_PosBase);
+gl.bufferData(gl.ARRAY_BUFFER, tileBasePosData, gl.STATIC_DRAW);
+// Initialize jitter buffer with current positions (starts equal to base)
+gl.bindBuffer(gl.ARRAY_BUFFER, tileVBO_PosJitter);
+gl.bufferData(gl.ARRAY_BUFFER, tileCurrPosData, gl.DYNAMIC_DRAW);
+// Attribute 0 will be repointed per draw depending on camera kind
 gl.enableVertexAttribArray(0);
 gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 gl.bindBuffer(gl.ARRAY_BUFFER, tileVBO_Inst);
@@ -35,7 +46,53 @@ gl.vertexAttribDivisor(1, 1);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
+// Persistent, bounded vertex jitter around base tile points
+let tileJitterLastTickSec = 0.0;
+const tileJitterPeriod = 0.016;
+const tileVertexProb = 0.10; // 10% of unique tile corners
+const tileVertexStep = 0.01;
+const tileVertexMax = 0.03;
+// Unique corners: (0,0,0), (1,0,0), (1,0,1), (0,0,1)
+const tileCornerMap = new Map();
+for (let i=0;i<tileBasePosData.length;i+=3){
+  const key = `${tileBasePosData[i+0]}|${tileBasePosData[i+1]}|${tileBasePosData[i+2]}`;
+  if (!tileCornerMap.has(key)) tileCornerMap.set(key, []);
+  tileCornerMap.get(key).push(i);
+}
+const tileCornerList = Array.from(tileCornerMap.values());
+let tileCornerDisp = new Float32Array(tileCornerList.length * 3);
+function ensureTileGeomJitterTick(nowSec){
+  const now = nowSec || (performance.now()/1000);
+  if (now - tileJitterLastTickSec < tileJitterPeriod - 1e-6) return;
+  tileJitterLastTickSec = now;
+  const total = tileCornerList.length;
+  const count = Math.max(1, Math.round(total * tileVertexProb));
+  const chosen = new Set();
+  while (chosen.size < count){ chosen.add(Math.floor(Math.random()*total)); }
+  chosen.forEach((ci)=>{
+    const b = ci*3;
+    const ox = tileCornerDisp[b+0], oy = tileCornerDisp[b+1], oz = tileCornerDisp[b+2];
+    const nx = Math.max(-tileVertexMax, Math.min(tileVertexMax, ox + (Math.random()*2-1)*tileVertexStep));
+    const ny = Math.max(-tileVertexMax, Math.min(tileVertexMax, oy + (Math.random()*2-1)*tileVertexStep));
+    const nz = Math.max(-tileVertexMax, Math.min(tileVertexMax, oz + (Math.random()*2-1)*tileVertexStep));
+    const dx = nx - ox, dy = ny - oy, dz = nz - oz;
+    const idxs = tileCornerList[ci];
+    for (let k=0;k<idxs.length;k++){
+      const i = idxs[k];
+      tileCurrPosData[i+0]+=dx; tileCurrPosData[i+1]+=dy; tileCurrPosData[i+2]+=dz;
+    }
+    tileCornerDisp[b+0]=nx; tileCornerDisp[b+1]=ny; tileCornerDisp[b+2]=nz;
+  });
+  gl.bindBuffer(gl.ARRAY_BUFFER, tileVBO_PosJitter);
+  gl.bufferData(gl.ARRAY_BUFFER, tileCurrPosData, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+}
+
 function drawTiles(mvp, kind){
+  // Update persistent tile vertex jitter for top view only
+  if (state.cameraKindCurrent === 'top' && typeof ensureTileGeomJitterTick === 'function') {
+    ensureTileGeomJitterTick(state.nowSec || (performance.now()/1000));
+  }
   const isWall = kind === 'wall';
   const data = isWall ? instWall : instOpen;
   if (!data.length) return;
@@ -46,6 +103,9 @@ function drawTiles(mvp, kind){
   gl.uniform1f(tile_u_y, -0.001);
   gl.uniform3fv(tile_u_color, new Float32Array([0.0, 0.0, 0.0]));
   gl.bindVertexArray(tileVAO);
+  // Point attribute 0 to the appropriate position buffer per view
+  gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? tileVBO_PosJitter : tileVBO_PosBase);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, tileVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
   gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, data.length/2);

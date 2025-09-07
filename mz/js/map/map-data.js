@@ -40,7 +40,7 @@ function buildSampleMap(){
 
 
   //---------------------------------
-  builder.border(TILE.WALL,2.0); // Create outer boundary walls for map containment
+  builder.border(TILE.WALL,1.0); // Create outer boundary walls for map containment
 
   builder.rect(6, 6, 17, 17, TILE.WALL, 5.0); // central wall
 

@@ -28,6 +28,7 @@ function render(now) {
   const botH = Math.max(1, H - seamY);
   if (state.snapBottomFull) {
     // Full-screen bottom camera
+  state.cameraKindCurrent = 'bottom';
     gl.viewport(0, 0, W, H);
     const mvAspectBot = W / H;
     renderGridViewport(0, 0, W, H, 'bottom');
@@ -48,6 +49,7 @@ function render(now) {
   drawGridOverlay(mvp, eye, false);
   } else if (state.snapTopFull) {
     // Full-screen top camera
+  state.cameraKindCurrent = 'top';
     gl.viewport(0, 0, W, H);
     const mvAspectTop = W / H;
     renderGridViewport(0, 0, W, H, 'top');
@@ -89,6 +91,7 @@ function render(now) {
   drawGridOverlay(mvp, eye, true);
   } else {
     // Bottom viewport (lower half in pixels 0..seam)
+  state.cameraKindCurrent = 'bottom';
     gl.viewport(0, 0, W, botH);
     const mvAspectBot = W / botH;
     // Clear and optional grid first so scene draws on top
@@ -113,6 +116,7 @@ function render(now) {
   drawGridOverlay(mvp, eye, false);
     }
     // Top viewport (upper half in pixels seam..H)
+  state.cameraKindCurrent = 'top';
     gl.viewport(0, H - seamY, W, topH);
     const mvAspectTop = W / topH;
     // Clear and optional grid first so scene draws on top

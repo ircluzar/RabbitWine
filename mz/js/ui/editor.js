@@ -503,6 +503,18 @@
       gl.uniform3f(tc_u_lineColor, 1.0, 0.9, 0.2);
       if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
       gl.bindVertexArray(trailCubeVAO);
+      // Per-instance corners for single visor outline: jitter on top view, zeros on bottom
+      if (typeof trailCubeVBO_Corners !== 'undefined'){
+        if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
+          const packed = getTrailCornerOffsetsBuffer([`editor@${vs.gx},${vs.gy},${y.toFixed(2)}`], state.nowSec || (performance.now()/1000));
+          gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+          gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+        } else {
+          const zeros = new Float32Array(8 * 3);
+          gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+          gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+        }
+      }
       // axis buffer for 1 instance
       if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
         gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);

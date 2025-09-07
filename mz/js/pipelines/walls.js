@@ -62,11 +62,12 @@ const wall_u_fadeBand = gl.getUniformLocation(wallProgram, 'u_fadeBand');
 const wall_u_minAlpha = gl.getUniformLocation(wallProgram, 'u_minAlpha');
 
 const wallVAO = gl.createVertexArray();
-const wallVBO_Pos = gl.createBuffer();
+// Separate base and jitter position buffers so bottom view can render steady geometry
+const wallVBO_PosBase = gl.createBuffer();
+const wallVBO_PosJitter = gl.createBuffer();
 const wallVBO_Inst = gl.createBuffer();
-gl.bindVertexArray(wallVAO);
-gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Pos);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+// Base and current geometry for a unit cube (36 vertices)
+const wallBasePosData = new Float32Array([
   // Unit cube 0..1
   // Front
   0,0,1,  1,0,1,  1,1,1,
@@ -86,8 +87,17 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
   // Bottom
   0,0,0,  1,0,0,  1,0,1,
   0,0,0,  1,0,1,  0,0,1,
-]), gl.STATIC_DRAW);
+]);
+let wallCurrPosData = new Float32Array(wallBasePosData);
+
+gl.bindVertexArray(wallVAO);
+// Initialize base positions (static) and jitter positions (dynamic)
+gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosBase);
+gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.STATIC_DRAW);
+gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
+gl.bufferData(gl.ARRAY_BUFFER, wallCurrPosData, gl.DYNAMIC_DRAW);
 gl.enableVertexAttribArray(0);
+// Default pointer; will be repointed per view before drawing
 gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
 gl.bufferData(gl.ARRAY_BUFFER, instWall, gl.DYNAMIC_DRAW);
@@ -97,7 +107,56 @@ gl.vertexAttribDivisor(1, 1);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
+// Persistent, bounded vertex jitter around base polygon points (applies to all wall cubes)
+let wallJitterLastTickSec = 0.0;
+const wallJitterPeriod = 0.016;
+const wallVertexProb = 0.10;   // 10% of unique corners per tick
+const wallVertexStep = 0.01;   // step size
+const wallVertexMax = 0.03;    // max abs offset from base per axis
+// Build unique corner groups for cube (0/1 coords)
+const wallCornerGroups = new Map();
+for (let i=0;i<wallBasePosData.length;i+=3){
+  const x=wallBasePosData[i+0], y=wallBasePosData[i+1], z=wallBasePosData[i+2];
+  const key = `${x}|${y}|${z}`;
+  if (!wallCornerGroups.has(key)) wallCornerGroups.set(key, []);
+  wallCornerGroups.get(key).push(i);
+}
+const wallCornerList = Array.from(wallCornerGroups.values());
+let wallCornerDisp = new Float32Array(wallCornerList.length * 3);
+function ensureWallGeomJitterTick(nowSec){
+  const now = nowSec || (performance.now()/1000);
+  if (now - wallJitterLastTickSec < wallJitterPeriod - 1e-6) return;
+  wallJitterLastTickSec = now;
+  const total = wallCornerList.length;
+  const count = Math.max(1, Math.round(total * wallVertexProb));
+  const chosen = new Set();
+  while (chosen.size < count){ chosen.add(Math.floor(Math.random()*total)); }
+  chosen.forEach((ci)=>{
+    const baseIx = ci*3;
+    const oldX = wallCornerDisp[baseIx+0], oldY = wallCornerDisp[baseIx+1], oldZ = wallCornerDisp[baseIx+2];
+    const nx = Math.max(-wallVertexMax, Math.min(wallVertexMax, oldX + (Math.random()*2-1)*wallVertexStep));
+    const ny = Math.max(-wallVertexMax, Math.min(wallVertexMax, oldY + (Math.random()*2-1)*wallVertexStep));
+    const nz = Math.max(-wallVertexMax, Math.min(wallVertexMax, oldZ + (Math.random()*2-1)*wallVertexStep));
+    const dx = nx - oldX, dy = ny - oldY, dz = nz - oldZ;
+    const idxList = wallCornerList[ci];
+    for (let k=0;k<idxList.length;k++){
+      const idx = idxList[k];
+      wallCurrPosData[idx+0] = wallCurrPosData[idx+0] + dx;
+      wallCurrPosData[idx+1] = wallCurrPosData[idx+1] + dy;
+      wallCurrPosData[idx+2] = wallCurrPosData[idx+2] + dz;
+    }
+    wallCornerDisp[baseIx+0]=nx; wallCornerDisp[baseIx+1]=ny; wallCornerDisp[baseIx+2]=nz;
+  });
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
+  gl.bufferData(gl.ARRAY_BUFFER, wallCurrPosData, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+}
+
 function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
+  // Update persistent polygon point jitter
+    if (state.cameraKindCurrent === 'top' && typeof ensureWallGeomJitterTick === 'function') {
+      ensureWallGeomJitterTick(state.nowSec || (performance.now()/1000));
+    }
   // Filter out ground-level wall tiles that are represented as tall columns.
   // Important: do NOT hide a ground wall if only elevated spans (base>0) exist there.
   let data = instWall;
@@ -148,6 +207,9 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const voxX=2, voxY=2, voxZ=2;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
+  // Point attribute 0 to the appropriate buffer per view (top=jitter, bottom=base)
+  gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
   // Depth pre-pass
@@ -204,10 +266,30 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
   gl.uniform1f(tc_u_ttl, 1.0);
   gl.uniform1i(tc_u_dashMode, 0);
   gl.uniform3f(tc_u_lineColor, 0.0, 0.0, 0.0);
+  // Persisted edge jitter update (~16ms bucket)
+  if (typeof ensureTrailEdgeJitterTick === 'function') ensureTrailEdgeJitterTick(tNow);
   if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
   gl.bindVertexArray(trailCubeVAO);
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  // Per-instance corner offsets: top view uses jitter, bottom view uses zeros
+  if (typeof trailCubeVBO_Corners !== 'undefined'){
+    if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
+      const keys = new Array(count);
+      for (let i=0;i<count;i++){
+        const tx = tileArray[i*2+0];
+        const ty = tileArray[i*2+1];
+        keys[i] = `tile@${tx},${ty},${yCenter.toFixed(2)}`;
+      }
+      const packed = getTrailCornerOffsetsBuffer(keys, tNow);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+    } else {
+      const zeros = new Float32Array(count * 8 * 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+    }
+  }
   // Ensure a_axis buffer has enough entries (even though u_useAnim==0)
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(count * 3), gl.DYNAMIC_DRAW);
@@ -223,6 +305,10 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
 }
 
 function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
+  // Update persistent polygon point jitter
+    if (state.cameraKindCurrent === 'top' && typeof ensureWallGeomJitterTick === 'function') {
+      ensureWallGeomJitterTick(state.nowSec || (performance.now()/1000));
+    }
   // Prefer spans when available regardless of feature flag
   const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.entries === 'function' && columnSpans.size > 0;
   if (!hasSpans && (!extraColumns || extraColumns.length === 0)) return;
@@ -271,6 +357,9 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const voxX=1, voxY=1, voxZ=1;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
+  // Point attribute 0 to the appropriate position buffer per view for tall columns
+  gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 
   // For determinism, draw groups sorted by (base, height)
   const keys = Array.from(groups.keys()).sort((ka,kb)=>{
@@ -326,6 +415,9 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // and restore uniforms so next group renders color correctly.
   gl.bindVertexArray(wallVAO);
   gl.useProgram(wallProgram);
+  // Re-point attribute 0 after outlines switched VAO/program
+  gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
   gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
   gl.uniform1f(wall_u_scale, 1.0);

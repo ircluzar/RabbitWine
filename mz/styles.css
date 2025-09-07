@@ -52,6 +52,11 @@ body {
   white-space: pre-wrap;
 }
 
+/* Hide HUD when debug is off */
+#hud[aria-hidden="true"] {
+  display: none !important;
+}
+
 #debug-toggle {
   position: fixed;
   right: 0.5rem;

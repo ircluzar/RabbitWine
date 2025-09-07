@@ -136,6 +136,20 @@ function drawItems(mvp){
   gl.bindVertexArray(trailCubeVAO);
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
   gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  // Per-instance corner offsets keyed per item: jitter on top view, zeros on bottom
+  if (typeof trailCubeVBO_Corners !== 'undefined'){
+    if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
+      const keys = new Array(active.length);
+      for (let i=0;i<active.length;i++){ const it=active[i]; keys[i] = `item@${it.x.toFixed(2)},${it.y.toFixed(2)},${it.z.toFixed(2)}`; }
+      const packed = getTrailCornerOffsetsBuffer(keys, tNow);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+    } else {
+      const zeros = new Float32Array(active.length * 8 * 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+    }
+  }
   // Upload per-instance rotation axes
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
   gl.bufferData(gl.ARRAY_BUFFER, axis, gl.DYNAMIC_DRAW);
