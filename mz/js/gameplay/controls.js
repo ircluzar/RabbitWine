@@ -208,6 +208,26 @@ function dashHeadingCardinal(card){
 }
 
 /**
+ * Convert a screen-direction to a world cardinal based on the top camera yaw.
+ * Only used when altBottomControlLocked is true (camera yaw locked).
+ * screenDir: 'north'|'south'|'west'|'east' (up/down/left/right on screen)
+ * returns cardinal 'north'|'east'|'south'|'west'
+ */
+function cardinalRelativeToCamera(screenDir){
+  // Base index from camera yaw (0: north, 1: east, 2: south, 3: west)
+  const ninety = Math.PI * 0.5;
+  let idx = Math.round((state.camYaw || 0) / ninety);
+  idx = ((idx % 4) + 4) % 4;
+  // Offsets for screen directions
+  let off = 0;
+  if (screenDir === 'east') off = 1; // right
+  else if (screenDir === 'south') off = 2; // down
+  else if (screenDir === 'west') off = 3; // left
+  const out = (idx + off) & 3;
+  return out === 0 ? 'north' : out === 1 ? 'east' : out === 2 ? 'south' : 'west';
+}
+
+/**
  * Process keyboard input for player controls
  * @param {number} dt - Delta time (unused)
  */
@@ -215,7 +235,7 @@ function handleKeyboard(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // editor takes over
   const p = state.player;
   if (p.isBallMode) return; // no controls in ball mode
-  // Alt control mapping when bottom view is maximized: arrow/WASD map to cardinals
+  // Alt control mapping when bottom view is maximized or lock is on
   if (state.snapBottomFull || state.altBottomControlLocked){
     const wantNorth = state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('arrowup') || state.inputs.keys.has('w');
     const wantSouth = state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('arrowdown') || state.inputs.keys.has('s');
@@ -226,10 +246,21 @@ function handleKeyboard(dt){
       ['ArrowUp','arrowup','w','ArrowDown','arrowdown','s','ArrowLeft','arrowleft','a','ArrowRight','arrowright','d']
         .forEach(k=>state.inputs.keys.delete(k));
     }
-    if (wantNorth){ dashOK ? dashHeadingCardinal('north') : moveHeadingCardinal('north'); clearDirKeys(); }
-    else if (wantSouth){ dashOK ? dashHeadingCardinal('south') : moveHeadingCardinal('south'); clearDirKeys(); }
-    else if (wantWest){ dashOK ? dashHeadingCardinal('west') : moveHeadingCardinal('west'); clearDirKeys(); }
-    else if (wantEast){ dashOK ? dashHeadingCardinal('east') : moveHeadingCardinal('east'); clearDirKeys(); }
+  // If lock is active, rotate inputs relative to camera yaw, except when bottom is fullscreen
+  const rel = !!(state.altBottomControlLocked && !state.snapBottomFull);
+    if (wantNorth){
+      const card = rel ? cardinalRelativeToCamera('north') : 'north';
+      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+    } else if (wantSouth){
+      const card = rel ? cardinalRelativeToCamera('south') : 'south';
+      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+    } else if (wantWest){
+      const card = rel ? cardinalRelativeToCamera('west') : 'west';
+      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+    } else if (wantEast){
+      const card = rel ? cardinalRelativeToCamera('east') : 'east';
+      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+    }
     // Space/jump handling remains as usual in alt mode
     if (state.inputs.keys.has(' ') || state.inputs.keys.has('Space') || state.inputs.keys.has('Spacebar') || state.inputs.keys.has('space')){
       doJump();
@@ -316,5 +347,6 @@ window.handleKeyboard = handleKeyboard;
 window.setHeadingCardinal = setHeadingCardinal;
 window.moveHeadingCardinal = moveHeadingCardinal;
 window.dashHeadingCardinal = dashHeadingCardinal;
+window.cardinalRelativeToCamera = cardinalRelativeToCamera;
 // Expose music-start helper so other modules (e.g., start-modal) can trigger when they initiate movement
 window.startMusicOnce = startMusicOnce;

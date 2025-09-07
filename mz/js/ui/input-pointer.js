@@ -51,14 +51,17 @@ function onPointerMove(e) {
     const totalDy = p.y - p.startY;
     if (!p.turned) {
   const useAlt = !!(state.snapBottomFull || state.altBottomControlLocked);
+  const rel = !!(state.altBottomControlLocked && !state.snapBottomFull);
       // Horizontal swipe
       if (Math.abs(totalDx) > 36 && Math.abs(totalDx) > Math.abs(totalDy) * 1.3) {
         if (useAlt) {
-          // Move or dash West/East (dash when frozen with dash available)
+          // Determine intended screen direction
+          const screenDir = (totalDx < 0) ? 'west' : 'east';
+          const card = rel ? cardinalRelativeToCamera(screenDir) : screenDir;
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-            if (totalDx < 0) dashHeadingCardinal('west'); else dashHeadingCardinal('east');
+            dashHeadingCardinal(card);
           } else {
-            if (totalDx < 0) moveHeadingCardinal('west'); else moveHeadingCardinal('east');
+            moveHeadingCardinal(card);
           }
         } else {
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
@@ -71,10 +74,12 @@ function onPointerMove(e) {
       } else if (Math.abs(totalDy) > 36 && Math.abs(totalDy) > Math.abs(totalDx) * 1.3) {
         // Vertical swipe
         if (useAlt) {
+          const screenDir = (totalDy < 0) ? 'north' : 'south';
+          const card = rel ? cardinalRelativeToCamera(screenDir) : screenDir;
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-            if (totalDy < 0) dashHeadingCardinal('north'); else dashHeadingCardinal('south');
+            dashHeadingCardinal(card);
           } else {
-            if (totalDy < 0) moveHeadingCardinal('north'); else moveHeadingCardinal('south');
+            moveHeadingCardinal(card);
           }
         } else {
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
@@ -100,13 +105,16 @@ function onPointerUpOrCancel(e) {
       const dy = p.y - p.startY;
       const mag = Math.hypot(dx, dy);
       if (mag > 24) {
-  const useAlt = !!(state.snapBottomFull || state.altBottomControlLocked);
+        const useAlt = !!(state.snapBottomFull || state.altBottomControlLocked);
+  const rel = !!(state.altBottomControlLocked && !state.snapBottomFull);
         if (Math.abs(dx) > Math.abs(dy) * 1.2) {
           if (useAlt) {
+            const screenDir = (dx < 0) ? 'west' : 'east';
+            const card = rel ? cardinalRelativeToCamera(screenDir) : screenDir;
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-              if (dx < 0) dashHeadingCardinal('west'); else dashHeadingCardinal('east');
+              dashHeadingCardinal(card);
             } else {
-              if (dx < 0) moveHeadingCardinal('west'); else moveHeadingCardinal('east');
+              moveHeadingCardinal(card);
             }
           } else {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
@@ -115,10 +123,12 @@ function onPointerUpOrCancel(e) {
           }
         } else if (Math.abs(dy) > Math.abs(dx) * 1.2) {
           if (useAlt) {
+            const screenDir = (dy < 0) ? 'north' : 'south';
+            const card = rel ? cardinalRelativeToCamera(screenDir) : screenDir;
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-              if (dy < 0) dashHeadingCardinal('north'); else dashHeadingCardinal('south');
+              dashHeadingCardinal(card);
             } else {
-              if (dy < 0) moveHeadingCardinal('north'); else moveHeadingCardinal('south');
+              moveHeadingCardinal(card);
             }
           } else {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
