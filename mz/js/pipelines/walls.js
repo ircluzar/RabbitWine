@@ -78,18 +78,35 @@ gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
 function drawWalls(mvp){
-  // Filter out wall tiles that are represented as tall columns (any registered height)
+  // Filter out ground-level wall tiles that are represented as tall columns.
+  // Important: do NOT hide a ground wall if only elevated spans (base>0) exist there.
   let data = instWall;
-  if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.size > 0 && data.length) {
+  if (data.length) {
+    // Prefer spans when available regardless of feature flag
+    const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function' && columnSpans.size > 0;
+    const hasHeights = (typeof columnHeights !== 'undefined') && columnHeights && typeof columnHeights.has === 'function' && columnHeights.size > 0;
+    const hasBases = (typeof columnBases !== 'undefined') && columnBases && typeof columnBases.get === 'function' && columnBases.size >= 0; // may be 0 size
+
     const filtered = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
-      // Exclude any tile that has a column entry (even if height==1),
-      // since tall/elevated rendering will handle it.
-      if (!columnHeights.has(key)) {
-        filtered.push(x,y);
+      let hideGroundWall = false;
+  if (hasSpans){
+        const spans = columnSpans.get(key);
+        if (Array.isArray(spans)){
+          // Hide only if any span starts at base 0 and has positive height
+          hideGroundWall = spans.some(s => s && ((s.b|0) === 0) && ((s.h|0) > 0));
+        }
+      } else if (hasHeights && columnHeights.has(key)){
+        if (hasBases && columnBases.has(key)){
+          hideGroundWall = ((columnBases.get(key)|0) === 0);
+        } else {
+          // No base info -> conservatively assume ground-level column
+          hideGroundWall = true;
+        }
       }
+      if (!hideGroundWall) filtered.push(x,y);
     }
     data = new Float32Array(filtered);
   }
@@ -180,19 +197,14 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale){
 }
 
 function drawTallColumns(mvp){
-  // Phase 2: if spans enabled, build temp list of all spans as pillars
-  let spansMode = false;
-  try { spansMode = (typeof VERTICALITY_PHASE2 !== 'undefined' ? VERTICALITY_PHASE2 : (typeof window!== 'undefined' && window.VERTICALITY_PHASE2)); } catch(_){ }
-  if (spansMode && typeof columnSpans !== 'undefined' && columnSpans && columnSpans.size > 0){
-    // Build groups from spans
-  } else if (extraColumns.length === 0) {
-    return;
-  }
+  // Prefer spans when available regardless of feature flag
+  const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.entries === 'function' && columnSpans.size > 0;
+  if (!hasSpans && (!extraColumns || extraColumns.length === 0)) return;
 
   // Group pillars/columns by their integer height AND base so we can render stacked from bottom
   /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>}>>} */
   const groups = new Map();
-  if (spansMode && typeof columnSpans !== 'undefined' && columnSpans && columnSpans.size > 0){
+  if (hasSpans){
     for (const [key, spans] of columnSpans.entries()){
       if (!Array.isArray(spans)) continue;
       const [gx,gy] = key.split(',').map(n=>parseInt(n,10));
@@ -248,9 +260,12 @@ function drawTallColumns(mvp){
     gl.disable(gl.BLEND);
     gl.colorMask(false,false,false,false);
     gl.depthMask(true);
-    gl.depthFunc(gl.LESS);
+    // Use LEQUAL to prevent equal-depth rejection on stacked voxels at shared faces
+    gl.depthFunc(gl.LEQUAL);
+    const EPS = 1e-4;
     for (let level=0; level<g.h; level++){
-      gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0);
+      // Tiny epsilon avoids coplanar depth ties between levels
+      gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
       gl.uniform3f(wall_u_voxOff, 0,0,0);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
     }
@@ -262,14 +277,14 @@ function drawTallColumns(mvp){
     gl.depthMask(false);
     gl.depthFunc(gl.LEQUAL);
     for (let level=0; level<g.h; level++){
-      gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0);
+      gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
       gl.uniform3f(wall_u_voxOff, 0,0,0);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pillars.length);
     }
 
     // Silhouette outlines per level for this group
     for (let level=0; level<g.h; level++){
-      const yCenter = (g.b + level) + 0.5;
+      const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
       const offs2 = new Float32Array(pillars.length * 2);
       for (let i=0;i<pillars.length;i++){ offs2[i*2+0]=pillars[i][0]; offs2[i*2+1]=pillars[i][1]; }
       drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0);

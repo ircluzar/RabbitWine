@@ -29,6 +29,8 @@ class MapBuilder {
     // Initialize height tracking system for 3D column support
     this.extraColumns = []; // Array of {x,y,h} objects for tall columns
     this.columnHeights = new Map(); // Fast lookup: "x,y" -> height
+  // Phase 2: multi-span registry per tile: Map key "x,y" -> Array of {b:int,h:number}
+  this.columnSpans = new Map();
   // Debug/remove tracking: record carve directives so we can visualize in debug
   /** @type {Array<{x:number,y:number,b:number,h:number}>} */
   this.removals = [];
@@ -52,20 +54,43 @@ class MapBuilder {
   _setHeight(x,y,height, base=0){
     if (!this._inBounds(x,y)) return;
     const key = `${x},${y}`;
-    this.columnHeights.set(key, height);
-    // Update existing extraColumn entry if present; else add new
-    let idx = -1;
-    for (let i=this.extraColumns.length-1; i>=0; i--){
-      const c = this.extraColumns[i];
-      if (c && c.x === x && c.y === y){ idx = i; break; }
+    const newBase = (typeof base === 'number') ? (base|0) : 0;
+    const newH = Math.max(0, +height);
+
+    // Update multi-span registry
+    let spans = this.columnSpans.get(key);
+    if (!spans){ spans = []; this.columnSpans.set(key, spans); }
+    // Try to find existing span with same base; keep the taller/topmost for that base
+    let foundSameBase = false;
+    for (let i=0;i<spans.length;i++){
+      const s = spans[i]; if (!s) continue;
+      if ((s.b|0) === newBase){
+        foundSameBase = true;
+        const prevTop = (s.b|0) + (+s.h||0);
+        const newTop = newBase + newH;
+        if (newTop >= prevTop){ spans[i] = { b: newBase, h: newH }; }
+        break;
+      }
     }
-    if (idx >= 0){
-      const prev = this.extraColumns[idx];
-      const prevBase = (prev && typeof prev.b === 'number') ? prev.b|0 : 0;
-      const b = (typeof base === 'number') ? (base|0) : prevBase;
-      this.extraColumns[idx] = { x, y, h: height, b };
+    if (!foundSameBase){ spans.push({ b: newBase, h: newH }); }
+    // Normalize: remove non-positive and sort by base then height
+    for (let i=spans.length-1;i>=0;i--){ const s=spans[i]; if (!s || !(s.h>0)) spans.splice(i,1); }
+    spans.sort((a,b)=> (a.b-b.b) || (a.h-b.h));
+
+    // Update compatibility single-span stores using the topmost span
+    if (spans.length > 0){
+      // topmost by highest (b+h)
+      const top = spans.reduce((a,b)=> ((a.b+a.h) >= (b.b+b.h) ? a : b));
+      this.columnHeights.set(key, top.h);
+      // Update or add representative in extraColumns
+      let idx = -1;
+      for (let i=this.extraColumns.length-1; i>=0; i--){ const c = this.extraColumns[i]; if (c && c.x===x && c.y===y){ idx=i; break; } }
+      if (idx >= 0){ this.extraColumns[idx] = { x, y, h: top.h, b: top.b };
+      } else { this.extraColumns.push({ x, y, h: top.h, b: top.b }); }
     } else {
-      this.extraColumns.push({ x, y, h: height, b: (base|0) });
+      this.columnHeights.delete(key);
+      // Remove any representative entry
+      for (let i=this.extraColumns.length-1; i>=0; i--){ const c=this.extraColumns[i]; if (c && c.x===x && c.y===y){ this.extraColumns.splice(i,1); break; } }
     }
   }
 
@@ -173,6 +198,59 @@ class MapBuilder {
         for(let x=x1; x<=x2; x++){
           this.map[this.idx(x,y)] = this.TILE.OPEN;
           const key = `${x},${y}`;
+          // Prefer multi-span carving when available
+          const spans = this.columnSpans.get(key);
+          if (Array.isArray(spans) && spans.length){
+            if (remUnits > 0){
+              const remBase = (yR==null ? 0 : (yR|0));
+              const remTop = remBase + remUnits;
+              for (let i=spans.length-1; i>=0; i--){
+                const s = spans[i]; if (!s) continue;
+                const curBase = (s.b|0); const curTop = curBase + (s.h|0);
+                const overlap = Math.max(0, Math.min(curTop, remTop) - Math.max(curBase, remBase));
+                if (overlap <= 0) continue;
+                const overlapStart = Math.max(curBase, remBase);
+                const overlapEnd = Math.min(curTop, remTop);
+                const hitsBottom = overlapStart <= curBase + 0;
+                const hitsTop = overlapEnd >= curTop - 0;
+                if (hitsBottom && hitsTop){
+                  // Full removal of this span
+                  spans.splice(i,1);
+                } else if (hitsBottom){
+                  // Carved from bottom
+                  s.b = curBase + overlap;
+                  s.h = (curTop - s.b);
+                } else if (hitsTop){
+                  // Carved from top
+                  s.h = (overlapStart - curBase);
+                } else {
+                  // Middle cut -> keep upper segment only
+                  s.b = overlapEnd;
+                  s.h = (curTop - s.b);
+                }
+              }
+            }
+            // Normalize spans and update compatibility stores
+            for (let i=spans.length-1;i>=0;i--){ const s=spans[i]; if (!s || (s.h|0) <= 0) spans.splice(i,1); }
+            if (spans.length){
+              const top = spans.reduce((a,b)=> ((a.b+a.h) >= (b.b+b.h) ? a : b));
+              // Update representative
+              this.columnHeights.set(key, top.h|0);
+              // update extraColumns entry for this (x,y)
+              let repIdx = -1; for (let i=this.extraColumns.length-1;i>=0;i--){ const c=this.extraColumns[i]; if (c && c.x===x && c.y===y){ repIdx=i; break; } }
+              if (repIdx>=0){ this.extraColumns[repIdx] = { x, y, h: top.h|0, b: top.b|0 }; }
+              else { this.extraColumns.push({ x, y, h: top.h|0, b: top.b|0 }); }
+            } else {
+              // All spans removed at this tile
+              this.columnSpans.delete(key);
+              this.columnHeights.delete(key);
+              for (let i=this.extraColumns.length-1;i>=0;i--){ const c=this.extraColumns[i]; if (c && c.x===x && c.y===y){ this.extraColumns.splice(i,1); break; } }
+            }
+            // Record the removal volume for debug visualization at this cell
+            if (remUnits > 0){ const visualBase = (yR==null ? 0 : yR|0); this.removals.push({ x, y, b: visualBase|0, h: remUnits|0 }); }
+            continue;
+          }
+
           const curHVal = this.columnHeights.get(key);
           // Determine the visualized removal base for debug overlay
           let visualBase = (yR==null ? 0 : yR|0);
@@ -302,6 +380,7 @@ class MapBuilder {
     return { 
       extraColumns: [...this.extraColumns], 
   columnHeights: new Map(this.columnHeights),
+  columnSpans: new Map(this.columnSpans),
   removeVolumes: this.removals.slice()
     }; 
   }

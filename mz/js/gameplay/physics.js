@@ -17,23 +17,40 @@ function groundHeightAt(x, z){
   const gz = Math.floor(z + MAP_H*0.5);
   if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return 0.0;
   const key = `${gx},${gz}`;
-  // Phase 2: spans-based ground (highest span top <= player Y)
+  // Prefer spans if available; otherwise derive spans from columnHeights/columnBases and map wall tile.
+  let spans = null;
   try {
-    if (typeof VERTICALITY_PHASE2 !== 'undefined' ? VERTICALITY_PHASE2 : (typeof window!== 'undefined' && window.VERTICALITY_PHASE2)){
-      const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-                   : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-                   : null;
-      if (Array.isArray(spans) && spans.length){
-        const py = state.player ? state.player.y : 0.0;
-        let best = 0.0;
-        for (const s of spans){
-          if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-          const top = b + h; if (top <= py + 1e-6 && top > best) best = top;
-        }
-        if (best > 0.0) return best;
+    spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+          : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+          : null;
+  } catch(_){ spans = null; }
+  /** @type {Array<{b:number,h:number}>} */
+  let spanList = Array.isArray(spans) ? spans.slice() : [];
+  // If no explicit spans, synthesize from columnHeights/bases
+  if (!spanList.length){
+    try {
+      if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+        let b = 0; let h = columnHeights.get(key) || 0;
+        try {
+          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+        } catch(_){ }
+        if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
+    } catch(_){ }
+  }
+  // Always include ground wall as span if map tile is WALL
+  const isGroundWall = map[mapIdx(gx,gz)] === TILE.WALL;
+  if (isGroundWall){ spanList.push({ b: 0, h: 1 }); }
+  if (spanList.length){
+    const py = state.player ? state.player.y : 0.0;
+    let best = 0.0;
+    for (const s of spanList){
+      if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+      const top = b + h; if (top <= py + 1e-6 && top > best) best = top;
     }
-  } catch(_){ }
+    if (best > 0.0) return best;
+  }
   // Resolve base offset reliably even if globals are attached on window
   function getBaseFor(key){
     try {
@@ -49,15 +66,14 @@ function groundHeightAt(x, z){
     }
     return 0.0;
   }
+  // Fallbacks when no spans and no column height applicable below player
   if (columnHeights.has(key)){
     const h = columnHeights.get(key) || 0.0;
     const b = getBaseFor(key);
-    // If player is below a raised base, treat ground as 0 (free to pass under). Otherwise top of solid.
     const py = state.player ? state.player.y : 0.0;
-    if (py < b - 1e-3) return 0.0;
-    return b + h;
+    if (py >= b + h - 1e-6) return b + h;
   }
-  return map[mapIdx(gx,gz)] === TILE.WALL ? 1.0 : 0.0;
+  return isGroundWall ? 1.0 : 0.0;
 }
 
 /**
@@ -116,23 +132,38 @@ function moveAndCollide(dt){
     const gz = Math.floor(wz + MAP_H*0.5);
     if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true;
     const key = `${gx},${gz}`;
-    // Phase 2: collide if any span overlaps player Y
+    // Collide if any span overlaps player Y; prefer explicit spans, else synthesize from column data and map tile
+    let spans = null;
     try {
-      if (typeof VERTICALITY_PHASE2 !== 'undefined' ? VERTICALITY_PHASE2 : (typeof window!== 'undefined' && window.VERTICALITY_PHASE2)){
-        const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-                     : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-                     : null;
-        if (Array.isArray(spans) && spans.length){
-          const py = state.player.y;
-          for (const s of spans){
-            if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-            const top = b + h;
-            if (py > b - 0.02 && py < top - 0.02) return true;
-          }
-          return false;
-        }
+      spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+            : null;
+    } catch(_){ spans = null; }
+    /** @type {Array<{b:number,h:number}>} */
+    let spanList = Array.isArray(spans) ? spans : [];
+    if (!Array.isArray(spanList) || spanList.length === 0){
+      spanList = [];
+      // synthesize from columnHeights/bases if present
+      if (columnHeights.has(key)){
+        let b = 0; let h = columnHeights.get(key) || 0;
+        try {
+          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+        } catch(_){ }
+        if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
-    } catch(_){ }
+      // and include ground wall if map says WALL
+      if (map[mapIdx(gx,gz)] === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+    }
+    if (Array.isArray(spanList) && spanList.length){
+      const py = state.player.y;
+      for (const s of spanList){
+        if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+        const top = b + h;
+        if (py > b - 0.02 && py < top - 0.02) return true;
+      }
+      return false;
+    }
     // Column with optional raised base
     if (columnHeights.has(key)){
       const h = columnHeights.get(key) || 0.0;
@@ -155,12 +186,8 @@ function moveAndCollide(dt){
       if (py >= top - 0.02) return false;
       return true;
     }
-    // Simple wall tile at ground level (height 1)
-    if (map[mapIdx(gx,gz)] === TILE.WALL){
-      // Treat as solid from y in (0..1); allow passing if above the top
-      if (state.player.y >= 1.0 - 0.02) return false;
-      return true;
-    }
+  // No spans/columns: fallback to ground wall tile only
+  if (map[mapIdx(gx,gz)] === TILE.WALL){ return state.player.y < 1.0 - 0.02; }
     return false;
   }
   let hitWall = false;
