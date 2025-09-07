@@ -20,7 +20,7 @@ const PLAYER_FS = `#version 300 es
 precision mediump float;
 precision mediump sampler2DArray;
 uniform sampler2DArray u_tex;
-uniform int u_forceWhite;
+uniform int u_forceWhite; // 0=normal, 1=white, 2=red
 uniform int u_stipple; // 1 = checkerboard stipple using gl_FragCoord, 0 = normal
 in vec2 v_uv;
 flat in float v_layer;
@@ -28,6 +28,8 @@ out vec4 outColor;
 void main(){
   if (u_forceWhite == 1) {
     outColor = vec4(1.0,1.0,1.0,1.0);
+  } else if (u_forceWhite == 2) {
+    outColor = vec4(1.0,0.15,0.15,1.0);
   } else {
     outColor = texture(u_tex, vec3(v_uv, floor(v_layer + 0.5)));
   }

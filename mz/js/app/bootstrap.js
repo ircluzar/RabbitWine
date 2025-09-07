@@ -47,6 +47,7 @@ function render(now) {
   drawPlayerAndTrail(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, false);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, false);
   } else if (state.snapTopFull) {
     // Full-screen top camera
   state.cameraKindCurrent = 'top';
@@ -89,6 +90,7 @@ function render(now) {
   drawPlayerAndTrail(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, true);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
   } else {
     // Bottom viewport (lower half in pixels 0..seam)
   state.cameraKindCurrent = 'bottom';
@@ -114,6 +116,7 @@ function render(now) {
   drawPlayerAndTrail(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, false);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, false);
     }
     // Top viewport (upper half in pixels seam..H)
   state.cameraKindCurrent = 'top';
@@ -152,6 +155,7 @@ function render(now) {
   drawPlayerAndTrail(mvp);
   if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, true);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
     }
   }
 

@@ -24,6 +24,7 @@ function startMusicOnce(){
  * Turn player 90 degrees to the left
  */
 function turnLeft(){ 
+  if (state.player.isBallMode) return;
   if (!state.player.canTurn) return;
   state.player.angle -= Math.PI/2; 
   showSwipeGlow('left'); 
@@ -35,6 +36,7 @@ function turnLeft(){
  * Turn player 90 degrees to the right
  */
 function turnRight(){ 
+  if (state.player.isBallMode) return;
   if (!state.player.canTurn) return;
   state.player.angle += Math.PI/2; 
   showSwipeGlow('right'); 
@@ -46,6 +48,7 @@ function turnRight(){
  * Engage acceleration mode (swipe up)
  */
 function swipeUp(){
+  if (state.player.isBallMode) return;
   state.player.movementMode = 'accelerate';
   // First movement: start music
   startMusicOnce();
@@ -58,6 +61,7 @@ function swipeUp(){
  * Engage deceleration/stop or 180-flip when stationary (swipe down)
  */
 function swipeDown(){
+  if (state.player.isBallMode) return;
   const p = state.player;
   // If currently dashing, cancel immediately regardless of back ability
   if (p.isDashing){
@@ -87,6 +91,7 @@ function swipeDown(){
 
 // --- Dash helpers ---
 function startFreeze(){
+  if (state.player.isBallMode) return;
   const p = state.player;
   if (!p.hasDash || !p.canDash) return;
   if (p.dashUsed) return;
@@ -118,6 +123,7 @@ function resumeFromFreeze(){
  * dir: 'up'|'down'|'left'|'right'
  */
 function startDash(dir){
+  if (state.player.isBallMode) return;
   const p = state.player;
   if (!p.canDash || !p.hasDash || p.dashUsed) return;
   // Must be midair freeze or midair
@@ -175,6 +181,7 @@ function startDash(dir){
 function handleKeyboard(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // editor takes over
   const p = state.player;
+  if (p.isBallMode) return; // no controls in ball mode
   if (state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('arrowleft') || state.inputs.keys.has('a')) {
   if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('left'); }
   else { turnLeft(); }
@@ -213,6 +220,7 @@ function handleKeyboard(dt){
  */
 function doJump(){
   const p = state.player;
+  if (p.isBallMode) return;
   if (!p.canJump) {
     // Even without jump, allow toggling freeze/dash if enabled and midair
     if (p.hasDash && p.canDash && !p.dashUsed){

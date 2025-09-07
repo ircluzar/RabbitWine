@@ -79,41 +79,49 @@ function drawPlayerAndTrail(mvp){
   const p = state.player;
   let model = mat4Multiply(mat4Translate(p.x, p.y+0.25, p.z), mat4RotateY(p.angle));
   model = mat4Multiply(model, mat4Scale(1,1,1));
-  // First pass: draw only the visible (not occluded) parts, write depth
-  gl.useProgram(playerProgram);
-  gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
-  gl.uniformMatrix4fv(pl_u_model, false, model);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
-  if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-  if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, state.player.isFrozen ? 1 : 0);
-  if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 0);
-  gl.bindVertexArray(playerVAO);
-  gl.depthFunc(gl.LEQUAL);
-  gl.depthMask(true);
-  gl.disable(gl.BLEND);
-  gl.drawArrays(gl.TRIANGLES, 0, 36);
-  gl.bindVertexArray(null);
+  const nowSec = state.nowSec || (performance.now()/1000);
+  const inBall = !!p.isBallMode;
+  const flash = inBall && nowSec <= (p._ballFlashUntilSec || 0);
+  if (!inBall || flash){
+    // First pass: draw only the visible (not occluded) parts, write depth
+    gl.useProgram(playerProgram);
+    gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
+    gl.uniformMatrix4fv(pl_u_model, false, model);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
+    if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
+    // Force white usually while frozen; override to RED for one-frame flash on ball enter
+    if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
+    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 0);
+    gl.bindVertexArray(playerVAO);
+    gl.depthFunc(gl.LEQUAL);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.drawArrays(gl.TRIANGLES, 0, 36);
+    gl.bindVertexArray(null);
+  }
 
   // Second pass: draw only occluded fragments with checkerboard stipple
-  gl.useProgram(playerProgram);
-  gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
-  gl.uniformMatrix4fv(pl_u_model, false, model);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
-  if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-  if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, state.player.isFrozen ? 1 : 0);
-  if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 1);
-  gl.bindVertexArray(playerVAO);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.depthFunc(gl.GREATER); // Only draw where player is behind existing depth (occluded)
-  gl.depthMask(false);      // Don't disturb depth buffer
-  gl.drawArrays(gl.TRIANGLES, 0, 36);
-  gl.depthMask(true);
-  gl.disable(gl.BLEND);
-  gl.depthFunc(gl.LESS);
-  gl.bindVertexArray(null);
+  if (!inBall || flash){
+    gl.useProgram(playerProgram);
+    gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
+    gl.uniformMatrix4fv(pl_u_model, false, model);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
+    if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
+    if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
+    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 1);
+    gl.bindVertexArray(playerVAO);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthFunc(gl.GREATER); // Only draw where player is behind existing depth (occluded)
+    gl.depthMask(false);      // Don't disturb depth buffer
+    gl.drawArrays(gl.TRIANGLES, 0, 36);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.depthFunc(gl.LESS);
+    gl.bindVertexArray(null);
+  }
 
   // White wireframe contour slightly larger than the cube, floating around it
   // Persisted edge jitter update (~16ms bucket)
@@ -121,11 +129,12 @@ function drawPlayerAndTrail(mvp){
   gl.useProgram(trailCubeProgram);
   gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
   gl.uniform1f(tc_u_scale, 0.54);
-  gl.uniform1f(tc_u_now, state.nowSec || (performance.now()/1000));
+  gl.uniform1f(tc_u_now, nowSec);
   gl.uniform1f(tc_u_ttl, 1.0);
   gl.uniform1i(tc_u_dashMode, 1);
   gl.uniform1f(tc_u_mulAlpha, 0.85);
-  gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+  // Normal: white; Ball mode: red
+  if (inBall && !flash) gl.uniform3f(tc_u_lineColor, 1.0, 0.2, 0.2); else gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
   // Shader jitter disabled; VBO already carries persistent jitter
   if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
   gl.bindVertexArray(trailCubeVAO);
@@ -146,25 +155,65 @@ function drawPlayerAndTrail(mvp){
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(3), gl.DYNAMIC_DRAW);
   }
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  // Player wireframe: normal small white jittered shell; in ball mode, draw spinning red wireframe (same size as green)
+  if (inBall && !flash){
+  // Ensure full lines (no dash) so the spinning cube edges are visible
+  if (typeof tc_u_dashMode !== 'undefined' && tc_u_dashMode) gl.uniform1i(tc_u_dashMode, 0);
+  // Keep alpha stable during ball mode by using a long TTL
+  if (typeof tc_u_ttl !== 'undefined' && tc_u_ttl) gl.uniform1f(tc_u_ttl, 9999.0);
+  if (typeof tc_u_mulAlpha !== 'undefined' && tc_u_mulAlpha) gl.uniform1f(tc_u_mulAlpha, 1.0);
+    // Use axis stream to spin
+    if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([p._ballSpinAxisX||0, p._ballSpinAxisY||1, p._ballSpinAxisZ||0]), gl.DYNAMIC_DRAW);
+    }
+    // Enable animation in shader: use rot speed as spin speed
+    if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 1);
+    if (typeof tc_u_rotSpeed !== 'undefined' && tc_u_rotSpeed) gl.uniform1f(tc_u_rotSpeed, p._ballSpinSpeed || 1.0);
+    if (typeof tc_u_wobbleAmp !== 'undefined' && tc_u_wobbleAmp) gl.uniform1f(tc_u_wobbleAmp, 0.0);
+    if (typeof tc_u_wobbleSpeed !== 'undefined' && tc_u_wobbleSpeed) gl.uniform1f(tc_u_wobbleSpeed, 0.0);
+    // No jitter offsets for spinning cube
+    if (typeof trailCubeVBO_Corners !== 'undefined'){
+      const zeros = new Float32Array(8 * 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+    }
+    // One instance at player center (same size as green cube shell: 0.54)
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  // Draw on top of everything: disable depth test for this pass (don’t write depth)
+  gl.disable(gl.DEPTH_TEST);
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
-  const tNow = state.nowSec || (performance.now()/1000);
-  const offsets = [
-    [0,0,0],
-    [0.01,0.00,0.00], [-0.01,0.00,0.00],
-    [0.00,0.01,0.00], [0.00,-0.01,0.00],
-    [0.00,0.00,0.01], [0.00,0.00,-0.01],
-  ];
-  for (let i=0;i<offsets.length;i++){
-    const o = offsets[i];
-    const instOne = new Float32Array([p.x + o[0], p.y + 0.25 + o[1], p.z + o[2], tNow]);
+  // Use ball start time as seed so shader angle grows with (u_now - seed)
+  const instOne = new Float32Array([p.x, p.y + 0.25, p.z, p._ballStartSec || nowSec]);
     gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
     gl.depthMask(false);
     gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
+    gl.depthMask(true);
+  gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+  } else {
+    // Normal white jittered shell behavior
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
+    const offsets = [
+      [0,0,0],
+      [0.01,0.00,0.00], [-0.01,0.00,0.00],
+      [0.00,0.01,0.00], [0.00,-0.01,0.00],
+      [0.00,0.00,0.01], [0.00,0.00,-0.01],
+    ];
+    for (let i=0;i<offsets.length;i++){
+      const o = offsets[i];
+      const instOne = new Float32Array([p.x + o[0], p.y + 0.25 + o[1], p.z + o[2], nowSec]);
+      gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
+      gl.depthMask(false);
+      gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
+    }
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
   }
-  gl.depthMask(true);
-  gl.disable(gl.BLEND);
-  gl.bindVertexArray(null);
   }
 }

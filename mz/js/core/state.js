@@ -35,6 +35,17 @@ const state = {
   // Movement mode: 'stationary' (decelerate/hold 0) or 'accelerate' (accelerate toward seam max)
   movementMode: 'stationary',
     radius: 0.3,
+  // Damage/ball mode
+  isBallMode: false,
+  _ballVX: 0.0,
+  _ballVZ: 0.0,
+  _ballBouncesLeft: 0,
+  _ballStartSec: 0,
+  _ballFlashUntilSec: 0,
+  _ballSpinAxisX: 0,
+  _ballSpinAxisY: 1,
+  _ballSpinAxisZ: 0,
+  _ballSpinSpeed: 0.0,
   // Ability flags (unlockable during gameplay)
   canBack: false,      // press down to stop/go backwards (ABILITY_BACK)
   canTurn: false,      // turning locked until unlocked by an ability

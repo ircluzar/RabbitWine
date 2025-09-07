@@ -31,6 +31,7 @@ function updateCameraFollow(dt){
  * @param {number} dt - Delta time in seconds
  */
 function updateCameraYaw(dt){
+  if (state.player && state.player.isBallMode) return; // freeze camera yaw in ball mode
   const target = state.player.angle;
   let dyaw = normalizeAngle(target - state.camYaw);
   const yawK = 10.0;

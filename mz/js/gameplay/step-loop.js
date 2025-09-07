@@ -76,5 +76,6 @@ function stepGame(dt){
   // Safety: if started dash while grounded by edge-case, cancel
   if (state.player.grounded && state.player.isDashing){ state.player.isDashing = false; }
   
+  // Trail still updates in ball mode for now (looks like ragdoll tumble). If needed, we could skip.
   updateTrail();
 }

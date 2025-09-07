@@ -129,6 +129,11 @@ function ceilingHeightAt(x, z, py){
 function moveAndCollide(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // no collision in editor
   const p = state.player;
+  // If in ball mode: custom motion/bounce, ignore normal control-based movement
+  if (p.isBallMode) {
+    runBallMode(dt);
+    return;
+  }
   const oldX = p.x, oldZ = p.z;
   const baseSpeed = 3.0;
   const seamMax = baseSpeed * seamSpeedFactor();
@@ -238,8 +243,49 @@ function moveAndCollide(dt){
     return false;
   }
   let hitWall = false;
-  if (!isWallAt(p.x, newZ)) { p.z = newZ; } else { newZ = p.z; hitWall = true; }
-  if (!isWallAt(newX, p.z)) { p.x = newX; } else { newX = p.x; hitWall = true; }
+  // Ball mode should only trigger on touching the grid edge (true out-of-bounds),
+  // not when colliding with blocks that happen to be placed in border cells.
+  function isBorderCell(gx, gz){
+    return (gx === 0 || gz === 0 || gx === (MAP_W|0)-1 || gz === (MAP_H|0)-1);
+  }
+  // Try move along Z; if blocked by border, enter ball mode
+  {
+    const gxCur = Math.floor(p.x + MAP_W*0.5);
+    const gzNew = Math.floor(newZ + MAP_H*0.5);
+    const outZ = (gzNew < 0 || gzNew >= MAP_H);
+    if (!isWallAt(p.x, newZ)) {
+      p.z = newZ;
+    } else {
+      newZ = p.z; hitWall = true;
+      // Only trigger damage/ball mode if we attempted to go outside the grid
+      if (outZ){
+        // normal points inward (opposite attempted step)
+        const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
+        enterBallMode(n);
+        // Revert any movement from this frame
+        p.x = oldX; p.z = oldZ;
+        return;
+      }
+    }
+  }
+  // Try move along X; if blocked by border, enter ball mode
+  {
+    const gzCur = Math.floor(p.z + MAP_H*0.5);
+    const gxNew = Math.floor(newX + MAP_W*0.5);
+    const outX = (gxNew < 0 || gxNew >= MAP_W);
+    if (!isWallAt(newX, p.z)) {
+      p.x = newX;
+    } else {
+      newX = p.x; hitWall = true;
+      // Only trigger damage/ball mode if we attempted to go outside the grid
+      if (outX){
+        const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
+        enterBallMode(n);
+        p.x = oldX; p.z = oldZ;
+        return;
+      }
+    }
+  }
 
   // If dash hit a wall this frame, cancel any movement and jump immediately
   if (hitWall && wasDashing){
@@ -289,6 +335,7 @@ function moveAndCollide(dt){
 function applyVerticalPhysics(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // no gravity in editor
   const p = state.player;
+  if (p.isBallMode) { return; }
   const GRAV = -12.5;
   // If frozen: pause gravity
   if (!p.isFrozen){
@@ -342,3 +389,179 @@ function applyVerticalPhysics(dt){
   // Track previous grounded state for landing SFX
   state._wasGrounded = p.grounded;
 }
+
+// --- Damage and Ball Mode ---
+/**
+ * Trigger player damage and enter ball mode with an impulse away from a hit normal.
+ * @param {{nx:number,nz:number}} hitNormalXZ - Unit normal in XZ pointing from wall into free space.
+ */
+function enterBallMode(hitNormalXZ){
+  const p = state.player;
+  if (p.isBallMode) return;
+  // Freeze inputs and camera yaw during ball mode
+  p.isBallMode = true;
+  p.isFrozen = true;
+  p.isDashing = false;
+  p.movementMode = 'stationary';
+  p.speed = 0.0;
+  // Compute push impulse opposite the wall, with small upward pop
+  const nx = (hitNormalXZ && isFinite(hitNormalXZ.nx)) ? hitNormalXZ.nx : -Math.sin(p.angle);
+  const nz = (hitNormalXZ && isFinite(hitNormalXZ.nz)) ? hitNormalXZ.nz : Math.cos(p.angle);
+  const len = Math.hypot(nx, nz) || 1;
+  let ix = nx/len, iz = nz/len;
+  // Randomize initial recoil direction (free angle in ball mode)
+  const jitterDeg = 69; // ±35°
+  const jitter = (Math.random()*2 - 1) * (jitterDeg * Math.PI / 180);
+  const baseAng = Math.atan2(iz, ix);
+  const ang = baseAng + jitter;
+  const dirX = Math.cos(ang), dirZ = Math.sin(ang);
+  // Impulse magnitudes (less upward jump on first recoil)
+  const lateral = 4.5; // m/s sideways
+  const up = 4.0;      // m/s upward, reduced for subtler pop
+  p._ballVX = dirX * lateral;
+  p._ballVZ = dirZ * lateral;
+  p.vy = up;
+  p.grounded = false;
+  p._ballBouncesLeft = 3;
+  // Fewer total ground bounces feels snappier and less chaotic
+  p._ballBouncesLeft = 2;
+  p._ballStartSec = state.nowSec || (performance.now()/1000);
+  // Visuals: brief red flash and random initial spin axis/speed
+  const now = p._ballStartSec;
+  p._ballFlashUntilSec = now + (1/60); // one-frame at 60hz; time-based so robust
+  // random unit axis
+  {
+    let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
+    const L = Math.hypot(ax,ay,az) || 1; ax/=L; ay/=L; az/=L;
+    p._ballSpinAxisX = ax; p._ballSpinAxisY = ay; p._ballSpinAxisZ = az;
+  }
+  p._ballSpinSpeed = 0.8 + Math.random()*0.8; // 0.8..1.6 rad/s
+  // Fire event for UI/SFX hooks
+  try { window.dispatchEvent(new CustomEvent('playerDamaged', { detail: { x:p.x, y:p.y, z:p.z } })); } catch(_){ }
+  // SFX: damage/enter ball mode
+  try { if (window.sfx) sfx.play('./sfx/VRUN_DamageRespawn.mp3'); } catch(_){ }
+}
+
+/**
+ * Integrate ball-mode physics: reduced gravity, ground and wall bounces.
+ */
+function runBallMode(dt){
+  const p = state.player;
+  const GRAV = -8.0; // lowered gravity in ball mode
+  // Integrate vertical
+  p.vy += GRAV * dt;
+  let newY = p.y + p.vy * dt;
+  const gH = groundHeightAt(p.x, p.z);
+  const wasAir = !p.grounded;
+  if (p.vy <= 0.0 && newY <= gH){
+    newY = gH;
+    // Ground bounce
+    if (p._ballBouncesLeft > 0){
+      // Dampen vertical and horizontal more strongly
+      const bounceFactor = 0.45; // lower vertical energy retention
+      const decay = 0.55; // stronger horizontal decay per ground contact
+      p.vy = Math.max(1.6, Math.abs(p.vy) * bounceFactor);
+      p._ballVX *= decay;
+      p._ballVZ *= decay;
+      // Cap horizontal speed after bounce to avoid propulsion
+      {
+        const hv = Math.hypot(p._ballVX, p._ballVZ);
+        const cap = 3.0;
+        if (hv > cap){ const s = cap / hv; p._ballVX *= s; p._ballVZ *= s; }
+      }
+      p._ballBouncesLeft--;
+      // Randomize spin axis and speed on each ground bounce
+      {
+        let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
+        const L = Math.hypot(ax,ay,az) || 1; ax/=L; ay/=L; az/=L;
+        p._ballSpinAxisX = ax; p._ballSpinAxisY = ay; p._ballSpinAxisZ = az;
+        p._ballSpinSpeed = 0.6 + Math.random()*1.2; // 0.6..1.8 rad/s
+      }
+  // SFX per ground bounce
+  try { if (window.sfx) sfx.play('./sfx/TunnelRun_Jump.mp3', { volume: 0.6 }); } catch(_){ }
+    } else {
+      // End ball mode on ground rest
+      p.vy = 0.0;
+      p.grounded = true;
+      exitBallMode();
+      p.y = newY;
+      return;
+    }
+  }
+  p.y = newY;
+  // Horizontal move with wall bounce using same lateral collision check as walls
+  const stepX = p._ballVX * dt;
+  const stepZ = p._ballVZ * dt;
+  let nx = 0, nz = 0; // collision normal accumulator
+  let bounced = false;
+  function isWallAtXZ(wx, wz){
+    // Reuse horizontal collision test from moveAndCollide scope
+    const gx = Math.floor(wx + MAP_W*0.5);
+    const gz = Math.floor(wz + MAP_H*0.5);
+    if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true; // treat border as wall
+    const key = `${gx},${gz}`;
+    let spans = null;
+    try {
+      spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+            : null;
+    } catch(_){ spans = null; }
+    let spanList = Array.isArray(spans) ? spans : [];
+    if (!spanList.length){
+      if (columnHeights.has(key)){
+        let b = 0; let h = columnHeights.get(key) || 0;
+        try {
+          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+        } catch(_){ }
+        if (h > 0) spanList.push({ b: b|0, h: h|0 });
+      }
+      if (map[mapIdx(gx,gz)] === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+    }
+    if (spanList.length){
+      const py = p.y;
+      for (const s of spanList){
+        if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+        const top=b+h; if (py > b - 0.02 && py < top - 0.02) return true;
+      }
+    }
+    return false;
+  }
+  // Try Z then X similar to normal collision for a simple normal estimate
+  let nxTry = p.x, nzTry = p.z + stepZ;
+  if (!isWallAtXZ(nxTry, nzTry)) { p.z = nzTry; } else { p._ballVZ = -p._ballVZ * 0.45; bounced = true; nz = -Math.sign(stepZ); }
+  nxTry = p.x + stepX; nzTry = p.z;
+  if (!isWallAtXZ(nxTry, nzTry)) { p.x = nxTry; } else { p._ballVX = -p._ballVX * 0.45; bounced = true; nx = -Math.sign(stepX); }
+  if (bounced){
+    // Smaller upward nudge on wall bounce
+    p.vy = Math.max(p.vy, 1.0);
+    // Cap horizontal speed after wall bounce
+    const hv = Math.hypot(p._ballVX, p._ballVZ);
+    const cap = 3.5;
+    if (hv > cap){ const s = cap / hv; p._ballVX *= s; p._ballVZ *= s; }
+    // Randomize spin axis and speed on wall bounce as well
+    {
+      let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
+      const L = Math.hypot(ax,ay,az) || 1; ax/=L; ay/=L; az/=L;
+      p._ballSpinAxisX = ax; p._ballSpinAxisY = ay; p._ballSpinAxisZ = az;
+      p._ballSpinSpeed = 0.6 + Math.random()*1.2; // 0.6..1.8 rad/s
+    }
+  // SFX per wall bounce
+  try { if (window.sfx) sfx.play('./sfx/TunnelRun_Jump.mp3', { volume: 0.5 }); } catch(_){ }
+  }
+}
+
+function exitBallMode(){
+  const p = state.player;
+  p.isBallMode = false;
+  p.isFrozen = false;
+  // Restore control and camera; come to rest
+  p.movementMode = 'stationary';
+  p.speed = 0.0;
+  // Clear ball visuals
+  p._ballSpinSpeed = 0.0;
+  p._ballFlashUntilSec = 0.0;
+}
+
+// Expose enterBallMode for other modules
+if (typeof window !== 'undefined') window.enterBallMode = enterBallMode;
