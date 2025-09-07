@@ -60,6 +60,12 @@ function resizeCanvasToViewport() {
   }
   // Update lock button visibility immediately on resize
   try {
-    if (ALT_LOCK_BTN){ ALT_LOCK_BTN.dataset.hidden = state.snapBottomFull ? 'true' : 'false'; }
+    if (ALT_LOCK_BTN){
+      const canTurn = !!(state.player && state.player.canTurn);
+      const hide = (state.snapBottomFull || !canTurn);
+      ALT_LOCK_BTN.dataset.hidden = hide ? 'true' : 'false';
+      ALT_LOCK_BTN.style.display = hide ? 'none' : 'inline-flex';
+    }
+    if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
   } catch(_){ }
 }

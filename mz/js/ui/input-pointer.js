@@ -61,7 +61,7 @@ function onPointerMove(e) {
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
             dashHeadingCardinal(card);
           } else {
-            moveHeadingCardinal(card);
+            maybeStopOrMoveCardinal(card);
           }
         } else {
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
@@ -79,7 +79,7 @@ function onPointerMove(e) {
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
             dashHeadingCardinal(card);
           } else {
-            moveHeadingCardinal(card);
+            maybeStopOrMoveCardinal(card);
           }
         } else {
           if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
@@ -114,7 +114,7 @@ function onPointerUpOrCancel(e) {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
               dashHeadingCardinal(card);
             } else {
-              moveHeadingCardinal(card);
+              maybeStopOrMoveCardinal(card);
             }
           } else {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
@@ -128,7 +128,7 @@ function onPointerUpOrCancel(e) {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
               dashHeadingCardinal(card);
             } else {
-              moveHeadingCardinal(card);
+              maybeStopOrMoveCardinal(card);
             }
           } else {
             if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {

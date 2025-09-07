@@ -26,7 +26,7 @@ function bust($path) {
     </div>
 
   <!-- Alt control lock button (bottom-center) -->
-  <button id="alt-control-lock" type="button" aria-pressed="false" title="Lock bottom controls (toggle)">Lock</button>
+  <button id="alt-control-lock" type="button" aria-pressed="false" aria-hidden="true" data-hidden="true" style="display:none" title="Lock bottom controls (toggle)">⬍⬌</button>
 
   <!-- Debug toggle -->
   <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle debug HUD (on/off)">Debug: OFF</button>

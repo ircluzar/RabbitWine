@@ -50,15 +50,21 @@ SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
 (function syncAltLockBtn(){
   try {
     if (ALT_LOCK_BTN){
-      const hide = !!state.snapBottomFull;
-      ALT_LOCK_BTN.dataset.hidden = hide ? 'true' : 'false';
-      ALT_LOCK_BTN.setAttribute('aria-hidden', hide ? 'true' : 'false');
-      ALT_LOCK_BTN.textContent = state.altBottomControlLocked ? 'Unlock' : 'Lock';
+      const canTurn = !!(state.player && state.player.canTurn);
+      const hide = !!state.snapBottomFull || !canTurn;
+  const hiddenStr = hide ? 'true' : 'false';
+  ALT_LOCK_BTN.dataset.hidden = hiddenStr;
+  ALT_LOCK_BTN.setAttribute('aria-hidden', hiddenStr);
+  ALT_LOCK_BTN.style.display = hide ? 'none' : 'inline-flex';
+  if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
       ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
     }
   } catch(_){}
   requestAnimationFrame(syncAltLockBtn);
 })();
+
+// Initialize the lock icon once on load
+try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){}
 
 // Pointer lock state tracking for editor
 document.addEventListener('pointerlockchange', onPointerLockChange);

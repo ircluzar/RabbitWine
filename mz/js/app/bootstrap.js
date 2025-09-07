@@ -223,7 +223,7 @@ function render(now) {
       const hide = !!state.snapBottomFull;
       ALT_LOCK_BTN.dataset.hidden = hide ? 'true' : 'false';
       ALT_LOCK_BTN.setAttribute('aria-hidden', hide ? 'true' : 'false');
-      ALT_LOCK_BTN.textContent = state.altBottomControlLocked ? 'Unlock' : 'Lock';
+  if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
       ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
     }
   } catch(_){ }

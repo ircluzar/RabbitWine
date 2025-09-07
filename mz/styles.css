@@ -93,6 +93,9 @@ body {
 
 /* Alt control lock button - bottom center */
 #alt-control-lock{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   position: fixed;
   left: 50%;
   bottom: 0.75rem;
@@ -101,9 +104,10 @@ body {
   color: #cfe4ff;
   border: 1px solid #41506e;
   border-radius: 999px;
-  padding: 0.45rem 0.9rem;
+  padding: 0.5rem 0.95rem;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  font-size: 0.85rem;
+  font-size: 1.15rem; /* icon-sized by default */
+  line-height: 1;
   cursor: pointer;
   z-index: 11;
 }
@@ -112,6 +116,26 @@ body {
 
 /* Hide the lock when bottom is full-screen to avoid redundancy */
 #alt-control-lock[data-hidden="true"]{ display: none !important; }
+#alt-control-lock[data-hidden="false"]{ display: inline-flex; }
+
+/* State-specific sizing: make the Unlock button (pressed=true) bigger in height */
+#alt-control-lock[aria-pressed="true"]{
+  padding: 0.8rem 1.1rem; /* taller */
+  font-size: 1.35rem;
+}
+
+/* Optional: slightly smaller when unlocked */
+#alt-control-lock[aria-pressed="false"]{
+  padding: 0.55rem 0.95rem;
+  font-size: 1.25rem; /* big 4-arrows look */
+}
+
+/* Size and center the SVG icons inside the button */
+#alt-control-lock svg{
+  display: block;
+  width: 2.2em;
+  height: 2.2em;
+}
 
 /* Editor modal root; positioned to avoid the top screen (sits above bottom viewport) */
 #mz-editor-modal-root{ position:fixed; left:0; right:0; bottom:0; z-index:12000; pointer-events:none; }

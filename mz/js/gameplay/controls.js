@@ -227,6 +227,45 @@ function cardinalRelativeToCamera(screenDir){
   return out === 0 ? 'north' : out === 1 ? 'east' : out === 2 ? 'south' : 'west';
 }
 
+// --- Alt-mode: stop-or-move logic ---
+function angleOfCard(card){
+  return card === 'north' ? 0.0 : card === 'east' ? Math.PI/2 : card === 'south' ? Math.PI : -Math.PI/2;
+}
+
+/**
+ * If pressing the opposite of current movement, stop (like down in normal controls).
+ * Otherwise, move toward that cardinal.
+ */
+function maybeStopOrMoveCardinal(card){
+  const p = state.player;
+  if (p.isBallMode) return;
+  // Helper: current motion heading (dash vector if dashing, else player angle)
+  const tgt = angleOfCard(card);
+  const motionAngle = (function(){
+    if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){
+      // dash vector -> angle where dirX = sin(a), dirZ = -cos(a)
+      return Math.atan2(p._dashDirX || 0, -(p._dashDirZ || 0));
+    }
+    return (typeof normalizeAngle === 'function') ? normalizeAngle(p.angle) : p.angle;
+  })();
+  const diff = (typeof normalizeAngle === 'function') ? normalizeAngle(tgt - motionAngle) : (tgt - motionAngle);
+  const isOpp = Math.cos(diff) <= -0.99; // ~ PI apart
+  // When currently dashing: opposite cancels; otherwise set heading now (applies post-dash)
+  if (p.isDashing){ if (isOpp) { swipeDown(); } else { setHeadingCardinal(card); } return; }
+  // If frozen or back ability is locked, just attempt to move (freeze will hold speed at 0)
+  if (p.isFrozen || !p.canBack){ moveHeadingCardinal(card); return; }
+  const moving = (p.movementMode === 'accelerate') && (p.speed || 0) > 0.001;
+  if (moving){
+    if (isOpp){
+      // Stop without changing heading; reuse swipeDown for sfx/dash-cancel, but only when moving
+      swipeDown();
+      return;
+    }
+  }
+  // If stationary or not opposite, just move toward requested cardinal
+  moveHeadingCardinal(card);
+}
+
 /**
  * Process keyboard input for player controls
  * @param {number} dt - Delta time (unused)
@@ -250,16 +289,16 @@ function handleKeyboard(dt){
   const rel = !!(state.altBottomControlLocked && !state.snapBottomFull);
     if (wantNorth){
       const card = rel ? cardinalRelativeToCamera('north') : 'north';
-      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+      dashOK ? dashHeadingCardinal(card) : maybeStopOrMoveCardinal(card); clearDirKeys();
     } else if (wantSouth){
       const card = rel ? cardinalRelativeToCamera('south') : 'south';
-      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+      dashOK ? dashHeadingCardinal(card) : maybeStopOrMoveCardinal(card); clearDirKeys();
     } else if (wantWest){
       const card = rel ? cardinalRelativeToCamera('west') : 'west';
-      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+      dashOK ? dashHeadingCardinal(card) : maybeStopOrMoveCardinal(card); clearDirKeys();
     } else if (wantEast){
       const card = rel ? cardinalRelativeToCamera('east') : 'east';
-      dashOK ? dashHeadingCardinal(card) : moveHeadingCardinal(card); clearDirKeys();
+      dashOK ? dashHeadingCardinal(card) : maybeStopOrMoveCardinal(card); clearDirKeys();
     }
     // Space/jump handling remains as usual in alt mode
     if (state.inputs.keys.has(' ') || state.inputs.keys.has('Space') || state.inputs.keys.has('Spacebar') || state.inputs.keys.has('space')){
@@ -348,5 +387,6 @@ window.setHeadingCardinal = setHeadingCardinal;
 window.moveHeadingCardinal = moveHeadingCardinal;
 window.dashHeadingCardinal = dashHeadingCardinal;
 window.cardinalRelativeToCamera = cardinalRelativeToCamera;
+window.maybeStopOrMoveCardinal = maybeStopOrMoveCardinal;
 // Expose music-start helper so other modules (e.g., start-modal) can trigger when they initiate movement
 window.startMusicOnce = startMusicOnce;

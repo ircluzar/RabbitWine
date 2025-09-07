@@ -26,6 +26,15 @@ function onToggleDebug(){
     p.canDash = true;
     p.hasDash = true;
     p.dashUsed = false; // ensure dash is available immediately
+    // Reveal lock button if allowed (canTurn) and not bottom-fullscreen
+    try {
+      if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN){
+        const hide = !!state.snapBottomFull || !p.canTurn;
+        ALT_LOCK_BTN.dataset.hidden = hide ? 'true' : 'false';
+        ALT_LOCK_BTN.setAttribute('aria-hidden', hide ? 'true' : 'false');
+        if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
+      }
+    } catch(_){ }
   }
   // Show/hide editor button only in debug mode
   const EDITOR_TOGGLE = document.getElementById('editor-toggle');
@@ -35,6 +44,43 @@ function onToggleDebug(){
 // Expose for DOM event listeners
 if (typeof window !== 'undefined'){
   window.onToggleDebug = onToggleDebug;
+  // Helper: set lock button icon using inline SVGs (white, thick)
+  window.setAltLockButtonIcon = function setAltLockButtonIcon(){
+    if (typeof ALT_LOCK_BTN === 'undefined' || !ALT_LOCK_BTN) return;
+    const pressed = state.altBottomControlLocked ? 'true' : 'false';
+    ALT_LOCK_BTN.setAttribute('aria-pressed', pressed);
+    // SVGs (white, thick strokes)
+    const lockSVG = (
+      '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">'
+      + '<g stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none">'
+      // Cross (vertical + horizontal)
+      + '<path d="M50 10 L50 90"/>'
+      + '<path d="M10 50 L90 50"/>'
+      // Arrowheads: North
+      + '<path d="M50 10 L44 20"/>'
+      + '<path d="M50 10 L56 20"/>'
+      // South
+      + '<path d="M50 90 L44 80"/>'
+      + '<path d="M50 90 L56 80"/>'
+      // West
+      + '<path d="M10 50 L20 44"/>'
+      + '<path d="M10 50 L20 56"/>'
+      // East
+      + '<path d="M90 50 L80 44"/>'
+      + '<path d="M90 50 L80 56"/>'
+      + '</g></svg>'
+    );
+    const unlockSVG = (
+      '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">'
+      + '<g stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none">'
+      + '<path d="M20 50 L80 50"/>'
+      + '<path d="M30 35 L20 50 L30 65"/>'
+      + '<path d="M70 35 L80 50 L70 65"/>'
+      + '</g></svg>'
+    );
+    ALT_LOCK_BTN.innerHTML = (pressed === 'true') ? lockSVG : unlockSVG;
+    ALT_LOCK_BTN.title = (pressed === 'true') ? 'Unlock (return to normal controls)' : 'Lock controls (camera-relative)';
+  };
   // Alt control lock toggle: when on, use bottom-fullscreen controls without bottom being fullscreen.
   window.onToggleAltControlLock = function onToggleAltControlLock(){
     try {
@@ -46,10 +92,7 @@ if (typeof window !== 'undefined'){
         const target = (typeof normalizeAngle === 'function') ? normalizeAngle(state.player.angle) : state.player.angle;
         state.camYaw = target;
       }
-      if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN){
-        ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
-        ALT_LOCK_BTN.textContent = state.altBottomControlLocked ? 'Unlock' : 'Lock';
-      }
+      if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
     } catch(_){ }
   };
 }
