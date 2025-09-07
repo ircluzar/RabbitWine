@@ -174,6 +174,39 @@ function startDash(dir){
   if (typeof showSwipeGlow === 'function') showSwipeGlow(dir);
 }
 
+// --- Bottom-fullscreen alternate control helpers (cardinal heading) ---
+/**
+ * Set player yaw to a cardinal direction if turning is allowed.
+ * card: 'north'|'south'|'west'|'east'
+ */
+function setHeadingCardinal(card){
+  const p = state.player;
+  if (p.isBallMode) return;
+  // Respect turn lock: if turning is disabled and the new heading differs, skip
+  let target = p.angle;
+  if (card === 'north') target = 0.0;
+  else if (card === 'east') target = Math.PI/2;
+  else if (card === 'south') target = Math.PI;
+  else if (card === 'west') target = -Math.PI/2;
+  if (!p.canTurn){ return; }
+  p.angle = (typeof normalizeAngle === 'function') ? normalizeAngle(target) : target;
+}
+
+/** Move toward a cardinal heading (sets heading, then accelerates). */
+function moveHeadingCardinal(card){
+  const p = state.player; if (p.isBallMode) return;
+  setHeadingCardinal(card);
+  swipeUp();
+}
+
+/** Dash toward a cardinal heading (sets heading, then dashes forward). */
+function dashHeadingCardinal(card){
+  const p = state.player; if (p.isBallMode) return;
+  // Only valid midair with dash ability; set heading first, then dash forward
+  setHeadingCardinal(card);
+  startDash('up');
+}
+
 /**
  * Process keyboard input for player controls
  * @param {number} dt - Delta time (unused)
@@ -182,6 +215,30 @@ function handleKeyboard(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // editor takes over
   const p = state.player;
   if (p.isBallMode) return; // no controls in ball mode
+  // Alt control mapping when bottom view is maximized: arrow/WASD map to cardinals
+  if (state.snapBottomFull){
+    const wantNorth = state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('arrowup') || state.inputs.keys.has('w');
+    const wantSouth = state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('arrowdown') || state.inputs.keys.has('s');
+    const wantWest  = state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('arrowleft') || state.inputs.keys.has('a');
+    const wantEast  = state.inputs.keys.has('ArrowRight') || state.inputs.keys.has('arrowright') || state.inputs.keys.has('d');
+    const dashOK = p.isFrozen && p.hasDash && !p.dashUsed;
+    function clearDirKeys(){
+      ['ArrowUp','arrowup','w','ArrowDown','arrowdown','s','ArrowLeft','arrowleft','a','ArrowRight','arrowright','d']
+        .forEach(k=>state.inputs.keys.delete(k));
+    }
+    if (wantNorth){ dashOK ? dashHeadingCardinal('north') : moveHeadingCardinal('north'); clearDirKeys(); }
+    else if (wantSouth){ dashOK ? dashHeadingCardinal('south') : moveHeadingCardinal('south'); clearDirKeys(); }
+    else if (wantWest){ dashOK ? dashHeadingCardinal('west') : moveHeadingCardinal('west'); clearDirKeys(); }
+    else if (wantEast){ dashOK ? dashHeadingCardinal('east') : moveHeadingCardinal('east'); clearDirKeys(); }
+    // Space/jump handling remains as usual in alt mode
+    if (state.inputs.keys.has(' ') || state.inputs.keys.has('Space') || state.inputs.keys.has('Spacebar') || state.inputs.keys.has('space')){
+      doJump();
+      state.inputs.keys.delete(' ');
+      state.inputs.keys.delete('Space');
+      state.inputs.keys.delete('Spacebar'); state.inputs.keys.delete('space');
+    }
+    return;
+  }
   if (state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('arrowleft') || state.inputs.keys.has('a')) {
   if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('left'); }
   else { turnLeft(); }
@@ -256,5 +313,8 @@ window.swipeUp = swipeUp;
 window.swipeDown = swipeDown;
 window.doJump = doJump;
 window.handleKeyboard = handleKeyboard;
+window.setHeadingCardinal = setHeadingCardinal;
+window.moveHeadingCardinal = moveHeadingCardinal;
+window.dashHeadingCardinal = dashHeadingCardinal;
 // Expose music-start helper so other modules (e.g., start-modal) can trigger when they initiate movement
 window.startMusicOnce = startMusicOnce;

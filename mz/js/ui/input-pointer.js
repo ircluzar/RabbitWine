@@ -50,21 +50,39 @@ function onPointerMove(e) {
     const totalDx = p.x - p.startX;
     const totalDy = p.y - p.startY;
     if (!p.turned) {
-      // Horizontal swipe => turn left/right
+      const useAlt = !!state.snapBottomFull;
+      // Horizontal swipe
       if (Math.abs(totalDx) > 36 && Math.abs(totalDx) > Math.abs(totalDy) * 1.3) {
-        if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-          if (totalDx < 0) startDash('left'); else startDash('right');
+        if (useAlt) {
+          // Move or dash West/East (dash when frozen with dash available)
+          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+            if (totalDx < 0) dashHeadingCardinal('west'); else dashHeadingCardinal('east');
+          } else {
+            if (totalDx < 0) moveHeadingCardinal('west'); else moveHeadingCardinal('east');
+          }
         } else {
-          if (totalDx < 0) turnLeft(); else turnRight();
+          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+            if (totalDx < 0) startDash('left'); else startDash('right');
+          } else {
+            if (totalDx < 0) turnLeft(); else turnRight();
+          }
         }
         p.turned = true;
       } else if (Math.abs(totalDy) > 36 && Math.abs(totalDy) > Math.abs(totalDx) * 1.3) {
-        // Vertical swipe => up/down movement control
-        if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-          if (totalDy < 0) startDash('up'); else startDash('down');
+        // Vertical swipe
+        if (useAlt) {
+          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+            if (totalDy < 0) dashHeadingCardinal('north'); else dashHeadingCardinal('south');
+          } else {
+            if (totalDy < 0) moveHeadingCardinal('north'); else moveHeadingCardinal('south');
+          }
         } else {
-          if (totalDy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
-          else { if (typeof swipeDown === 'function') swipeDown(); }
+          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+            if (totalDy < 0) startDash('up'); else startDash('down');
+          } else {
+            if (totalDy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
+            else { if (typeof swipeDown === 'function') swipeDown(); }
+          }
         }
         p.turned = true;
       }
@@ -82,16 +100,33 @@ function onPointerUpOrCancel(e) {
       const dy = p.y - p.startY;
       const mag = Math.hypot(dx, dy);
       if (mag > 24) {
+        const useAlt = !!state.snapBottomFull;
         if (Math.abs(dx) > Math.abs(dy) * 1.2) {
-          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-            if (dx < 0) startDash('left'); else startDash('right');
-          } else { if (dx < 0) turnLeft(); else turnRight(); }
-        } else if (Math.abs(dy) > Math.abs(dx) * 1.2) {
-          if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
-            if (dy < 0) startDash('up'); else startDash('down');
+          if (useAlt) {
+            if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+              if (dx < 0) dashHeadingCardinal('west'); else dashHeadingCardinal('east');
+            } else {
+              if (dx < 0) moveHeadingCardinal('west'); else moveHeadingCardinal('east');
+            }
           } else {
-            if (dy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
-            else { if (typeof swipeDown === 'function') swipeDown(); }
+            if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+              if (dx < 0) startDash('left'); else startDash('right');
+            } else { if (dx < 0) turnLeft(); else turnRight(); }
+          }
+        } else if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+          if (useAlt) {
+            if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+              if (dy < 0) dashHeadingCardinal('north'); else dashHeadingCardinal('south');
+            } else {
+              if (dy < 0) moveHeadingCardinal('north'); else moveHeadingCardinal('south');
+            }
+          } else {
+            if (state.player.isFrozen && state.player.hasDash && !state.player.dashUsed) {
+              if (dy < 0) startDash('up'); else startDash('down');
+            } else {
+              if (dy < 0) { if (typeof swipeUp === 'function') swipeUp(); }
+              else { if (typeof swipeDown === 'function') swipeDown(); }
+            }
           }
         } else {
           const isSmallMove = mag <= 14;
