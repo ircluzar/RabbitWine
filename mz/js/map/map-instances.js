@@ -6,24 +6,26 @@
  */
 
 // Instance offsets for tiles (moved from scene.js)
-let instOpen = new Float32Array(0), instWall = new Float32Array(0);
+let instOpen = new Float32Array(0), instWall = new Float32Array(0), instBad = new Float32Array(0);
 
 /**
  * Rebuild instance data arrays for tile rendering
  * Separates open and wall tiles into different instance buffers
  */
 function rebuildInstances(){
-  const opens=[], walls=[];
+  const opens=[], walls=[], bads=[];
   for(let y=0;y<MAP_H;y++){
     for(let x=0;x<MAP_W;x++){
   const v = map[mapIdx(x,y)];
-  const isWall = (v === TILE.WALL) || (v === TILE.FILL);
+  const isWall = (v === TILE.WALL) || (v === TILE.FILL) || (v === TILE.BAD);
+  if (v === TILE.BAD) bads.push(x,y);
   if (isWall) walls.push(x,y); 
       else opens.push(x,y);
     }
   }
   instOpen = new Float32Array(opens);
   instWall = new Float32Array(walls);
+  instBad = new Float32Array(bads);
 }
 
 // Initialize instance data
@@ -32,4 +34,5 @@ rebuildInstances();
 // Expose for editor/save actions
 if (typeof window !== 'undefined'){
   window.rebuildInstances = rebuildInstances;
+  window.instBad = instBad;
 }

@@ -39,8 +39,9 @@ function groundHeightAt(x, z){
       }
     } catch(_){ }
   }
-  // Always include ground wall as span if map tile is WALL
-  const isGroundWall = map[mapIdx(gx,gz)] === TILE.WALL;
+  // Always include ground wall as span if map tile is WALL (BAD handled via spans)
+  const cellValGH = map[mapIdx(gx,gz)];
+  const isGroundWall = (cellValGH === TILE.WALL);
   if (isGroundWall){ spanList.push({ b: 0, h: 1 }); }
   if (spanList.length){
     const py = state.player ? state.player.y : 0.0;
@@ -109,8 +110,9 @@ function ceilingHeightAt(x, z, py){
         if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
     } catch(_){ }
-    // Include ground wall tile as span if present
-    if (map[mapIdx(gx,gz)] === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+  // Include ground wall tile as span if present (WALL only). BAD uses spans.
+  const cv = map[mapIdx(gx,gz)];
+  if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
   }
   if (!spanList.length) return Infinity;
   let best = Infinity;
@@ -204,8 +206,9 @@ function moveAndCollide(dt){
         } catch(_){ }
         if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
-      // and include ground wall if map says WALL
-      if (map[mapIdx(gx,gz)] === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+  // and include ground wall if map says WALL; for BAD, rely on spans unless none exist
+  const cell = map[mapIdx(gx,gz)];
+  if (cell === TILE.WALL || (cell === TILE.BAD && (!columnHeights.has(key)))){ spanList.push({ b: 0, h: 1 }); }
     }
     if (Array.isArray(spanList) && spanList.length){
       const py = state.player.y;
@@ -238,8 +241,9 @@ function moveAndCollide(dt){
       if (py >= top - 0.02) return false;
       return true;
     }
-  // No spans/columns: fallback to ground wall tile only
-  if (map[mapIdx(gx,gz)] === TILE.WALL){ return state.player.y < 1.0 - 0.02; }
+  // No spans/columns: fallback to ground wall tile only (WALL and ground-level BAD)
+  const cv2 = map[mapIdx(gx,gz)];
+  if (cv2 === TILE.WALL || cv2 === TILE.BAD){ return state.player.y < 1.0 - 0.02; }
     return false;
   }
   let hitWall = false;
@@ -250,8 +254,8 @@ function moveAndCollide(dt){
   }
   // Try move along Z; if blocked by border, enter ball mode
   {
-    const gxCur = Math.floor(p.x + MAP_W*0.5);
-    const gzNew = Math.floor(newZ + MAP_H*0.5);
+  const gxCur = Math.floor(p.x + MAP_W*0.5);
+  const gzNew = Math.floor(newZ + MAP_H*0.5);
     const outZ = (gzNew < 0 || gzNew >= MAP_H);
     if (!isWallAt(p.x, newZ)) {
       p.z = newZ;
@@ -265,13 +269,26 @@ function moveAndCollide(dt){
         // Revert any movement from this frame
         p.x = oldX; p.z = oldZ;
         return;
+      } else {
+        // Collided within bounds; if the blocked cell is BAD, trigger damage
+        const gxCell = gxCur;
+        const gzCell = gzNew;
+        if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
+          const cv = map[mapIdx(gxCell,gzCell)];
+          if (cv === TILE.BAD){
+            const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
+            enterBallMode(n);
+            p.x = oldX; p.z = oldZ;
+            return;
+          }
+        }
       }
     }
   }
   // Try move along X; if blocked by border, enter ball mode
   {
-    const gzCur = Math.floor(p.z + MAP_H*0.5);
-    const gxNew = Math.floor(newX + MAP_W*0.5);
+  const gzCur = Math.floor(p.z + MAP_H*0.5);
+  const gxNew = Math.floor(newX + MAP_W*0.5);
     const outX = (gxNew < 0 || gxNew >= MAP_W);
     if (!isWallAt(newX, p.z)) {
       p.x = newX;
@@ -283,6 +300,19 @@ function moveAndCollide(dt){
         enterBallMode(n);
         p.x = oldX; p.z = oldZ;
         return;
+      } else {
+        // Collided within bounds; if the blocked cell is BAD, trigger damage
+        const gxCell = gxNew;
+        const gzCell = gzCur;
+        if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
+          const cv = map[mapIdx(gxCell,gzCell)];
+          if (cv === TILE.BAD){
+            const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
+            enterBallMode(n);
+            p.x = oldX; p.z = oldZ;
+            return;
+          }
+        }
       }
     }
   }
@@ -359,6 +389,18 @@ function applyVerticalPhysics(dt){
   const gH = groundHeightAt(p.x, p.z);
   if (p.vy <= 0.0 && newY <= gH){
     newY = gH;
+    // If landing on a BAD cell, trigger damage immediately
+    try {
+      const gx = Math.floor(p.x + MAP_W*0.5);
+      const gz = Math.floor(p.z + MAP_H*0.5);
+      if (gx>=0&&gz>=0&&gx<MAP_W&&gz<MAP_H){
+        if (map[mapIdx(gx,gz)] === TILE.BAD){
+          enterBallMode({ nx: 0, nz: 0 });
+          p.y = newY; // settle to ground before exiting
+          return;
+        }
+      }
+    } catch(_){ }
     p.vy = 0.0;
     p.grounded = true;
     // SFX: landing (only if we were in the air)
@@ -378,6 +420,16 @@ function applyVerticalPhysics(dt){
     if (isFinite(cH)){
       const eps = 1e-4;
       if (newY >= cH - eps){
+        // If hitting a BAD ceiling in current grid, trigger damage
+        try {
+          const gx = Math.floor(p.x + MAP_W*0.5);
+          const gz = Math.floor(p.z + MAP_H*0.5);
+          if (gx>=0&&gz>=0&&gx<MAP_W&&gz<MAP_H){
+            if (map[mapIdx(gx,gz)] === TILE.BAD){
+              enterBallMode({ nx: 0, nz: 0 });
+            }
+          }
+        } catch(_){ }
         newY = cH - eps;
         p.vy = 0.0;
         // Keep air state; this is a head-bump, not a landing

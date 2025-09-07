@@ -165,6 +165,7 @@ class MapBuilder {
   /** Rectangle (inclusive).
    *  - If tile === TILE.FILL, fill the area with WALLs (and set heights if >1).
    *  - If tile === TILE.REMOVE, carve the area to OPEN and clear any height data.
+  *  - If tile === TILE.BAD, mark map as BAD and register spans like wall segments.
    *  - Else, draw outline with optional height on outline tiles.
    */
   rect(x1,y1,x2,y2,tile,height=1.0, opts){
@@ -173,8 +174,9 @@ class MapBuilder {
     opts = opts || {};
     const baseY = (opts.y!=null ? (opts.y|0) : 0);
     [x1,y1,x2,y2]=this._norm(x1,y1,x2,y2);
-    const isFill = (this.TILE && tile === this.TILE.FILL);
-    const isRemove = (this.TILE && tile === this.TILE.REMOVE);
+  const isFill = (this.TILE && tile === this.TILE.FILL);
+  const isRemove = (this.TILE && tile === this.TILE.REMOVE);
+  const isBad = (this.TILE && tile === this.TILE.BAD);
     if (isFill) {
       // Fill entire rect with WALLs (treat FILL as a directive to place WALL tiles)
       for(let y=y1; y<=y2; y++){
@@ -189,7 +191,7 @@ class MapBuilder {
           }
         }
       }
-    } else if (isRemove) {
+  } else if (isRemove) {
       // Carve from the BOTTOM: raise base offset and decrease visible height.
       // Always mark map as OPEN so the floor becomes passable beneath any remaining column.
       const remUnits = Math.max(0, Math.floor((+height||0) + 1e-6));
@@ -312,6 +314,16 @@ class MapBuilder {
             // Still record the removal volume for debug visualization (from provided base or ground)
             if (remUnits > 0){ this.removals.push({ x, y, b: (visualBase|0), h: remUnits|0 }); }
           }
+        }
+      }
+    } else if (isBad) {
+      // BAD behaves like a wall segment for geometry/collision but flagged hazardous in map
+      for(let y=y1; y<=y2; y++){
+        for(let x=x1; x<=x2; x++){
+          // Mark map BAD so renderers/logic can identify regardless of base
+          this.map[this.idx(x,y)] = this.TILE.BAD;
+          // Register spans if elevated or thicker than 1
+          if (height > 1.0 || baseY > 0){ this._setHeight(x,y,height, baseY); }
         }
       }
     } else {

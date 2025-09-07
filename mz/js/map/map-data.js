@@ -6,7 +6,8 @@
  */
 
 // Tilemap representation (moved from scene.js)
-const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3 };
+// BAD: hazardous tile that damages on contact
+const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
 
@@ -95,6 +96,10 @@ function buildSampleMap(){
   // // Decorative high supports at corners (elevated only, to not block the path below)
    builder.pillars([[12,2],[16,2],[12,6],[16,6]], TILE.WALL, 3.0, { y: 21 });
 
+  // Hazard test: one BAD block at (12,12) elevated at Y:5 (1 unit thick)
+  // Represented in map as TILE.BAD so it renders red and damages on contact
+  //builder.rect(12, 12, 12, 12, TILE.BAD, 1.0, { y: 5 });
+
 
 
 
@@ -106,8 +111,8 @@ function buildSampleMap(){
   builder.item(3, 19, 'ABILITY_BACK');
   builder.item(3, 3, 'ABILITY_MOVE');
   builder.item(14, 20, 'ABILITY_JUMP');
-  builder.item(8, 11, 'ABILITY_WALLJUMP');
-  builder.item(15, 15, 'ABILITY_DASH');
+  builder.item(11, 14, 'ABILITY_WALLJUMP');
+  builder.item(14, 4, 'ABILITY_DASH', { y: 23 });
 
 //---------------------------------
 
