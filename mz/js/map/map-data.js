@@ -67,10 +67,10 @@ function buildSampleMap(){
   builder.rect(7, 11, 7, 11, TILE.FILL, 1.0, { y: 5 });
   builder.rect(8, 11, 8, 11, TILE.FILL, 1.0, { y: 6 });
   // // Overhead walkway
-  // builder.rect(8, 10, 10, 10, TILE.FILL, 1.0, { y: 7 });
+  builder.rect(8, 10, 10, 10, TILE.FILL, 1.0, { y: 7 });
   // // Supports for wall-jumping
-  // builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
-  // builder.pillars([[6,10]], TILE.WALL, 4.0);
+  builder.pillars([[4,11],[5,11]], TILE.WALL, 3.0);
+  builder.pillars([[6,10]], TILE.WALL, 4.0);
 
   // Extremely tall climb with rest platforms (Minecraft-style inspiration)
   // Segment A: vertical ascent north from spawn column (x≈5, yGrid decreasing)
