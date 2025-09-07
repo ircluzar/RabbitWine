@@ -20,6 +20,9 @@ function handleSwipeTurns(){
  * @param {Float32Array} mvp - Model-view-projection matrix
  */
 function drawPlayerAndTrail(mvp){
+  if (state._hidePlayer){
+    // Still draw preview/visor if hooked from bootstrap
+  } else {
   // Trail as instanced wireframe cubes
   const pts = state.trail.points;
   if (pts.length >= 1){
@@ -129,4 +132,5 @@ function drawPlayerAndTrail(mvp){
   gl.depthMask(true);
   gl.disable(gl.BLEND);
   gl.bindVertexArray(null);
+  }
 }

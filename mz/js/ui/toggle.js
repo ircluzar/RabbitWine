@@ -27,6 +27,9 @@ function onToggleDebug(){
     p.hasDash = true;
     p.dashUsed = false; // ensure dash is available immediately
   }
+  // Show/hide editor button only in debug mode
+  const EDITOR_TOGGLE = document.getElementById('editor-toggle');
+  if (EDITOR_TOGGLE){ EDITOR_TOGGLE.style.display = state.debugVisible ? 'inline-block' : 'none'; }
 }
 
 // Expose for DOM event listeners

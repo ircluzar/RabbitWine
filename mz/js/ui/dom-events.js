@@ -11,6 +11,8 @@ window.addEventListener('contextmenu', (e) => e.preventDefault(), { passive: fal
 
 // Pointer events
 CANVAS.addEventListener('pointerdown', onPointerDown);
+// Prevent default context menu on right-click so editor can use it
+CANVAS.addEventListener('contextmenu', (e)=>{ e.preventDefault(); }, { passive:false });
 window.addEventListener('pointermove', onPointerMove);
 window.addEventListener('pointerup', onPointerUpOrCancel);
 window.addEventListener('pointercancel', onPointerUpOrCancel);
@@ -27,9 +29,18 @@ window.addEventListener('orientationchange', resizeCanvasToViewport);
 if (DEBUG_TOGGLE){
   DEBUG_TOGGLE.addEventListener('click', onToggleDebug);
 }
+// Editor toggle button
+const EDITOR_TOGGLE = document.getElementById('editor-toggle');
+if (EDITOR_TOGGLE){
+  EDITOR_TOGGLE.addEventListener('click', onToggleEditorMode);
+}
 
 // Seam drag
 SEAM_HANDLE.addEventListener('pointerdown', onSeamPointerDown);
 SEAM_HANDLE.addEventListener('pointermove', onSeamPointerMove);
 SEAM_HANDLE.addEventListener('pointerup', onSeamPointerEnd);
 SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
+
+// Pointer lock state tracking for editor
+document.addEventListener('pointerlockchange', onPointerLockChange);
+document.addEventListener('mozpointerlockchange', onPointerLockChange);

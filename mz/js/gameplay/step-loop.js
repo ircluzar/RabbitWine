@@ -11,11 +11,28 @@
  * @param {number} dt - Delta time in seconds
  */
 function stepGame(dt){
-  handleKeyboard(dt);
+  // Editor mode takes over input/camera
+  if (state.editor && state.editor.mode === 'fps'){
+    editorHandleInput && editorHandleInput(dt);
+  } else {
+    handleKeyboard(dt);
+  }
   applyVerticalPhysics(dt);
-  moveAndCollide(dt);
-  updateCameraFollow(dt);
-  updateCameraYaw(dt);
+  if (state.editor && state.editor.mode === 'fps'){
+    // Replace normal motion with noclip: move player with editor camera for consistency
+    const e = state.editor.fps;
+    state.player.x = e.x; state.player.y = e.y; state.player.z = e.z;
+    state.player.speed = 0; state.player.vy = 0; state.player.grounded = false;
+    // Camera follows editor pose
+  state.camFollow.x = e.x; state.camFollow.y = e.y; state.camFollow.z = e.z;
+  state.camYaw = e.yaw;
+    // Update visor target for top-screen preview
+    editorRaycastVisor && editorRaycastVisor();
+  } else {
+    moveAndCollide(dt);
+    updateCameraFollow(dt);
+    updateCameraYaw(dt);
+  }
   if (typeof updateItems === 'function') updateItems(dt);
   if (typeof updateFxLines === 'function') updateFxLines(dt);
   // During first acceleration, ramp music playback rate 0.5 -> 1.0, with pitch/filter opening and un-bitcrush top

@@ -37,3 +37,13 @@ function updateCameraYaw(dt){
   const yawA = 1 - Math.exp(-yawK * dt);
   state.camYaw = normalizeAngle(state.camYaw + dyaw * yawA);
 }
+
+// Utility: ensure normalizeAngle exists globally (used by controls/physics)
+if (typeof window !== 'undefined' && typeof window.normalizeAngle !== 'function'){
+  window.normalizeAngle = function(a){
+    a = a % (Math.PI*2);
+    if (a > Math.PI) a -= Math.PI*2;
+    if (a < -Math.PI) a += Math.PI*2;
+    return a;
+  };
+}

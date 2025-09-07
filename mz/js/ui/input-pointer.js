@@ -21,6 +21,7 @@ function normalizeEventPosition(e) {
  * @param {PointerEvent} e - Pointer down event
  */
 function onPointerDown(e) {
+  if (state && state.editor && state.editor.mode === 'fps') return; // editor handles
   CANVAS.focus();
   const pos = normalizeEventPosition(e);
   const id = e.pointerId || 0;
@@ -36,6 +37,7 @@ function onPointerDown(e) {
  * @param {PointerEvent} e - Pointer move event
  */
 function onPointerMove(e) {
+  if (state && state.editor && state.editor.mode === 'fps') return;
   const id = e.pointerId || 0;
   const pos = normalizeEventPosition(e);
   const p = state.inputs.pointers.get(id);
@@ -71,6 +73,7 @@ function onPointerMove(e) {
 }
 
 function onPointerUpOrCancel(e) {
+  if (state && state.editor && state.editor.mode === 'fps') return;
   const id = e.pointerId || 0;
   const p = state.inputs.pointers.get(id);
   if (p) {

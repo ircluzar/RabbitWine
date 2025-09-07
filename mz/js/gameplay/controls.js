@@ -162,37 +162,38 @@ function startDash(dir){
  * @param {number} dt - Delta time (unused)
  */
 function handleKeyboard(dt){
+  if (state && state.editor && state.editor.mode === 'fps') return; // editor takes over
   const p = state.player;
-  if (state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('a')) {
+  if (state.inputs.keys.has('ArrowLeft') || state.inputs.keys.has('arrowleft') || state.inputs.keys.has('a')) {
   if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('left'); }
   else { turnLeft(); }
     state.inputs.keys.delete('ArrowLeft'); 
-    state.inputs.keys.delete('a');
+    state.inputs.keys.delete('a'); state.inputs.keys.delete('arrowleft');
   }
-  if (state.inputs.keys.has('ArrowRight') || state.inputs.keys.has('d')) {
+  if (state.inputs.keys.has('ArrowRight') || state.inputs.keys.has('arrowright') || state.inputs.keys.has('d')) {
   if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('right'); }
   else { turnRight(); }
     state.inputs.keys.delete('ArrowRight'); 
-    state.inputs.keys.delete('d');
+    state.inputs.keys.delete('d'); state.inputs.keys.delete('arrowright');
   }
   // Optional keyboard for up/down swipes
-  if (state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('w')){
+  if (state.inputs.keys.has('ArrowUp') || state.inputs.keys.has('arrowup') || state.inputs.keys.has('w')){
   if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('up'); }
     else { swipeUp(); }
     state.inputs.keys.delete('ArrowUp');
-    state.inputs.keys.delete('w');
+    state.inputs.keys.delete('w'); state.inputs.keys.delete('arrowup');
   }
-  if (state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('s')){
+  if (state.inputs.keys.has('ArrowDown') || state.inputs.keys.has('arrowdown') || state.inputs.keys.has('s')){
   if (p.isFrozen && !p.isDashing && p.hasDash && p.canDash && !p.dashUsed) { startDash('down'); }
     else { swipeDown(); }
     state.inputs.keys.delete('ArrowDown');
-    state.inputs.keys.delete('s');
+    state.inputs.keys.delete('s'); state.inputs.keys.delete('arrowdown');
   }
-  if (state.inputs.keys.has(' ') || state.inputs.keys.has('Space') || state.inputs.keys.has('Spacebar')){
+  if (state.inputs.keys.has(' ') || state.inputs.keys.has('Space') || state.inputs.keys.has('Spacebar') || state.inputs.keys.has('space')){
     doJump();
     state.inputs.keys.delete(' ');
     state.inputs.keys.delete('Space');
-    state.inputs.keys.delete('Spacebar');
+  state.inputs.keys.delete('Spacebar'); state.inputs.keys.delete('space');
   }
 }
 

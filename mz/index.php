@@ -19,12 +19,15 @@ function bust($path) {
   <body>
     <noscript>This experience requires JavaScript.</noscript>
     <canvas id="app" aria-label="VRUN MZ canvas" tabindex="0"></canvas>
+    <!-- Editor crosshair (center dot) -->
+    <div id="editor-crosshair" aria-hidden="true"></div>
     <div id="seam" role="separator" aria-orientation="horizontal" aria-label="View seam">
       <div id="seam-handle" aria-hidden="true"></div>
     </div>
 
   <!-- Debug toggle -->
   <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle debug HUD (on/off)">Debug: OFF</button>
+  <button id="editor-toggle" type="button" aria-pressed="false" title="Enter FPS Editor (desktop only)">Editor</button>
 
     <!-- Lightweight debug overlay for input + stats -->
   <div id="hud" aria-hidden="true"></div>
@@ -64,6 +67,7 @@ function bust($path) {
     <script src="<?php echo bust('./js/ui/input-keyboard.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/seam.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/toggle.js'); ?>"></script>
+  <script src="<?php echo bust('./js/ui/editor.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/dom-events.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/start-modal.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/notification-modal.js'); ?>"></script>

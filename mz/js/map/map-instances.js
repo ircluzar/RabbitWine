@@ -28,3 +28,8 @@ function rebuildInstances(){
 
 // Initialize instance data
 rebuildInstances();
+
+// Expose for editor/save actions
+if (typeof window !== 'undefined'){
+  window.rebuildInstances = rebuildInstances;
+}

@@ -127,6 +127,7 @@ function ceilingHeightAt(x, z, py){
  * @param {number} dt - Delta time in seconds
  */
 function moveAndCollide(dt){
+  if (state && state.editor && state.editor.mode === 'fps') return; // no collision in editor
   const p = state.player;
   const oldX = p.x, oldZ = p.z;
   const baseSpeed = 3.0;
@@ -286,6 +287,7 @@ function moveAndCollide(dt){
 }
 
 function applyVerticalPhysics(dt){
+  if (state && state.editor && state.editor.mode === 'fps') return; // no gravity in editor
   const p = state.player;
   const GRAV = -12.5;
   // If frozen: pause gravity

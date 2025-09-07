@@ -69,6 +69,26 @@ body {
 #debug-toggle[aria-pressed="false"]{ background:#111622cc; color:#9bb7d6; }
 #debug-toggle:active{ transform: translateY(1px); }
 
+#editor-toggle{
+  position: fixed;
+  right: 0.5rem;
+  bottom: 3rem;
+  background: #1b3030cc;
+  color: #cfe4ff;
+  border: 1px solid #2a5252;
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+  z-index: 11;
+  display: none; /* shown only when debug is ON */
+}
+#editor-toggle:active{ transform: translateY(1px); }
+
+/* Editor modal root; positioned to avoid the top screen (sits above bottom viewport) */
+#mz-editor-modal-root{ position:fixed; left:0; right:0; bottom:0; z-index:12000; pointer-events:none; }
+
 #swipe-glow-left, #swipe-glow-right {
   position: fixed;
   top: 0;
@@ -132,4 +152,20 @@ body {
 #seam-handle:active {
   transform: translate(-50%, -50%) scale(0.98);
   box-shadow: 1px 1px 0 #0008;
+}
+
+/* Editor crosshair */
+#editor-crosshair{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
+  z-index: 10000;
+  pointer-events: none;
+  display: none;
 }

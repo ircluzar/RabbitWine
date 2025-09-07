@@ -73,4 +73,21 @@ const state = {
   topPosterizeLevels: 4.0, // Start crushed but not too extreme
   topDitherAmt: 0.6, // Moderate dithering
   topPixelSize: 3.0, // Moderate pixelation
+  // Editor/debug tools
+  editor: {
+    mode: 'none', // 'none' | 'fps'
+    pointerLocked: false,
+    modalOpen: false,
+    // First-person free-fly camera (noclip)
+    fps: { x: 0, y: 2.6, z: 0, yaw: 0, pitch: 0, moveSpeed: 6.0 },
+    // Ray/hover target for visor
+    visor: { gx: -1, gy: -1, yCenter: 0.5, base: 0, height: 1 },
+    // Live preview cells [{gx,gy,b,h}]
+    preview: [],
+  // Current modal origin and camera prefs for top preview when editing
+  modalOrigin: { gx: -1, gy: -1, base: 0 },
+  topCamDist: 4.0,
+  topCamHeight: 2.6,
+  draggingTopCam: false,
+  },
 };

@@ -44,6 +44,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, false);
   } else if (state.snapTopFull) {
     // Full-screen top camera
@@ -51,13 +52,30 @@ function render(now) {
     const mvAspectTop = W / H;
     renderGridViewport(0, 0, W, H, 'top');
     const proj = mat4Perspective(deg2rad(60), Math.max(0.1, mvAspectTop), 0.1, 150.0);
-    const fx = state.camFollow.x, fz = state.camFollow.z;
-  const dirX = Math.sin(state.camYaw);
-  const dirZ = -Math.cos(state.camYaw);
-  const dist = 4.0;
-  const baseHeight = 2.6;
-  const eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
-  const center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
+      let fx = state.camFollow.x, fz = state.camFollow.z;
+      // If editing, lock top camera onto the modal origin
+      if (state.editor && state.editor.modalOpen && state.editor.modalOrigin && state.editor.modalOrigin.gx >= 0) {
+        const o = state.editor.modalOrigin;
+        fx = (o.gx - MAP_W * 0.5 + 0.5);
+        fz = (o.gy - MAP_H * 0.5 + 0.5);
+      }
+    let eye, center;
+    if (state.editor && state.editor.mode === 'fps' && !state.editor.modalOpen){
+      // True first-person camera using FPS yaw+pitch
+      const e = state.editor.fps;
+  const dirX = Math.sin(e.yaw) * Math.cos(e.pitch);
+  const dirY = Math.sin(e.pitch);
+  const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch);
+      eye = [e.x, e.y, e.z];
+      center = [e.x + dirX, e.y + dirY, e.z + dirZ];
+    } else {
+      const dirX = Math.sin(state.camYaw);
+      const dirZ = -Math.cos(state.camYaw);
+      const dist = 4.0;
+      const baseHeight = 2.6;
+      eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
+      center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
+    }
     const view = mat4LookAt(eye, center, [0, 1, 0]);
     const mvp = mat4Multiply(proj, view);
   drawTiles(mvp, 'open');
@@ -67,6 +85,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, true);
   } else {
     // Bottom viewport (lower half in pixels 0..seam)
@@ -90,6 +109,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, false);
     }
     // Top viewport (upper half in pixels seam..H)
@@ -99,13 +119,24 @@ function render(now) {
     renderGridViewport(0, H - seamY, W, topH, 'top');
     {
       const proj = mat4Perspective(deg2rad(60), Math.max(0.1, mvAspectTop), 0.1, 150.0);
-      const fx = state.camFollow.x, fz = state.camFollow.z;
-  const dirX = Math.sin(state.camYaw);
-  const dirZ = -Math.cos(state.camYaw);
-    const dist = 4.0;
-    const baseHeight = 2.6;
-  const eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
-    const center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
+      let fx = state.camFollow.x, fz = state.camFollow.z;
+      // If editing with a modal, keep origin lock (set above in full-top path), else FPS first-person
+      let eye, center;
+      if (state.editor && state.editor.mode === 'fps' && !state.editor.modalOpen){
+        const e = state.editor.fps;
+  const dirX = Math.sin(e.yaw) * Math.cos(e.pitch);
+  const dirY = Math.sin(e.pitch);
+  const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch);
+        eye = [e.x, e.y, e.z];
+        center = [e.x + dirX, e.y + dirY, e.z + dirZ];
+      } else {
+        const dirX = Math.sin(state.camYaw);
+        const dirZ = -Math.cos(state.camYaw);
+        const dist = 4.0;
+        const baseHeight = 2.6;
+        eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
+        center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
+      }
       const view = mat4LookAt(eye, center, [0, 1, 0]);
       const mvp = mat4Multiply(proj, view);
     drawTiles(mvp, 'open');
@@ -115,6 +146,7 @@ function render(now) {
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
   drawPlayerAndTrail(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
   drawGridOverlay(mvp, eye, true);
     }
   }
