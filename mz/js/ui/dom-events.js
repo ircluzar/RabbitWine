@@ -80,6 +80,59 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     const h = document.createElement('div');
     h.className = 'mz-settings-title';
     h.textContent = 'Settings';
+    // Channel section
+    const channelWrap = document.createElement('div');
+    channelWrap.style.margin = '0 0 18px';
+    channelWrap.style.display = 'flex';
+    channelWrap.style.flexDirection = 'column';
+    channelWrap.style.gap = '6px';
+    const channelLabel = document.createElement('label');
+    channelLabel.textContent = 'Multiplayer Channel';
+    channelLabel.style.fontSize = '12px';
+    channelLabel.style.opacity = '0.85';
+    const channelRow = document.createElement('div');
+    channelRow.style.display = 'flex';
+    channelRow.style.gap = '8px';
+    const channelInput = document.createElement('input');
+    channelInput.type = 'text';
+    channelInput.placeholder = 'DEFAULT';
+    channelInput.maxLength = 32;
+    channelInput.value = (window.MP_CHANNEL || 'DEFAULT');
+    channelInput.style.flex = '1';
+    channelInput.style.padding = '8px 10px';
+    channelInput.style.background = '#121722';
+    channelInput.style.color = '#d8e2ff';
+    channelInput.style.border = '1px solid #2e3648';
+    channelInput.style.font = 'inherit';
+    channelInput.style.fontSize = '13px';
+    channelInput.style.outline = 'none';
+    channelInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); btnApplyChannel.click(); }});
+    const btnApplyChannel = document.createElement('button');
+    btnApplyChannel.type = 'button';
+    btnApplyChannel.textContent = 'Apply';
+    btnApplyChannel.style.background = '#1b2030';
+    btnApplyChannel.style.color = '#fff';
+    btnApplyChannel.style.border = '1px solid #343a52';
+    btnApplyChannel.style.cursor = 'pointer';
+    btnApplyChannel.style.font = 'inherit';
+    btnApplyChannel.style.padding = '8px 14px';
+    btnApplyChannel.addEventListener('click', ()=>{
+      const val = channelInput.value.trim();
+      if (/^[A-Za-z0-9_\-]{1,32}$/.test(val)){
+        const ok = (typeof window.mpSetChannel === 'function') ? window.mpSetChannel(val) : false;
+        if (ok){
+          try { btnApplyChannel.textContent = 'Applied'; setTimeout(()=>{ btnApplyChannel.textContent = 'Apply'; }, 1600); } catch(_){ }
+        } else {
+          try { btnApplyChannel.textContent = 'Error'; setTimeout(()=>{ btnApplyChannel.textContent = 'Apply'; }, 1600); } catch(_){ }
+        }
+      } else {
+        try { btnApplyChannel.textContent = 'Invalid'; setTimeout(()=>{ btnApplyChannel.textContent = 'Apply'; }, 1600); } catch(_){ }
+      }
+    });
+    channelRow.appendChild(channelInput);
+    channelRow.appendChild(btnApplyChannel);
+    channelWrap.appendChild(channelLabel);
+    channelWrap.appendChild(channelRow);
   const actions = document.createElement('div');
     actions.className = 'mz-settings-actions';
   const btnRestart = document.createElement('button');
@@ -98,7 +151,8 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
   actions.appendChild(btnReset);
     actions.appendChild(btnReturn);
     card.appendChild(h);
-    card.appendChild(actions);
+  card.appendChild(channelWrap);
+  card.appendChild(actions);
     ov.appendChild(card);
     document.body.appendChild(ov);
     SETTINGS_BTN.setAttribute('aria-expanded','true');

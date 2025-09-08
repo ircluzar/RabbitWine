@@ -155,7 +155,7 @@
     // check if block exists at y
     for (const s of spans){ if (y >= (s.b|0) && y < (s.b|0)+(s.h|0)) return false; }
     // insert as its own span and normalize
-    spans.push({ b:y, h:1 });
+  spans.push({ b:y, h:1 });
     spans = __normalize(spans);
     __setSpans(gx,gy,spans);
     // if ground-level, mark wall tile for visibility
@@ -163,6 +163,10 @@
       try { map[mapIdx(gx,gy)] = TILE.WALL; } catch(_){}
     }
     try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){}
+    // Send network op (one block) -> encode per-block key including base height
+    try {
+      if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}` }]); }
+    } catch(_){ }
     return true;
   }
   function removeBlockAtVisor(){
@@ -187,7 +191,8 @@
     if (!changed) return false;
     out.sort((p,q)=>p.b-q.b);
     __setSpans(gx,gy,out);
-    try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){}
+  try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){}
+  try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}` }]); } } catch(_){ }
     return true;
   }
 
@@ -417,6 +422,19 @@
       closeEditorModal();
       // Keep in FPS editor after save; lock again for continue placement
       if (CANVAS.requestPointerLock) try { CANVAS.requestPointerLock(); } catch(_){}
+      // After applying structure, send aggregated ops for preview spans (each block)
+      try {
+        if (window.mpSendMapOps){
+          const pts = (state.editor.preview||[]).slice();
+          const ops = [];
+          for (const it of pts){
+            for (let dy=0; dy<(it.h|0); dy++){
+              ops.push({ op:'add', key:`${it.gx},${it.gy},${(it.b|0)+dy}` });
+            }
+          }
+          if (ops.length) mpSendMapOps(ops);
+        }
+      } catch(_){ }
     });
     btnCancel.addEventListener('click', ()=>{
       // Close the modal and return to FPS mode without saving

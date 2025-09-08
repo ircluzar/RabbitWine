@@ -12,9 +12,19 @@ let MP_SERVER = __MP_DEFAULT; // WebSocket endpoint (ws:// or wss://)
 const MP_TTL_MS = 3000;
 const MP_UPDATE_MS = 100; // 10 Hz
 const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into the ground
-// Channel / Level segmentation defaults
-const MP_CHANNEL = 'DEFAULT';
+// Channel / Level segmentation defaults (channel can be changed at runtime via settings modal)
+let MP_CHANNEL = 'DEFAULT';
 const MP_LEVEL = 'ROOT';
+
+// Attempt to restore previously chosen channel from localStorage
+try {
+  if (typeof localStorage !== 'undefined') {
+    const savedCh = localStorage.getItem('mp_channel');
+    if (savedCh && /^[A-Za-z0-9_\-]{1,32}$/.test(savedCh)) {
+      MP_CHANNEL = savedCh;
+    }
+  }
+} catch(_) {}
 
 // GUID per session/boot
 const MP_ID = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2)+Date.now());
@@ -43,6 +53,83 @@ try { if (!window.state && typeof state !== 'undefined') window.state = state; }
  *}>
  */
 const ghosts = new Map();
+
+// Map diff client-side: maintain adds/removes relative to base v0
+const mpMap = { version: 0, adds: new Set(), removes: new Set() };
+window.mpGetMapVersion = ()=> mpMap.version;
+function mpApplyFullMap(version, ops){
+  mpMap.adds.clear(); mpMap.removes.clear();
+  for (const op of (ops||[])){
+    if (!op || typeof op.key!=='string') continue;
+    if (op.op === 'add') mpMap.adds.add(op.key);
+    else if (op.op === 'remove') mpMap.removes.add(op.key);
+  }
+  mpMap.version = version|0;
+  try { console.log('[MP] map_full applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
+  try { __mp_rebuildWorldFromDiff(); } catch(_){ }
+}
+function mpApplyOps(version, ops){
+  for (const op of (ops||[])){
+    if (!op || typeof op.key!=='string') continue;
+    if (op.op === 'add'){
+      if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(op.key);
+    } else if (op.op === 'remove'){
+      if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key); else mpMap.removes.add(op.key);
+    }
+  }
+  mpMap.version = version|0;
+  try { console.log('[MP] map_ops applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
+  try { __mp_rebuildWorldFromDiff(); } catch(_){ }
+}
+
+// Rebuild columnSpans from current diff each time (simple; can be optimized later)
+function __mp_rebuildWorldFromDiff(){
+  if (typeof window === 'undefined' || !window.columnSpans || !window.setSpansAt) return;
+  // Start from original base map? For now we assume base map already loaded and we overlay diffs add/remove.
+  // We'll apply adds (voxels) then removes (carves) on top of existing spans.
+  // Each key format: gx,gy,y
+  const addByCell = new Map();
+  for (const key of mpMap.adds){
+    const parts = key.split(','); if (parts.length!==3) continue;
+    const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
+    if (!Number.isFinite(gx)||!Number.isFinite(gy)||!Number.isFinite(y)) continue;
+    const cellK = gx+','+gy;
+    let set = addByCell.get(cellK); if (!set){ set = new Set(); addByCell.set(cellK,set); }
+    set.add(y);
+  }
+  // Apply adds into spans (ensure contiguity)
+  for (const [cellK, ys] of addByCell.entries()){
+    const arr = Array.from(ys.values()).sort((a,b)=>a-b);
+    const spans = []; let b = arr[0]; let prev = arr[0];
+    for (let i=1;i<arr.length;i++){
+      const y = arr[i];
+      if (y === prev + 1){ prev = y; continue; }
+      spans.push({ b, h: (prev - b + 1)|0 });
+      b = y; prev = y;
+    }
+    spans.push({ b, h: (prev - b + 1)|0 });
+    // Merge with existing spans first (so base map blocks persist unless removed)
+    const [gx,gy] = cellK.split(',').map(n=>parseInt(n,10));
+    let baseSpans = window.columnSpans.get(cellK) || [];
+    // Add new spans then normalize merge
+    baseSpans = baseSpans.concat(spans);
+    baseSpans.sort((p,q)=>p.b-q.b);
+    const merged=[]; for (const s of baseSpans){ if (!merged.length){ merged.push({ b:s.b|0, h:s.h|0 }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; } else merged.push({ b:s.b|0, h:s.h|0 }); }
+    window.setSpansAt(gx,gy,merged);
+  }
+  // Apply removals: removing a single voxel from any span.
+  for (const key of mpMap.removes){
+    const parts = key.split(','); if (parts.length!==3) continue;
+    const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
+    if (!Number.isFinite(gx)||!Number.isFinite(gy)||!Number.isFinite(y)) continue;
+    const cellK = gx+','+gy;
+    let spans = window.columnSpans.get(cellK) || [];
+    if (!spans.length) continue;
+    const out=[]; for (const s of spans){ const sb=s.b|0, sh=s.h|0, top=sb+sh-1; if (y < sb || y > top){ out.push(s); continue;} if (sh===1){ /* drop */ } else if (y===sb){ out.push({ b:sb+1, h:sh-1 }); } else if (y===top){ out.push({ b:sb, h:sh-1 }); } else { const h1=y-sb; const h2=top-y; if (h1>0) out.push({ b:sb, h:h1 }); if (h2>0) out.push({ b:y+1, h:h2 }); } }
+    if (out.length){ window.setSpansAt(gx,gy,out); } else { window.setSpansAt(gx,gy,[]); }
+  }
+  try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
+}
 
 // Time sync with server for interpolation
 const timeSync = { offsetMs: 0, rttMs: 0, ready: false };
@@ -93,6 +180,8 @@ function mpEnsureWS(nowMs){
     try { console.log('[MP] WS connected'); } catch(_){}
     // Introduce ourselves so the server can send a snapshot
     try { ws.send(JSON.stringify({ type:'hello', id: MP_ID, channel: MP_CHANNEL, level: MP_LEVEL })); } catch(_){ }
+  // If we don't get a map_full within 2s, request sync explicitly
+  try { setTimeout(()=>{ if (mpMap.version === 0 && mpWS && mpWS.readyState===WebSocket.OPEN){ try { mpWS.send(JSON.stringify({ type:'map_sync', have: mpMap.version })); } catch(_){} } }, 2000); } catch(_){ }
     // Reset rate limiter so we don't wait to resume updates
     mpLastNetT = 0;
     // Send an immediate one-shot update to re-announce presence
@@ -159,6 +248,17 @@ function mpEnsureWS(nowMs){
       g.lastSeen = Date.now();
     } else if (t === 'pong'){
       const serverNow = msg.now || 0; mpComputeOffset(serverNow);
+    } else if (t === 'map_full'){
+      mpApplyFullMap(msg.version||0, msg.ops||[]);
+    } else if (t === 'map_ops'){
+      // Ensure ordering: if version not sequential, request full sync
+      const nextV = msg.version|0;
+      if (nextV <= mpMap.version){ return; }
+      if (nextV !== mpMap.version + 1){
+        try { mpWS.send(JSON.stringify({ type:'map_sync', have: mpMap.version })); } catch(_){ }
+        return;
+      }
+      mpApplyOps(nextV, msg.ops||[]);
     }
   };
   const startCooldown = (ev)=>{
@@ -396,6 +496,7 @@ window.drawGhosts = drawGhosts;
 window.__mp_onFrame = __mp_onFrame;
 window.MP_ID = MP_ID;
 window.MP_SERVER = MP_SERVER;
+window.MP_CHANNEL = MP_CHANNEL;
 // Expose a minimal helper for gameplay to check collisions against damaging ghosts (in red/ball state)
 window.mpGetDangerousGhosts = function(){
   const out = [];
@@ -408,6 +509,46 @@ window.mpGetDangerousGhosts = function(){
     }
   } catch(_){ }
   return out;
+};
+
+// Allow runtime channel switching from UI. Forces reconnect + clears ghosts.
+window.mpSetChannel = function(newChannel){
+  try {
+    if (typeof newChannel !== 'string') return false;
+    const trimmed = newChannel.trim().slice(0, 32);
+    if (!trimmed) return false;
+    if (!/^[A-Za-z0-9_\-]+$/.test(trimmed)) return false; // simple safe charset
+    if (trimmed === MP_CHANNEL) return true;
+    MP_CHANNEL = trimmed;
+    window.MP_CHANNEL = MP_CHANNEL;
+    try { localStorage.setItem('mp_channel', MP_CHANNEL); } catch(_){ }
+    try { console.log('[MP] switching channel ->', MP_CHANNEL); } catch(_){ }
+    // Force a reconnect
+    try { if (mpWS) mpWS.close(); } catch(_){ }
+    ghosts.clear();
+    mpWSState = 'closed';
+    mpNextConnectAt = 0;
+    mpEnsureWS(Date.now());
+    return true;
+  } catch(_) { return false; }
+};
+
+// Send batch of map edit ops (array of {op,key})
+window.mpSendMapOps = function(ops){
+  try {
+    if (!mpWS || mpWS.readyState !== WebSocket.OPEN) return false;
+    if (!Array.isArray(ops) || !ops.length) return false;
+    const clean = [];
+    for (const o of ops){
+      if (!o || (o.op!=='add' && o.op!=='remove')) continue;
+      if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
+      clean.push({ op:o.op, key:o.key });
+      if (clean.length >= 512) break; // clamp
+    }
+    if (!clean.length) return false;
+    mpWS.send(JSON.stringify({ type:'map_edit', ops: clean }));
+    return true;
+  } catch(_){ return false; }
 };
 
 // Network reachability hooks: reconnect immediately on regain; close on offline

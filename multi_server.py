@@ -18,7 +18,7 @@ import ssl
 import time
 import argparse
 from dataclasses import dataclass
-from typing import Dict, Any, Set, Optional, Tuple
+from typing import Dict, Any, Set, Optional, Tuple, List
 
 try:
     import websockets
@@ -95,6 +95,89 @@ ws_to_id: Dict[WebSocketServerProtocol, str] = {}
 # Map websocket -> (channel, level)
 ws_meta: Dict[WebSocketServerProtocol, Tuple[str, str]] = {}
 lock = asyncio.Lock()
+
+# ---- Map diff / versioning state -------------------------------------------
+# Base map shipped with the game is considered version 0. Server starts at 1.
+# Each accepted batch of edits increments map_version.
+map_version: int = 1
+# Diffs relative to base (version 0). Keys are opaque strings provided by client (block identifiers).
+diff_adds: Set[str] = set()    # blocks that exist now but not in base
+diff_removes: Set[str] = set() # blocks removed from base
+# Track per-connection last known version so we can decide whether to send incremental or request resync.
+ws_map_version: Dict[WebSocketServerProtocol, int] = {}
+
+MAX_OPS_PER_BATCH = 512
+KEY_MAX_LEN = 64
+
+def _apply_edit_ops(raw_ops: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Apply a batch of edit ops (list of {op:'add'|'remove', key:str}).
+    Performs in-batch compaction (later op wins for same key) and global compaction
+    against diff_adds/diff_removes. Returns the NET ops that actually changed the
+    global diff state (these are what we broadcast & version).
+    """
+    global diff_adds, diff_removes
+    if not raw_ops:
+        return []
+    # Last op wins per key in batch
+    last: Dict[str, str] = {}
+    for entry in raw_ops:
+        if not isinstance(entry, dict):
+            continue
+        op = entry.get("op")
+        key = entry.get("key")
+        if op not in ("add", "remove"):
+            continue
+        if not isinstance(key, str):
+            continue
+        if len(key) == 0 or len(key) > KEY_MAX_LEN:
+            continue
+        last[key] = op
+    if not last:
+        return []
+    net: List[Dict[str, str]] = []
+    for key, op in last.items():
+        if op == "add":
+            if key in diff_removes:
+                # Cancel a previous removal => back to base state
+                diff_removes.discard(key)
+                net.append({"op": "add", "key": key})  # broadcast so clients revert removal
+            elif key not in diff_adds:
+                diff_adds.add(key)
+                net.append({"op": "add", "key": key})
+            # else duplicate add -> no change
+        else:  # remove
+            if key in diff_adds:
+                diff_adds.discard(key)
+                net.append({"op": "remove", "key": key})  # broadcast so clients undo add
+            elif key not in diff_removes:
+                diff_removes.add(key)
+                net.append({"op": "remove", "key": key})
+            # else duplicate remove -> no change
+    return net
+
+async def _broadcast_map_ops(ops: List[Dict[str, str]], new_version: int) -> None:
+    if not ops:
+        return
+    payload = json.dumps({
+        "type": "map_ops",
+        "version": new_version,
+        "ops": ops,
+    }, separators=(",", ":"))
+    dead: Set[WebSocketServerProtocol] = set()
+    awaitables = []
+    for ws in list(connections):
+        awaitables.append(ws.send(payload))
+    results = await asyncio.gather(*awaitables, return_exceptions=True)
+    for ws, res in zip(list(connections), results):
+        if isinstance(res, Exception):
+            dead.add(ws)
+        else:
+            ws_map_version[ws] = new_version
+    for ws in dead:
+        connections.discard(ws)
+        ws_to_id.pop(ws, None)
+        ws_meta.pop(ws, None)
+        ws_map_version.pop(ws, None)
 
 
 def now_ms() -> int:
@@ -181,6 +264,7 @@ def validate_update(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def handle_client(ws: WebSocketServerProtocol, path: str):
+    global map_version
     # Register connection
     connections.add(ws)
     peer = ws.remote_address[0] if ws.remote_address else "?"
@@ -208,6 +292,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     level = "ROOT"
                 ws_to_id[ws] = pid
                 ws_meta[ws] = (channel, level)
+                ws_map_version[ws] = map_version
                 # Send initial snapshot (others only) filtered by channel & level
                 ts = now_ms()
                 await sweep(ts)
@@ -219,6 +304,21 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     ]
                 snap = {"type": "snapshot", "now": ts, "ttlMs": TTL_MS, "players": out}
                 await ws.send(json.dumps(snap, separators=(",", ":")))
+                # Send current map version + full ops (diff) if any, relative to base (version 0)
+                try:
+                    if diff_adds or diff_removes:
+                        full_ops = ([{"op": "add", "key": k} for k in sorted(diff_adds)] +
+                                    [{"op": "remove", "key": k} for k in sorted(diff_removes)])
+                    else:
+                        full_ops = []
+                    await ws.send(json.dumps({
+                        "type": "map_full",
+                        "version": map_version,
+                        "ops": full_ops,
+                        "baseVersion": 0
+                    }, separators=(",", ":")))
+                except Exception:
+                    pass
                 continue
 
             if typ == "update":
@@ -262,6 +362,49 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     pass
 
                 await broadcast_filtered(msg, player.channel, player.level)
+
+            # Map incremental ops from an editor client
+            elif typ == "map_edit":
+                # Expect { type:'map_edit', ops:[{op:'add'|'remove', key:'...'}] }
+                ops_in = data.get("ops")
+                if isinstance(ops_in, list):
+                    if len(ops_in) > MAX_OPS_PER_BATCH:
+                        ops_in = ops_in[:MAX_OPS_PER_BATCH]
+                    async with lock:
+                        net_ops = _apply_edit_ops(ops_in)
+                        if net_ops:
+                            map_version += 1
+                            new_ver = map_version
+                        else:
+                            new_ver = map_version
+                    if net_ops:
+                        await _broadcast_map_ops(net_ops, new_ver)
+                continue
+
+            # Client explicitly requesting map sync if behind
+            elif typ == "map_sync":
+                have = data.get("have")
+                try:
+                    have = int(have)
+                except Exception:
+                    have = -1
+                try:
+                    if have != map_version:
+                        if diff_adds or diff_removes:
+                            full_ops = ([{"op": "add", "key": k} for k in sorted(diff_adds)] +
+                                        [{"op": "remove", "key": k} for k in sorted(diff_removes)])
+                        else:
+                            full_ops = []
+                        await ws.send(json.dumps({
+                            "type": "map_full",
+                            "version": map_version,
+                            "ops": full_ops,
+                            "baseVersion": 0
+                        }, separators=(",", ":")))
+                        ws_map_version[ws] = map_version
+                except Exception:
+                    pass
+                continue
 
             # Optional: handle client ping messages
             elif typ == "ping":
