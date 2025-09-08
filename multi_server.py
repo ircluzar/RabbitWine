@@ -17,7 +17,8 @@ import json
 import ssl
 import time
 import argparse
-from typing import Dict, Any, Set
+from dataclasses import dataclass
+from typing import Dict, Any, Set, Optional, Tuple
 
 try:
     import websockets
@@ -31,10 +32,68 @@ TTL_MS = 3000
 
 ALLOWED_STATES = {"good", "ball"}
 
-# Shared state
-players: Dict[str, Dict[str, Any]] = {}
+@dataclass
+class Player:
+    """Represents a connected player's last known state.
+
+    Encapsulates repeated structures (pos/state/rotation/frozen/lastSeen) and
+    provides helpers to format outgoing snapshot & update payloads consistently.
+    """
+    id: str
+    x: float
+    y: float
+    z: float
+    state: str
+    rotation: Optional[float]
+    frozen: bool
+    last_seen: int
+    ip: str
+    channel: str
+    level: str
+
+    @property
+    def pos(self) -> Dict[str, float]:
+        return {"x": self.x, "y": self.y, "z": self.z}
+
+    def to_update_message(self, ts: int) -> Dict[str, Any]:
+        msg = {
+            "type": "update",
+            "now": ts,
+            "id": self.id,
+            "pos": self.pos,
+            "state": self.state,
+            "channel": self.channel,
+            "level": self.level,
+        }
+        if self.frozen:
+            msg["frozen"] = True
+        if self.state == "ball" and self.rotation is not None:
+            msg["rotation"] = self.rotation
+        return msg
+
+    def to_snapshot_entry(self, ts: int) -> Dict[str, Any]:
+        age = max(0, ts - self.last_seen)
+        entry = {
+            "id": self.id,
+            "pos": self.pos,
+            "state": self.state,
+            "ageMs": age,
+            "channel": self.channel,
+            "level": self.level,
+        }
+        if self.frozen:
+            entry["frozen"] = True
+        if self.state == "ball" and self.rotation is not None:
+            entry["rotation"] = self.rotation
+        return entry
+
+
+# Shared server state (in-memory only)
+players: Dict[str, Player] = {}
 connections: Set[WebSocketServerProtocol] = set()
 ws_to_id: Dict[WebSocketServerProtocol, str] = {}
+# Map websocket -> (channel, level)
+ws_meta: Dict[WebSocketServerProtocol, Tuple[str, str]] = {}
 lock = asyncio.Lock()
 
 
@@ -44,30 +103,38 @@ def now_ms() -> int:
 
 async def sweep(ts: int) -> None:
     async with lock:
-        dead = [pid for pid, p in players.items() if ts - p.get("lastSeen", 0) > TTL_MS]
+        dead = [pid for pid, p in players.items() if ts - p.last_seen > TTL_MS]
         for pid in dead:
             players.pop(pid, None)
 
 
-async def broadcast(obj: Dict[str, Any]) -> None:
+async def broadcast_filtered(obj: Dict[str, Any], channel: str, level: str) -> None:
+    """Broadcast an update only to clients in the same channel & level."""
     if not connections:
         return
     msg = json.dumps(obj, separators=(",", ":"))
     dead: Set[WebSocketServerProtocol] = set()
     awaitables = []
+    targets: Set[WebSocketServerProtocol] = set()
     for ws in connections:
+        meta = ws_meta.get(ws)
+        if not meta:
+            # If we don't yet know the meta (pre-update client), allow sending so it can at least see others when it joins.
+            targets.add(ws)
+        else:
+            c, l = meta
+            if c == channel and l == level:
+                targets.add(ws)
+    for ws in targets:
         awaitables.append(ws.send(msg))
-    # Send concurrently; collect failures
     results = await asyncio.gather(*awaitables, return_exceptions=True)
-    for ws, res in zip(list(connections), results):
+    for ws, res in zip(list(targets), results):
         if isinstance(res, Exception):
             dead.add(ws)
     for ws in dead:
-        try:
-            connections.discard(ws)
-            ws_to_id.pop(ws, None)
-        except Exception:
-            pass
+        connections.discard(ws)
+        ws_to_id.pop(ws, None)
+        ws_meta.pop(ws, None)
 
 
 def validate_update(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,9 +143,15 @@ def validate_update(data: Dict[str, Any]) -> Dict[str, Any]:
     state = data.get("state")
     rotation = data.get("rotation")
     frozen = bool(data.get("frozen", False))
+    channel = data.get("channel") or "DEFAULT"
+    level = data.get("level") or "ROOT"
 
     if not isinstance(pid, str) or len(pid) < 8:
         raise ValueError("invalid_id")
+    if not isinstance(channel, str) or len(channel) == 0 or len(channel) > 32:
+        raise ValueError("invalid_channel")
+    if not isinstance(level, str) or len(level) == 0 or len(level) > 64:
+        raise ValueError("invalid_level")
     try:
         x = float(pos.get("x"))
         y = float(pos.get("y"))
@@ -102,6 +175,8 @@ def validate_update(data: Dict[str, Any]) -> Dict[str, Any]:
         "state": state,
         "rotation": rotation,
         "frozen": frozen,
+        "channel": channel,
+        "level": level,
     }
 
 
@@ -125,27 +200,23 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 if not isinstance(pid, str) or len(pid) < 8:
                     await ws.close(code=1002, reason="invalid_id")
                     return
+                channel = data.get("channel") or "DEFAULT"
+                level = data.get("level") or "ROOT"
+                if not isinstance(channel, str) or not channel or len(channel) > 32:
+                    channel = "DEFAULT"
+                if not isinstance(level, str) or not level or len(level) > 64:
+                    level = "ROOT"
                 ws_to_id[ws] = pid
-                # Send initial snapshot (others only)
+                ws_meta[ws] = (channel, level)
+                # Send initial snapshot (others only) filtered by channel & level
                 ts = now_ms()
                 await sweep(ts)
                 async with lock:
-                    out = []
-                    for oid, p in players.items():
-                        if oid == pid:
-                            continue
-                        age = max(0, ts - p.get("lastSeen", ts))
-                        entry = {
-                            "id": oid,
-                            "pos": p["pos"],
-                            "state": p["state"],
-                            "ageMs": age,
-                        }
-                        if p.get("frozen"):
-                            entry["frozen"] = True
-                        if p["state"] == "ball" and p.get("rotation") is not None:
-                            entry["rotation"] = p["rotation"]
-                        out.append(entry)
+                    out = [
+                        p.to_snapshot_entry(ts)
+                        for oid, p in players.items()
+                        if oid != pid and p.channel == channel and p.level == level
+                    ]
                 snap = {"type": "snapshot", "now": ts, "ttlMs": TTL_MS, "players": out}
                 await ws.send(json.dumps(snap, separators=(",", ":")))
                 continue
@@ -160,39 +231,37 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 ts = now_ms()
                 # Update shared state
                 async with lock:
-                    players[v["id"]] = {
-                        "pos": {"x": v["x"], "y": v["y"], "z": v["z"]},
-                        "state": v["state"],
-                        "rotation": v["rotation"],
-                        "frozen": v["frozen"],
-                        "lastSeen": ts,
-                        "ip": peer,
-                    }
+                    players[v["id"]] = Player(
+                        id=v["id"],
+                        x=v["x"],
+                        y=v["y"],
+                        z=v["z"],
+                        state=v["state"],
+                        rotation=v["rotation"],
+                        frozen=v["frozen"],
+                        last_seen=ts,
+                        ip=peer,
+                        channel=v["channel"],
+                        level=v["level"],
+                    )
+                    # update meta for this websocket
+                    ws_meta[ws] = (v["channel"], v["level"])
                 await sweep(ts)
-                # Broadcast compact update
-                msg = {
-                    "type": "update",
-                    "now": ts,
-                    "id": v["id"],
-                    "pos": {"x": v["x"], "y": v["y"], "z": v["z"]},
-                    "state": v["state"],
-                }
-                if v["frozen"]:
-                    msg["frozen"] = True
-                if v["state"] == "ball" and v["rotation"] is not None:
-                    msg["rotation"] = v["rotation"]
+                # Broadcast compact update using Player helper
+                player = players[v["id"]]
+                msg = player.to_update_message(ts)
 
                 try:
                     print(
-                        f"[{ts}] UPDATE from {peer} id={v['id']} pos=({v['x']:.2f},{v['y']:.2f},{v['z']:.2f}) "
-                        f"state={v['state']} rotation={(v['rotation'] if v['rotation'] is not None else '-')} frozen={v['frozen']} "
+                        f"[{ts}] UPDATE from {peer} id={player.id} pos=({player.x:.2f},{player.y:.2f},{player.z:.2f}) "
+                        f"state={player.state} rotation={(player.rotation if player.rotation is not None else '-')} frozen={player.frozen} "
                         f"known={len(players)} -> broadcast",
                         flush=True,
                     )
                 except Exception:
                     pass
 
-                await broadcast(msg)
+                await broadcast_filtered(msg, player.channel, player.level)
 
             # Optional: handle client ping messages
             elif typ == "ping":
@@ -204,7 +273,8 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
     finally:
         connections.discard(ws)
         ws_to_id.pop(ws, None)
-        print(f"[WS] disconnect {peer}")
+    print(f"[WS] disconnect {peer}")
+    ws_meta.pop(ws, None)
 
 
 async def main():

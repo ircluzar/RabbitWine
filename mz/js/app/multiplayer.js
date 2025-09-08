@@ -12,6 +12,9 @@ let MP_SERVER = __MP_DEFAULT; // WebSocket endpoint (ws:// or wss://)
 const MP_TTL_MS = 3000;
 const MP_UPDATE_MS = 100; // 10 Hz
 const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into the ground
+// Channel / Level segmentation defaults
+const MP_CHANNEL = 'DEFAULT';
+const MP_LEVEL = 'ROOT';
 
 // GUID per session/boot
 const MP_ID = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2)+Date.now());
@@ -89,7 +92,7 @@ function mpEnsureWS(nowMs){
   __mp_cooldownActive = false; mpNextConnectAt = 0; __mp_retryMs = MP_FAIL_BASE_MS;
     try { console.log('[MP] WS connected'); } catch(_){}
     // Introduce ourselves so the server can send a snapshot
-    try { ws.send(JSON.stringify({ type:'hello', id: MP_ID })); } catch(_){ }
+    try { ws.send(JSON.stringify({ type:'hello', id: MP_ID, channel: MP_CHANNEL, level: MP_LEVEL })); } catch(_){ }
     // Reset rate limiter so we don't wait to resume updates
     mpLastNetT = 0;
     // Send an immediate one-shot update to re-announce presence
@@ -207,7 +210,7 @@ function mpTickNet(nowMs){
     rotDeg = ((angRad * 180/Math.PI) % 360 + 360) % 360;
   }
   const frozen = (()=>{ try { return !!(s && s.player && !s.player.isBallMode && s.player.isFrozen); } catch(_){ return false; } })();
-  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState };
+  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
   if (myState === 'ball') payload.rotation = rotDeg;
   if (frozen) payload.frozen = true;
   try { mpWS && mpWS.send(JSON.stringify(payload)); } catch(_){ }
@@ -228,7 +231,7 @@ function mpSendUpdateOneShot(){
     rotDeg = ((angRad * 180/Math.PI) % 360 + 360) % 360;
   }
   const frozen = (()=>{ try { return !!(s && s.player && !s.player.isBallMode && s.player.isFrozen); } catch(_){ return false; } })();
-  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState };
+  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
   if (myState === 'ball') payload.rotation = rotDeg;
   if (frozen) payload.frozen = true;
   try { mpWS.send(JSON.stringify(payload)); } catch(_){ }
@@ -460,3 +463,5 @@ const __mp_state_probe = setInterval(() => {
   }
   if (__mp_state_probe_count > 50){ clearInterval(__mp_state_probe); }
 }, 100);
+
+// (channel/level constants moved near config above)
