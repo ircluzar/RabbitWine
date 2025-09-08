@@ -237,6 +237,17 @@ function spawnPickupFloatingLinesWithRotation(x, y, z, outerScale, innerScale, o
   addCubeEdgeLines(origin, innerScale, {r:1.0, g:1.0, b:1.0}, innerAxis, innerAngle);
 }
 
+// Custom-colored variant for external systems (e.g., multiplayer ghost despawn)
+function spawnFloatingLinesCustom(x, y, z, colorOuter, colorInner, outerScale=0.46, innerScale=0.28, rotOuter=null, rotInner=null){
+  const origin = {x, y, z};
+  const oa = rotOuter && rotOuter.axis ? rotOuter.axis : null;
+  const oaAng = rotOuter && typeof rotOuter.angle === 'number' ? rotOuter.angle : 0.0;
+  const ia = rotInner && rotInner.axis ? rotInner.axis : null;
+  const iaAng = rotInner && typeof rotInner.angle === 'number' ? rotInner.angle : 0.0;
+  addCubeEdgeLines(origin, outerScale, colorOuter, oa, oaAng);
+  addCubeEdgeLines(origin, innerScale, colorInner, ia, iaAng);
+}
+
 function updateFxLines(dt){
   if (!fxLines.length) return;
   const now = state.nowSec || (performance.now()/1000);
@@ -302,6 +313,7 @@ function drawFxLines(mvp){
 if (typeof window !== 'undefined'){
   window.spawnPickupFloatingLines = spawnPickupFloatingLines;
   window.spawnPickupFloatingLinesWithRotation = spawnPickupFloatingLinesWithRotation;
+  window.spawnFloatingLinesCustom = spawnFloatingLinesCustom;
   window.updateFxLines = updateFxLines;
   window.drawFxLines = drawFxLines;
 }

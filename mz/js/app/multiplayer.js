@@ -10,6 +10,7 @@ const __MP_DEFAULT = ((window.MP_SERVER && window.MP_SERVER.trim()) || (`http://
 let MP_SERVER = __MP_DEFAULT; // HTTPS disabled: keep HTTP endpoint as-is
 const MP_TTL_MS = 3000;
 const MP_UPDATE_MS = 100; // 10 Hz
+const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into the ground
 
 // GUID per session/boot
 const MP_ID = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2)+Date.now());
@@ -32,8 +33,8 @@ try { if (!window.state && typeof state !== 'undefined') window.state = state; }
 
 // Ghost repository with buffered samples for interpolation
 /** @type {Map<string,{
- *  samples: Array<{t:number, x:number,y:number,z:number, state:'good'|'ball', rot?:number}>,
- *  renderPos:{x:number,y:number,z:number}, renderRot:number, renderState:'good'|'ball',
+ *  samples: Array<{t:number, x:number,y:number,z:number, state:'good'|'ball', rot?:number, frozen?:boolean}>,
+ *  renderPos:{x:number,y:number,z:number}, renderRot:number, renderState:'good'|'ball', renderFrozen?:boolean,
  *  lastSeen:number
  *}>
  */
@@ -43,12 +44,19 @@ const ghosts = new Map();
 const timeSync = { offsetMs: 0, rttMs: 0, ready: false };
 const INTERP_DELAY_MS = 150;   // render slightly in the past for smooth playback
 const MAX_EXTRAP_MS = 250;     // cap extrapolation when missing newer samples
+const GHOST_DESPAWN_MS = 2000; // if no updates > 2s, despawn
+const MP_FAIL_COOLDOWN_MS = 10000; // wait 10s after a failed update before trying again
 
 // Networking
 let __mp_failCount = 0;
 function mpSendUpdate(selfPos, state, rotation){
   const body = { id: MP_ID, pos: { x: selfPos.x, y: selfPos.y, z: selfPos.z||0 }, state };
   if (state === 'ball') body.rotation = rotation;
+  // Report frozen status for non-ball mode so other clients can render white wireframes
+  try {
+    const s = __mp_getState();
+    if (s && s.player && !s.player.isBallMode) body.frozen = !!s.player.isFrozen;
+  } catch(_) {}
   const base = MP_SERVER.replace(/\/$/, '');
   const url = base ? `${base}/update` : `${location.origin}/mz/update`;
   console.log('[MP] sending', { url, body });
@@ -91,10 +99,16 @@ function mpSendUpdate(selfPos, state, rotation){
 }
 
 let mpLastNetT = 0;
+let mpNextAllowedNetT = 0; // wall-clock ms; if now < this, skip sending (cooldown)
+let __mp_cooldownActive = false;
 function mpTickNet(nowMs){
   const s = __mp_getState();
   if (!s || !s.player){
     if (!mpTickNet._warned){ console.log('[MP] waiting for state...'); mpTickNet._warned = true; }
+    return;
+  }
+  // Respect cooldown after failures
+  if (nowMs < mpNextAllowedNetT){
     return;
   }
   if ((nowMs - mpLastNetT) < MP_UPDATE_MS - 1) return; // rate
@@ -114,6 +128,8 @@ function mpTickNet(nowMs){
   if (mpTickNet._warned && !mpTickNet._readyLogged){ console.log('[MP] state ready, starting updates'); mpTickNet._readyLogged = true; }
   mpSendUpdate(selfPos, myState, rotDeg).then(snap => {
     const serverNow = snap.now || 0;
+    // Clear cooldown on success
+    if (__mp_cooldownActive){ __mp_cooldownActive = false; mpNextAllowedNetT = 0; console.log('[MP] reconnected'); }
     const seen = new Set();
     if (Array.isArray(snap.players)){
       for (const o of snap.players){
@@ -121,11 +137,11 @@ function mpTickNet(nowMs){
         seen.add(o.id);
         let g = ghosts.get(o.id);
         if (!g){
-          g = { samples: [], renderPos: {x:o.pos.x, y:o.pos.y, z:o.pos.z}, renderRot: (o.rotation||0), renderState: (o.state==='ball'?'ball':'good'), lastSeen: 0 };
+          g = { samples: [], renderPos: {x:o.pos.x, y:o.pos.y, z:o.pos.z}, renderRot: (o.rotation||0), renderState: (o.state==='ball'?'ball':'good'), renderFrozen: !!o.frozen, lastSeen: 0 };
           ghosts.set(o.id, g);
         }
         const st = Math.max(0, serverNow - (o.ageMs || 0)); // sample server time
-        g.samples.push({ t: st, x:o.pos.x, y:o.pos.y, z:o.pos.z, state:(o.state==='ball'?'ball':'good'), rot: (typeof o.rotation==='number'? o.rotation : undefined) });
+        g.samples.push({ t: st, x:o.pos.x, y:o.pos.y, z:o.pos.z, state:(o.state==='ball'?'ball':'good'), rot: (typeof o.rotation==='number'? o.rotation : undefined), frozen: !!o.frozen });
         // Keep last ~2s of samples
         const cutoff = st - 2000;
         let k = 0;
@@ -139,7 +155,12 @@ function mpTickNet(nowMs){
     for (const [id, g] of ghosts){
       if (!seen.has(id) && (nowLocal - g.lastSeen > MP_TTL_MS)) ghosts.delete(id);
     }
-  }).catch(()=>{});
+  }).catch((err)=>{
+    // Start cooldown window
+    if (!__mp_cooldownActive){ console.warn('[MP] update failed; cooling down 10s'); }
+    __mp_cooldownActive = true;
+    mpNextAllowedNetT = nowMs + MP_FAIL_COOLDOWN_MS;
+  });
 }
 
 // Local interpolation (called every frame)
@@ -167,10 +188,12 @@ function mpUpdateGhosts(dt){
         const lookahead = Math.min(MAX_EXTRAP_MS, serverRenderTime - p1.t);
         g.renderPos = { x: p1.x + vx * lookahead, y: p1.y + vy * lookahead, z: p1.z + vz * lookahead };
         g.renderState = p1.state;
+        g.renderFrozen = !!p1.frozen;
         if (p1.state === 'ball' && typeof p1.rot === 'number') g.renderRot = p1.rot;
       } else {
         g.renderPos = { x: arr[0].x, y: arr[0].y, z: arr[0].z };
         g.renderState = arr[0].state;
+        g.renderFrozen = !!arr[0].frozen;
         if (arr[0].state === 'ball' && typeof arr[0].rot === 'number') g.renderRot = arr[0].rot;
       }
       continue;
@@ -179,7 +202,8 @@ function mpUpdateGhosts(dt){
     const u = Math.max(0, Math.min(1, (serverRenderTime - a.t) / span));
     g.renderPos = { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, z: a.z + (b.z - a.z) * u };
     // Choose state from newer sample to reduce flicker
-    g.renderState = (u < 0.5 ? a.state : b.state);
+  g.renderState = (u < 0.5 ? a.state : b.state);
+  g.renderFrozen = (u < 0.5 ? !!a.frozen : !!b.frozen);
     // Rotation smoothing (shortest arc) if ball and both have rotation
     const ra = (typeof a.rot === 'number') ? ((a.rot%360)+360)%360 : null;
     const rb = (typeof b.rot === 'number') ? ((b.rot%360)+360)%360 : null;
@@ -188,6 +212,31 @@ function mpUpdateGhosts(dt){
       g.renderRot = ra + diff * u;
     } else if (ra !== null) { g.renderRot = ra; }
   }
+  // Despawn check: remove ghosts stale for >2s; spawn FX if on-screen
+  const nowSec = (state && (state.nowSec || performance.now()/1000)) || (performance.now()/1000);
+  const toDelete = [];
+  for (const [id, g] of ghosts){
+    if ((Date.now() - (g.lastSeen || 0)) > GHOST_DESPAWN_MS){
+      // Try to spawn floating lines if visible
+      try {
+        if (g.renderPos && typeof spawnFloatingLinesCustom === 'function'){
+          const rp = g.renderPos;
+          const color = (g.renderState === 'ball') ? {r:1.0,g:0.2,b:0.2} : (g.renderFrozen ? {r:1.0,g:1.0,b:1.0} : {r:0.1,g:1.0,b:0.1});
+          const inner = (g.renderState === 'ball') ? {r:1.0,g:0.6,b:0.6} : {r:1.0,g:1.0,b:1.0};
+          const y = rp.y + (typeof GHOST_Y_OFFSET === 'number' ? GHOST_Y_OFFSET : 0);
+          const visible = (typeof window.isWorldPointVisibleAny === 'function') ? window.isWorldPointVisibleAny(rp.x, y, rp.z)
+                         : (typeof window.isWorldPointVisible === 'function') ? window.isWorldPointVisible(rp.x, y, rp.z)
+                         : true; // if no helper, just spawn
+          if (visible){
+            console.log('[MP] ghost despawn FX', { x: rp.x, y, z: rp.z, state: g.renderState, frozen: !!g.renderFrozen });
+            spawnFloatingLinesCustom(rp.x, y, rp.z, color, inner, 0.54, 0.34);
+          }
+        }
+      } catch(_){ }
+      toDelete.push(id);
+    }
+  }
+  for (const id of toDelete){ ghosts.delete(id); }
 }
 
 // Rendering helpers using existing trail cube pipeline
@@ -202,7 +251,7 @@ function drawGhosts(mvp){
   let i = 0;
   for (const g of ghosts.values()){
     const rp = g.renderPos || {x:0,y:0,z:0};
-    inst[i*4+0] = rp.x; inst[i*4+1] = rp.y + 0.25; inst[i*4+2] = rp.z; inst[i*4+3] = now;
+    inst[i*4+0] = rp.x; inst[i*4+1] = rp.y + GHOST_Y_OFFSET; inst[i*4+2] = rp.z; inst[i*4+3] = now;
     i++;
   }
   gl.useProgram(trailCubeProgram);
@@ -220,7 +269,7 @@ function drawGhosts(mvp){
   gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners); gl.bufferData(gl.ARRAY_BUFFER, corners, gl.DYNAMIC_DRAW);
 
   // First pass: GOOD (green)
-  gl.uniform3f(tc_u_lineColor, 0.1, 1.0, 0.1);
+    gl.uniform3f(tc_u_lineColor, 0.1, 1.0, 0.1); // Set color for good ghosts
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.depthMask(false);
   // Draw only those with state good by issuing individual draws; cheap for small N
@@ -228,8 +277,9 @@ function drawGhosts(mvp){
   for (const g of ghosts.values()){
     if ((g.renderState || 'good') !== 'ball'){
       const rp = g.renderPos || {x:0,y:0,z:0};
-      const localInst = new Float32Array([rp.x, rp.y + 0.25, rp.z, now]);
+  const localInst = new Float32Array([rp.x, rp.y + GHOST_Y_OFFSET, rp.z, now]);
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, localInst, gl.DYNAMIC_DRAW);
+        if (g.renderFrozen) gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0); else gl.uniform3f(tc_u_lineColor, 0.1, 1.0, 0.1);
       gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
     }
     idx++;
@@ -246,7 +296,7 @@ function drawGhosts(mvp){
       // Encode the desired angle in the seed by back-solving: angle = rotSpeed*(now-seed). Using rotSpeed=1 rad/s -> seed = now - angleRad
       const rp = g.renderPos || {x:0,y:0,z:0};
       const angleRad = ((g.renderRot||0) * Math.PI/180);
-      const instOne = new Float32Array([rp.x, rp.y + 0.25, rp.z, now - angleRad]);
+  const instOne = new Float32Array([rp.x, rp.y + GHOST_Y_OFFSET, rp.z, now - angleRad]);
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
       // Axis = +Z spin
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0,1]), gl.DYNAMIC_DRAW);
@@ -271,6 +321,19 @@ window.drawGhosts = drawGhosts;
 window.__mp_onFrame = __mp_onFrame;
 window.MP_ID = MP_ID;
 window.MP_SERVER = MP_SERVER;
+// Expose a minimal helper for gameplay to check collisions against damaging ghosts (in red/ball state)
+window.mpGetDangerousGhosts = function(){
+  const out = [];
+  try {
+    for (const g of ghosts.values()){
+      if ((g.renderState || 'good') === 'ball'){
+        const rp = g.renderPos || {x:0,y:0,z:0};
+        out.push({ x: rp.x, y: rp.y, z: rp.z });
+      }
+    }
+  } catch(_){ }
+  return out;
+};
 
 // Fallback: if the frame hook doesn't run within 1500ms, start a timer-based tick
 setTimeout(() => {

@@ -136,6 +136,28 @@ function moveAndCollide(dt){
     runBallMode(dt);
     return;
   }
+  // Network ghost collision: if any ghost is in damaging state (red/ball) and overlaps generously, apply damage bounce
+  try {
+    if (typeof window !== 'undefined' && typeof window.mpGetDangerousGhosts === 'function'){
+      const ghosts = window.mpGetDangerousGhosts();
+      if (Array.isArray(ghosts) && ghosts.length){
+        const R = 0.69; // generous radius around player center
+        for (let i=0;i<ghosts.length;i++){
+          const g = ghosts[i]; if (!g) continue;
+          const dy = (p.y + 0.25) - (g.y + 0.25);
+          if (Math.abs(dy) > 0.9) continue; // require rough vertical proximity
+          const dx = p.x - g.x; const dz = p.z - g.z;
+          if (dx*dx + dz*dz <= R*R){
+            // Knock the player away from the ghost position
+            const nx = (p.x - g.x), nz = (p.z - g.z);
+            const L = Math.hypot(nx, nz) || 1; const hit = { nx: nx/L, nz: nz/L };
+            enterBallMode(hit);
+            break;
+          }
+        }
+      }
+    }
+  } catch(_){ }
   const oldX = p.x, oldZ = p.z;
   const baseSpeed = 3.0;
   const seamMax = baseSpeed * seamSpeedFactor();

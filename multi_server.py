@@ -92,6 +92,7 @@ class Handler(BaseHTTPRequestHandler):
         pos = data.get("pos") or {}
         state = data.get("state")
         rotation = data.get("rotation")
+        frozen = bool(data.get("frozen", False))
 
         # Validate
         if not isinstance(pid, str) or len(pid) < 8:
@@ -124,6 +125,7 @@ class Handler(BaseHTTPRequestHandler):
                 "pos": {"x": x, "y": y, "z": z},
                 "state": state,
                 "rotation": rotation,
+                "frozen": frozen,
                 "lastSeen": ts,
                 "ip": sender_ip,
             }
@@ -139,6 +141,8 @@ class Handler(BaseHTTPRequestHandler):
                     "state": p["state"],
                     "ageMs": age,
                 }
+                if p.get("frozen"):
+                    entry["frozen"] = True
                 if p["state"] == "ball" and p.get("rotation") is not None:
                     entry["rotation"] = p["rotation"]
                 out.append(entry)
@@ -147,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 print(
                     f"[{ts}] UPDATE from {sender_ip} id={pid} pos=({x:.2f},{y:.2f},{z:.2f}) "
-                    f"state={state} rotation={(rotation if rotation is not None else '-')} "
+                    f"state={state} rotation={(rotation if rotation is not None else '-')} frozen={frozen} "
                     f"known={len(players)} -> responding others={len(out)}",
                     flush=True,
                 )

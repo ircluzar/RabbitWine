@@ -4,6 +4,26 @@
  * Dependencies: All core modules, state management, WebGL pipelines. Side effects: Modifies WebGL state, calls requestAnimationFrame.
  */
 
+// Global visibility helper that checks both top and bottom MVPs (and last fallback)
+if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'function'){
+  window.isWorldPointVisibleAny = function(x,y,z){
+    try {
+      const vis = (m)=>{
+        if (!m) return false;
+        const v = [x,y,z,1];
+        const clipX = v[0]*m[0] + v[1]*m[4] + v[2]*m[8]  + v[3]*m[12];
+        const clipY = v[0]*m[1] + v[1]*m[5] + v[2]*m[9]  + v[3]*m[13];
+        const clipZ = v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14];
+        const clipW = v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15];
+        if (clipW === 0) return false;
+        const nx = clipX/clipW, ny = clipY/clipW, nz = clipZ/clipW;
+        return nx>=-1 && nx<=1 && ny>=-1 && ny<=1 && nz>=-1 && nz<=1;
+      };
+      return vis(window._mvpBottom) || vis(window._mvpTop) || vis(window._lastMVP);
+    } catch(_){ return false; }
+  };
+}
+
 /**
  * Main render function called every frame
  * @param {number} now - Current timestamp from requestAnimationFrame
@@ -40,6 +60,22 @@ function render(now) {
     const center = [fx, 0.0, fz];
     const view = mat4LookAt(eye, center, [0, 0, -1]);
     const mvp = mat4Multiply(proj, view);
+  // Expose a simple visibility test for world-space points in current camera
+  window._lastMVP = mvp;
+  window._mvpBottom = mvp;
+    window.isWorldPointVisible = function(x,y,z){
+      try {
+        const m = window._lastMVP; if (!m) return false;
+        const v = [x,y,z,1];
+        const clipX = v[0]*m[0] + v[1]*m[4] + v[2]*m[8]  + v[3]*m[12];
+        const clipY = v[0]*m[1] + v[1]*m[5] + v[2]*m[9]  + v[3]*m[13];
+        const clipZ = v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14];
+        const clipW = v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15];
+        if (clipW === 0) return false;
+        const nx = clipX/clipW, ny = clipY/clipW, nz = clipZ/clipW;
+        return nx>=-1 && nx<=1 && ny>=-1 && ny<=1 && nz>=-1 && nz<=1;
+      } catch(_){ return false; }
+    };
   drawTiles(mvp, 'open');
   drawWalls(mvp, 'bottom');
   drawTallColumns(mvp, 'bottom');
@@ -84,7 +120,9 @@ function render(now) {
       center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
     }
     const view = mat4LookAt(eye, center, [0, 1, 0]);
-    const mvp = mat4Multiply(proj, view);
+  const mvp = mat4Multiply(proj, view);
+  window._lastMVP = mvp;
+  window._mvpTop = mvp;
   drawTiles(mvp, 'open');
   drawWalls(mvp, 'top');
   drawTallColumns(mvp, 'top');
@@ -110,7 +148,9 @@ function render(now) {
   const eye = [fx, 24.0, fz];
       const center = [fx, 0.0, fz];
       const view = mat4LookAt(eye, center, [0, 0, -1]);
-      const mvp = mat4Multiply(proj, view);
+  const mvp = mat4Multiply(proj, view);
+  window._lastMVP = mvp;
+  window._mvpBottom = mvp;
     // Draw floor tiles then 3D walls
   drawTiles(mvp, 'open');
   drawWalls(mvp, 'bottom');
@@ -151,10 +191,11 @@ function render(now) {
         center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
       }
       const view = mat4LookAt(eye, center, [0, 1, 0]);
-      const mvp = mat4Multiply(proj, view);
+    const mvp = mat4Multiply(proj, view);
   drawTiles(mvp, 'open');
   drawWalls(mvp, 'top');
   drawTallColumns(mvp, 'top');
+  window._mvpTop = mvp;
   if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
   if (typeof drawItems === 'function') drawItems(mvp);
   if (typeof drawFxLines === 'function') drawFxLines(mvp);
