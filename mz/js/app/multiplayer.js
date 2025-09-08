@@ -1,13 +1,14 @@
 "use strict";
 /**
  * Ultra-simple multiplayer client for RabbitWine.
- * Periodically POSTs our state to the Python server and keeps a map of ghost players.
+ * Maintains a WebSocket to the server; sends periodic updates and buffers others for smooth rendering.
  * Ghosts are rendered as wireframe boxes using the existing trail cube pipeline.
  */
 
 // Config
-const __MP_DEFAULT = ((window.MP_SERVER && window.MP_SERVER.trim()) || (`http://${location.hostname}:42666`)).replace(/\/$/, "");
-let MP_SERVER = __MP_DEFAULT; // HTTPS disabled: keep HTTP endpoint as-is
+const __MP_SCHEME = (location.protocol === 'https:' ? 'wss' : 'ws');
+const __MP_DEFAULT = ((window.MP_SERVER && window.MP_SERVER.trim()) || (`${__MP_SCHEME}://${location.hostname}:42666`)).replace(/\/$/, "");
+let MP_SERVER = __MP_DEFAULT; // WebSocket endpoint (ws:// or wss://)
 const MP_TTL_MS = 3000;
 const MP_UPDATE_MS = 100; // 10 Hz
 const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into the ground
@@ -16,7 +17,7 @@ const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into 
 const MP_ID = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2)+Date.now());
 
 // Init log so it’s clear the module is active
-try { console.log('[MP] init (HTTP only)', { server: MP_SERVER, id: MP_ID }); } catch(_) {}
+try { console.log('[MP] init (WebSocket)', { server: MP_SERVER, id: MP_ID }); } catch(_) {}
 
 // Helper to get global state across script scoping variations
 function __mp_getState(){
@@ -45,72 +46,153 @@ const timeSync = { offsetMs: 0, rttMs: 0, ready: false };
 const INTERP_DELAY_MS = 150;   // render slightly in the past for smooth playback
 const MAX_EXTRAP_MS = 250;     // cap extrapolation when missing newer samples
 const GHOST_DESPAWN_MS = 2000; // if no updates > 2s, despawn
-const MP_FAIL_COOLDOWN_MS = 10000; // wait 10s after a failed update before trying again
+const MP_FAIL_COOLDOWN_MS = 10000; // cap: wait up to 10s between retries
+const MP_FAIL_BASE_MS = 2000;      // initial backoff 2s
+const MP_FAIL_JITTER_MS = 400;     // +/- jitter to avoid thundering herd
 
-// Networking
-let __mp_failCount = 0;
-function mpSendUpdate(selfPos, state, rotation){
-  const body = { id: MP_ID, pos: { x: selfPos.x, y: selfPos.y, z: selfPos.z||0 }, state };
-  if (state === 'ball') body.rotation = rotation;
-  // Report frozen status for non-ball mode so other clients can render white wireframes
+// WebSocket connection state and helpers
+let mpWS = null;
+let mpWSState = 'closed'; // 'closed' | 'connecting' | 'open'
+let mpNextConnectAt = 0;   // wall-clock ms for next allowed connect attempt
+let __mp_cooldownActive = false;
+let __mp_retryMs = MP_FAIL_BASE_MS; // exponential backoff that caps at MP_FAIL_COOLDOWN_MS
+let __mp_pingTimer = null;         // keep-alive/time-sync ping timer
+let __mp_sendWatchTimer = null;    // watchdog to ensure updates resume
+let __mp_lastSendReal = 0;         // last real-time send moment
+
+function mpComputeOffset(serverNow){
   try {
-    const s = __mp_getState();
-    if (s && s.player && !s.player.isBallMode) body.frozen = !!s.player.isFrozen;
-  } catch(_) {}
-  const base = MP_SERVER.replace(/\/$/, '');
-  const url = base ? `${base}/update` : `${location.origin}/mz/update`;
-  console.log('[MP] sending', { url, body });
-  const t0 = performance.now();
-  return fetch(url, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), mode: 'cors', keepalive: false
-  }).then(async r => {
-    const txt = await r.text();
-    const dt = Math.round(performance.now() - t0);
-    if (!r.ok){
-      console.warn('[MP] server responded error', { status:r.status, dt, txt });
-      throw new Error('server_error_'+r.status);
-    }
-    const json = JSON.parse(txt || '{}');
-    const count = (json && Array.isArray(json.players)) ? json.players.length : 0;
-    console.log('[MP] ok', { dt, count });
-    __mp_failCount = 0;
-    // Update time sync (approximate): offset = serverNow - (localNow - rtt/2)
+    const localNow = Date.now();
+    const est = (typeof serverNow === 'number') ? (serverNow - localNow) : timeSync.offsetMs;
+    const alpha = timeSync.ready ? 0.1 : 0.5;
+    timeSync.offsetMs = (1 - alpha) * timeSync.offsetMs + alpha * est;
+    timeSync.ready = true;
+  } catch(_){}
+}
+
+function mpEnsureWS(nowMs){
+  if (mpWSState === 'open' || mpWSState === 'connecting') return;
+  // Use wall-clock for cooldown gating to avoid mismatch with game timebases
+  if (Date.now() < mpNextConnectAt) return; // cooldown
+  let url = MP_SERVER.replace(/\/$/, '');
+  // Allow users to provide http(s) and convert scheme
+  if (/^https?:\/\//i.test(url)){
+    url = url.replace(/^http/i, (location.protocol === 'https:' ? 'wss' : 'ws'));
+  }
+  try { console.log('[MP] WS connecting', url); } catch(_){}
+  mpWSState = 'connecting';
+  __mp_cooldownActive = false;
+  const ws = new WebSocket(url);
+  mpWS = ws;
+  ws.onopen = ()=>{
+    mpWSState = 'open';
+  __mp_cooldownActive = false; mpNextConnectAt = 0; __mp_retryMs = MP_FAIL_BASE_MS;
+    try { console.log('[MP] WS connected'); } catch(_){}
+    // Introduce ourselves so the server can send a snapshot
+    try { ws.send(JSON.stringify({ type:'hello', id: MP_ID })); } catch(_){ }
+    // Reset rate limiter so we don't wait to resume updates
+    mpLastNetT = 0;
+    // Send an immediate one-shot update to re-announce presence
+    try { mpSendUpdateOneShot(); } catch(_){}
+    // Start periodic ping for liveness and time sync
+    try { if (__mp_pingTimer) { clearInterval(__mp_pingTimer); __mp_pingTimer = null; } } catch(_){}
     try {
-      const localNow = Date.now();
-      const rtt = Math.max(0, localNow - Math.floor(t0 + (performance.timeOrigin || 0)));
-      const half = rtt * 0.5;
-      const est = (typeof json.now === 'number') ? (json.now - (localNow - half)) : timeSync.offsetMs;
-      const alpha = timeSync.ready ? 0.1 : 0.5;
-      timeSync.offsetMs = (1 - alpha) * timeSync.offsetMs + alpha * est;
-      timeSync.rttMs = (1 - alpha) * timeSync.rttMs + alpha * rtt;
-      timeSync.ready = true;
-    } catch(_){ }
-    return json;
-  }).catch(err => {
-    const dt = Math.round(performance.now() - t0);
-    console.error('[MP] failed', { err: String(err), dt });
-    __mp_failCount++;
-    if (__mp_failCount === 3){
-      console.warn('[MP] still failing after 3 tries. If your page is HTTPS, the server must be HTTPS too, or set window.MP_SERVER to a same-origin proxied path.');
+      __mp_pingTimer = setInterval(() => {
+        try {
+          if (mpWS && mpWS.readyState === WebSocket.OPEN) {
+            mpWS.send(JSON.stringify({ type: 'ping' }));
+          }
+        } catch(_){}
+      }, 10000);
+    } catch(_){}
+    // Start send watchdog: if no update sent in >1.2s while open, force one
+    try { if (__mp_sendWatchTimer) { clearInterval(__mp_sendWatchTimer); __mp_sendWatchTimer = null; } } catch(_){}
+    try {
+      __mp_lastSendReal = Date.now();
+      __mp_sendWatchTimer = setInterval(() => {
+        try {
+          if (mpWS && mpWS.readyState === WebSocket.OPEN) {
+            if ((Date.now() - __mp_lastSendReal) > 1200) {
+              mpSendUpdateOneShot();
+            }
+          }
+        } catch(_){}
+      }, 800);
+    } catch(_){}
+  };
+  ws.onmessage = (ev)=>{
+    let msg = null; try { msg = JSON.parse(ev.data); } catch(_){ return; }
+    const t = msg && msg.type;
+    if (t === 'snapshot'){
+      const serverNow = msg.now || 0; mpComputeOffset(serverNow);
+      if (Array.isArray(msg.players)){
+        for (const o of msg.players){
+          if (!o || typeof o.id !== 'string') continue;
+          if (o.id === MP_ID) continue;
+          let g = ghosts.get(o.id);
+          if (!g){
+            g = { samples: [], renderPos: {x:o.pos.x, y:o.pos.y, z:o.pos.z}, renderRot: (o.rotation||0), renderState: (o.state==='ball'?'ball':'good'), renderFrozen: !!o.frozen, lastSeen: 0 };
+            ghosts.set(o.id, g);
+          }
+          const st = Math.max(0, serverNow - (o.ageMs || 0));
+          g.samples.push({ t: st, x:o.pos.x, y:o.pos.y, z:o.pos.z, state:(o.state==='ball'?'ball':'good'), rot: (typeof o.rotation==='number'? o.rotation : undefined), frozen: !!o.frozen });
+          const cutoff = st - 2000; let k = 0; for (let i=0;i<g.samples.length;i++){ if (g.samples[i].t >= cutoff){ g.samples[k++] = g.samples[i]; } } g.samples.length = k;
+          g.lastSeen = Date.now();
+        }
+      }
+    } else if (t === 'update'){
+      const serverNow = msg.now || 0; mpComputeOffset(serverNow);
+      const o = msg;
+      if (!o || typeof o.id !== 'string') return;
+      if (o.id === MP_ID) return;
+      let g = ghosts.get(o.id);
+      if (!g){
+        g = { samples: [], renderPos: {x:o.pos.x, y:o.pos.y, z:o.pos.z}, renderRot: (o.rotation||0), renderState: (o.state==='ball'?'ball':'good'), renderFrozen: !!o.frozen, lastSeen: 0 };
+        ghosts.set(o.id, g);
+      }
+      const st = serverNow;
+      g.samples.push({ t: st, x:o.pos.x, y:o.pos.y, z:o.pos.z, state:(o.state==='ball'?'ball':'good'), rot: (typeof o.rotation==='number'? o.rotation : undefined), frozen: !!o.frozen });
+      const cutoff = st - 2000; let k = 0; for (let i=0;i<g.samples.length;i++){ if (g.samples[i].t >= cutoff){ g.samples[k++] = g.samples[i]; } } g.samples.length = k;
+      g.lastSeen = Date.now();
+    } else if (t === 'pong'){
+      const serverNow = msg.now || 0; mpComputeOffset(serverNow);
     }
-  // HTTPS/same-origin fallback disabled by request
-    throw err;
-  });
+  };
+  const startCooldown = (ev)=>{
+    // Prevent double cooldown escalation when both onerror and onclose fire
+    if (__mp_cooldownActive && mpWSState === 'closed') return;
+    if (mpWSState === 'open' || mpWSState === 'connecting'){
+      try { ws.close(); } catch(_){ }
+    }
+    mpWSState = 'closed'; mpWS = null;
+    __mp_cooldownActive = true;
+  try { if (__mp_pingTimer) { clearInterval(__mp_pingTimer); __mp_pingTimer = null; } } catch(_){}
+  try { if (__mp_sendWatchTimer) { clearInterval(__mp_sendWatchTimer); __mp_sendWatchTimer = null; } } catch(_){}
+    // compute next attempt time with backoff + jitter
+    const jitter = (Math.random()*2 - 1) * MP_FAIL_JITTER_MS;
+    const wait = Math.min(MP_FAIL_COOLDOWN_MS, __mp_retryMs) + jitter;
+    mpNextConnectAt = Date.now() + Math.max(0, wait|0);
+    __mp_retryMs = Math.min(MP_FAIL_COOLDOWN_MS, Math.max(MP_FAIL_BASE_MS, __mp_retryMs * 2));
+    try {
+      const code = ev && typeof ev.code === 'number' ? ev.code : undefined;
+      const reason = ev && typeof ev.reason === 'string' ? ev.reason : '';
+      console.warn(`[MP] WS closed; retry in ~${Math.max(0, wait|0)}ms`, { code, reason });
+    } catch(_){}
+  };
+  ws.onerror = (e)=>{ startCooldown(e); };
+  ws.onclose = (e)=>{ startCooldown(e); };
 }
 
 let mpLastNetT = 0;
-let mpNextAllowedNetT = 0; // wall-clock ms; if now < this, skip sending (cooldown)
-let __mp_cooldownActive = false;
 function mpTickNet(nowMs){
+  // Always drive WS connection state, even if gameplay state isn't ready yet
+  mpEnsureWS(nowMs);
   const s = __mp_getState();
   if (!s || !s.player){
     if (!mpTickNet._warned){ console.log('[MP] waiting for state...'); mpTickNet._warned = true; }
     return;
   }
-  // Respect cooldown after failures
-  if (nowMs < mpNextAllowedNetT){
-    return;
-  }
+  if (mpWSState !== 'open') return;
   if ((nowMs - mpLastNetT) < MP_UPDATE_MS - 1) return; // rate
   mpLastNetT = nowMs;
   const p = s.player;
@@ -124,43 +206,33 @@ function mpTickNet(nowMs){
     const angRad = speed * Math.max(0, nowSec - seed);
     rotDeg = ((angRad * 180/Math.PI) % 360 + 360) % 360;
   }
-  const selfPos = { x: p.x, y: p.y, z: p.z };
-  if (mpTickNet._warned && !mpTickNet._readyLogged){ console.log('[MP] state ready, starting updates'); mpTickNet._readyLogged = true; }
-  mpSendUpdate(selfPos, myState, rotDeg).then(snap => {
-    const serverNow = snap.now || 0;
-    // Clear cooldown on success
-    if (__mp_cooldownActive){ __mp_cooldownActive = false; mpNextAllowedNetT = 0; console.log('[MP] reconnected'); }
-    const seen = new Set();
-    if (Array.isArray(snap.players)){
-      for (const o of snap.players){
-        if (!o || typeof o.id !== 'string') continue;
-        seen.add(o.id);
-        let g = ghosts.get(o.id);
-        if (!g){
-          g = { samples: [], renderPos: {x:o.pos.x, y:o.pos.y, z:o.pos.z}, renderRot: (o.rotation||0), renderState: (o.state==='ball'?'ball':'good'), renderFrozen: !!o.frozen, lastSeen: 0 };
-          ghosts.set(o.id, g);
-        }
-        const st = Math.max(0, serverNow - (o.ageMs || 0)); // sample server time
-        g.samples.push({ t: st, x:o.pos.x, y:o.pos.y, z:o.pos.z, state:(o.state==='ball'?'ball':'good'), rot: (typeof o.rotation==='number'? o.rotation : undefined), frozen: !!o.frozen });
-        // Keep last ~2s of samples
-        const cutoff = st - 2000;
-        let k = 0;
-        for (let i=0;i<g.samples.length;i++){ if (g.samples[i].t >= cutoff){ g.samples[k++] = g.samples[i]; } }
-        g.samples.length = k;
-        g.lastSeen = Date.now();
-      }
-    }
-    // Prune expired
-    const nowLocal = Date.now();
-    for (const [id, g] of ghosts){
-      if (!seen.has(id) && (nowLocal - g.lastSeen > MP_TTL_MS)) ghosts.delete(id);
-    }
-  }).catch((err)=>{
-    // Start cooldown window
-    if (!__mp_cooldownActive){ console.warn('[MP] update failed; cooling down 10s'); }
-    __mp_cooldownActive = true;
-    mpNextAllowedNetT = nowMs + MP_FAIL_COOLDOWN_MS;
-  });
+  const frozen = (()=>{ try { return !!(s && s.player && !s.player.isBallMode && s.player.isFrozen); } catch(_){ return false; } })();
+  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState };
+  if (myState === 'ball') payload.rotation = rotDeg;
+  if (frozen) payload.frozen = true;
+  try { mpWS && mpWS.send(JSON.stringify(payload)); } catch(_){ }
+  __mp_lastSendReal = Date.now();
+}
+
+// One-shot update helper used after reconnect to immediately re-announce presence
+function mpSendUpdateOneShot(){
+  const s = __mp_getState();
+  if (!s || !s.player || !mpWS || mpWS.readyState !== WebSocket.OPEN) return;
+  const p = s.player; const myState = p.isBallMode ? 'ball' : 'good';
+  let rotDeg = 0;
+  if (p.isBallMode) {
+    const nowSec = (state.nowSec || (performance.now()/1000));
+    const seed = p._ballStartSec || nowSec;
+    const speed = (p._ballSpinSpeed || 1.0);
+    const angRad = speed * Math.max(0, nowSec - seed);
+    rotDeg = ((angRad * 180/Math.PI) % 360 + 360) % 360;
+  }
+  const frozen = (()=>{ try { return !!(s && s.player && !s.player.isBallMode && s.player.isFrozen); } catch(_){ return false; } })();
+  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState };
+  if (myState === 'ball') payload.rotation = rotDeg;
+  if (frozen) payload.frozen = true;
+  try { mpWS.send(JSON.stringify(payload)); } catch(_){ }
+  __mp_lastSendReal = Date.now();
 }
 
 // Local interpolation (called every frame)
@@ -334,6 +406,36 @@ window.mpGetDangerousGhosts = function(){
   } catch(_){ }
   return out;
 };
+
+// Network reachability hooks: reconnect immediately on regain; close on offline
+try {
+  window.addEventListener('online', () => {
+    try { console.log('[MP] network online; attempting reconnect'); } catch(_){}
+    mpNextConnectAt = 0; // clear cooldown
+    mpEnsureWS(Date.now());
+  });
+  window.addEventListener('offline', () => {
+    try { console.warn('[MP] network offline; closing WS'); } catch(_){}
+    try { if (mpWS) mpWS.close(); } catch(_){}
+    mpWS = null; mpWSState = 'closed';
+  });
+} catch(_){ }
+
+// Attempt reconnect quickly when user focuses the tab or it becomes visible again
+try {
+  const triggerFastReconnect = () => {
+    // Skip if already connected or connecting
+    if (mpWSState === 'open' || mpWSState === 'connecting') return;
+    mpNextConnectAt = 0; // clear cooldown
+    mpEnsureWS(Date.now());
+  };
+  window.addEventListener('focus', triggerFastReconnect);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') triggerFastReconnect();
+  });
+  // Expose manual override for debugging
+  window.__mp_forceReconnect = triggerFastReconnect;
+} catch(_){ }
 
 // Fallback: if the frame hook doesn't run within 1500ms, start a timer-based tick
 setTimeout(() => {
