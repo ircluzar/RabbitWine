@@ -564,6 +564,33 @@ window.mpSendMapOps = function(ops){
   } catch(_){ return false; }
 };
 
+// Send item edit ops (items persistence). Ops: {op:'add'|'remove', gx,gy,y?,kind(0|1),payload?}
+window.mpSendItemOps = function(ops){
+  try {
+    if (!mpWS || mpWS.readyState !== WebSocket.OPEN) return false;
+    if (!Array.isArray(ops) || !ops.length) return false;
+    const clean = [];
+    for (const o of ops){
+      if (!o || (o.op!=='add' && o.op!=='remove')) continue;
+      const rec = { op:o.op };
+      try { rec.gx = o.gx|0; rec.gy = o.gy|0; } catch(_){ continue; }
+      if (o.op === 'add'){
+        rec.kind = (o.kind===1)?1:0;
+        if (typeof o.y === 'number') rec.y = o.y;
+        if (rec.kind===0 && typeof o.payload === 'string' && o.payload.length <= 128) rec.payload = o.payload;
+      } else {
+        rec.kind = (o.kind===1)?1:0;
+        if (rec.kind===0 && typeof o.payload === 'string') rec.payload = o.payload; // allow targeted removal
+      }
+      clean.push(rec);
+      if (clean.length >= 256) break;
+    }
+    if (!clean.length) return false;
+    mpWS.send(JSON.stringify({ type:'item_edit', ops: clean }));
+    return true;
+  } catch(_){ return false; }
+};
+
 // Network reachability hooks: reconnect immediately on regain; close on offline
 try {
   window.addEventListener('online', () => {

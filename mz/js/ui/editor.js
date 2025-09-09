@@ -263,7 +263,7 @@
   CANVAS.addEventListener('mousedown', (ev)=>{
     if (state.editor.mode !== 'fps') return;
     if (state.editor.modalOpen) return;
-    // Item placement mode (slot 3)
+    // Item placement modes (slot 3 = payload item, slot 4 = purple collectible)
     if (ev.button === 0){
       if (state.editor.blockSlot === 3){
         try {
@@ -276,10 +276,26 @@
           if (!payload.trim()) { showTopNotification && showTopNotification('Item cancelled (empty payload)'); ev.preventDefault(); return; }
           window._lastEditorItemPayload = payload.trim();
           if (typeof spawnItemWorld === 'function') spawnItemWorld(worldX, worldY, worldZ, payload.trim());
+          // Network persist
+          try { if (window.mpSendItemOps) mpSendItemOps([{ op:'add', gx: vs.gx, gy: vs.gy, y: worldY, kind:0, payload: payload.trim() }]); } catch(_){ }
           // Track for export (grid coords + payload + world y)
           if (!window._editorPlacedItems) window._editorPlacedItems = [];
           window._editorPlacedItems.push({ gx: vs.gx, gy: vs.gy, payload: payload.trim(), yWorld: worldY });
           if (typeof showTopNotification === 'function') showTopNotification('Item placed: ' + payload.trim());
+        } catch(_){ }
+        ev.preventDefault();
+        return;
+      } else if (state.editor.blockSlot === 4){
+        try {
+          const vs = state.editor.visor; if (!vs || vs.gx < 0) return;
+          const worldX = (vs.gx - MAP_W*0.5 + 0.5);
+          const worldZ = (vs.gy - MAP_H*0.5 + 0.5);
+          const worldY = (vs.base|0) + 0.75;
+          if (typeof spawnPurpleItemWorld === 'function') spawnPurpleItemWorld(worldX, worldY, worldZ);
+          if (!window._editorPlacedPurpleItems) window._editorPlacedPurpleItems = [];
+          window._editorPlacedPurpleItems.push({ gx: vs.gx, gy: vs.gy, yWorld: worldY });
+          if (typeof showTopNotification === 'function') showTopNotification('Purple item placed');
+          try { if (window.mpSendItemOps) mpSendItemOps([{ op:'add', gx: vs.gx, gy: vs.gy, y: worldY, kind:1 }]); } catch(_){ }
         } catch(_){ }
         ev.preventDefault();
         return;
@@ -288,7 +304,7 @@
     }
     if (ev.button === 1){ if (document.pointerLockElement === CANVAS){ if (document.exitPointerLock) document.exitPointerLock(); } openEditorModal(); ev.preventDefault(); return; }
     if (ev.button === 2){
-      if (state.editor.blockSlot === 3){
+      if (state.editor.blockSlot === 3 || state.editor.blockSlot === 4){
         // Remove item(s) at visor grid cell (by world X/Z match tolerance)
         try {
           const vs = state.editor.visor; if (vs && vs.gx>=0){
@@ -302,6 +318,11 @@
             if (Array.isArray(window._editorPlacedItems)){
               window._editorPlacedItems = window._editorPlacedItems.filter(it=> !(it.gx===vs.gx && it.gy===vs.gy));
             }
+            if (Array.isArray(window._editorPlacedPurpleItems)){
+              window._editorPlacedPurpleItems = window._editorPlacedPurpleItems.filter(it=> !(it.gx===vs.gx && it.gy===vs.gy));
+            }
+            // Send generic remove ops for both kinds (server will remove matches)
+            try { if (window.mpSendItemOps) mpSendItemOps([{ op:'remove', gx: vs.gx, gy: vs.gy, kind:0 }, { op:'remove', gx: vs.gx, gy: vs.gy, kind:1 }]); } catch(_){ }
           }
         } catch(_){ }
         ev.preventDefault();
@@ -750,7 +771,8 @@
   const BLOCK_TYPES = {
     1: { name: 'BASE', get color(){ return getBaseBlockColor(); } },
     2: { name: 'BAD', color: '#d92b2f' },
-  3: { name: 'ITEM', color: '#f5d938' },
+    3: { name: 'ITEM', color: '#f5d938' },
+    4: { name: 'P-ITEM', color: '#b04bff' },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;

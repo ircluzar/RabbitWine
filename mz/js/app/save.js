@@ -6,6 +6,8 @@
   const collected = new Set();
   // Also track collected payload strings so identical ability tokens aren't re-collected elsewhere (optional)
   const collectedPayloads = new Set();
+  // Track purple items per level: levelId -> Set of keys (x,z)
+  const purpleCollected = new Map();
   let autosaveId = null;
   let suppressSaving = false;
   function onBeforeUnloadHandler(){ try { if (!suppressSaving) saveNow(); } catch(_){ } }
@@ -40,6 +42,7 @@
       },
   items: Array.from(collected),
   itemPayloads: Array.from(collectedPayloads)
+  , purple: Array.from(purpleCollected.entries()).map(([lvl,set])=>[lvl, Array.from(set)])
     };
   }
 
@@ -75,6 +78,17 @@
       if (Array.isArray(data.itemPayloads)){
         collectedPayloads.clear();
         for (const pld of data.itemPayloads){ if (typeof pld === 'string') collectedPayloads.add(pld); }
+      }
+      if (Array.isArray(data.purple)){
+        purpleCollected.clear();
+        for (const row of data.purple){
+          if (Array.isArray(row) && row.length===2){
+            const lvl = row[0]; const arr = row[1];
+            if (!purpleCollected.has(lvl)) purpleCollected.set(lvl, new Set());
+            const set = purpleCollected.get(lvl);
+            if (Array.isArray(arr)) for (const k of arr){ if (typeof k === 'string') set.add(k); }
+          }
+        }
       }
       // Always spawn stationary on load so first swipe counts as first accel
       try {
@@ -133,6 +147,19 @@
     },
   markItemCollected(it){ try { collected.add(itemKey(it.x, it.z)); if (it.payload) collectedPayloads.add(String(it.payload)); } catch(_){ } },
   hasCollectedPayload(payload){ return collectedPayloads.has(String(payload||'')); },
+    trackPurpleItemCollected(it){
+      try {
+        const lvl = (state.level && state.level.id) || 1;
+        const key = itemKey(it.x, it.z);
+        if (!purpleCollected.has(lvl)) purpleCollected.set(lvl, new Set());
+        purpleCollected.get(lvl).add(key);
+      } catch(_){ }
+    },
+    getPurpleProgress(){
+      const lvl = (state.level && state.level.id) || 1;
+      const set = purpleCollected.get(lvl);
+      return set ? set.size : 0;
+    }
   };
   window.gameSave = api;
 

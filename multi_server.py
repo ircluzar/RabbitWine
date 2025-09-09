@@ -32,6 +32,9 @@ HOST = "0.0.0.0"
 PORT = 42666
 TTL_MS = 3000
 
+# Toggle verbose per-position UPDATE logging (disabled to reduce console spam)
+VERBOSE_UPDATES = False
+
 ALLOWED_STATES = {"good", "ball"}
 LEVEL_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 DEFAULT_DB_FILE = "rw_maps.db"
@@ -109,6 +112,17 @@ class MapDiff:
     adds: Dict[str, int]
     removes: Set[str]
 
+@dataclass
+class MapItem:
+    gx: int
+    gy: int
+    y: float
+    kind: int   # 0 = payload (yellow), 1 = purple
+    payload: str
+
+# level_id -> List[MapItem]
+level_items: Dict[str, List[MapItem]] = {}
+
 # level_id -> MapDiff
 level_diffs: Dict[str, MapDiff] = {}
 # per-connection known version (single level at a time per connection)
@@ -131,6 +145,19 @@ def db_init(path: str):
             adds TEXT NOT NULL,
             removes TEXT NOT NULL,
             updated INTEGER NOT NULL
+        )
+        """
+    )
+    _db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS map_items(
+            level TEXT NOT NULL,
+            gx INTEGER NOT NULL,
+            gy INTEGER NOT NULL,
+            y REAL NOT NULL,
+            kind INTEGER NOT NULL,
+            payload TEXT,
+            PRIMARY KEY(level,gx,gy,kind,payload)
         )
         """
     )
@@ -157,6 +184,14 @@ def db_load_all():
             print(f"[DB] Loaded level '{level}' v{version} adds={len(adds)} removes={len(removes)}")
         except Exception as e:
             print(f"[DB] Failed to load level '{level}': {e}")
+    # Load items
+    try:
+        cur2 = _db_conn.execute("SELECT level,gx,gy,y,kind,payload FROM map_items")
+        for level, gx, gy, y, kind, payload in cur2.fetchall():
+            level_items.setdefault(level, []).append(MapItem(gx=gx, gy=gy, y=y, kind=int(kind or 0), payload=payload or ''))
+        print(f"[DB] Loaded items for {len(level_items)} levels")
+    except Exception as e:
+        print(f"[DB] Failed to load items: {e}")
 
 def db_persist_level(level: str, diff: MapDiff):
     if not _db_conn: return
@@ -171,6 +206,28 @@ def db_persist_level(level: str, diff: MapDiff):
         _db_conn.commit()
     except Exception as e:
         print(f"[DB] Persist error for level '{level}': {e}")
+
+def db_upsert_item(level: str, item: MapItem):
+    if not _db_conn: return
+    try:
+        _db_conn.execute(
+            "REPLACE INTO map_items(level,gx,gy,y,kind,payload) VALUES (?,?,?,?,?,?)",
+            (level, item.gx, item.gy, item.y, item.kind, item.payload)
+        )
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] item upsert fail: {e}")
+
+def db_delete_item(level: str, gx: int, gy: int, kind: int, payload: str):
+    if not _db_conn: return
+    try:
+        _db_conn.execute(
+            "DELETE FROM map_items WHERE level=? AND gx=? AND gy=? AND kind=? AND payload=?",
+            (level, gx, gy, kind, payload)
+        )
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] item delete fail: {e}")
 
 def get_mapdiff(level: str) -> MapDiff:
     md = level_diffs.get(level)
@@ -272,6 +329,19 @@ async def broadcast_map_ops(level: str, ops: List[Dict[str, Any]], version: int)
         ws_to_id.pop(ws, None)
         ws_meta.pop(ws, None)
         ws_map_version.pop(ws, None)
+
+async def broadcast_item_ops(level: str, ops: List[Dict[str, Any]]) -> None:
+    if not ops:
+        return
+    payload = json.dumps({"type":"item_ops","ops":ops}, separators=(",",":"))
+    awaitables = []
+    for ws in list(connections):
+        meta = ws_meta.get(ws)
+        if not meta: continue
+        _channel, _level = meta
+        if _level != level: continue
+        awaitables.append(ws.send(payload))
+    await asyncio.gather(*awaitables, return_exceptions=True)
 
 
 def now_ms() -> int:
@@ -413,6 +483,15 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         "ops": full_ops,
                         "baseVersion": 0
                     }, separators=(",", ":")))
+                    # Send full items for this level
+                    try:
+                        items_list = [
+                            {"gx": it.gx, "gy": it.gy, "y": it.y, "kind": it.kind, **({"payload": it.payload} if (it.kind==0 and it.payload) else {})}
+                            for it in level_items.get(level, [])
+                        ]
+                        await ws.send(json.dumps({"type":"items_full","items": items_list}, separators=(",",":")))
+                    except Exception as e:
+                        print(f"[WS] failed send items_full: {e}")
                 except Exception:
                     pass
                 continue
@@ -446,16 +525,16 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 # Broadcast compact update using Player helper
                 player = players[v["id"]]
                 msg = player.to_update_message(ts)
-
-                try:
-                    print(
-                        f"[{ts}] UPDATE from {peer} id={player.id} pos=({player.x:.2f},{player.y:.2f},{player.z:.2f}) "
-                        f"state={player.state} rotation={(player.rotation if player.rotation is not None else '-')} frozen={player.frozen} "
-                        f"known={len(players)} -> broadcast",
-                        flush=True,
-                    )
-                except Exception:
-                    pass
+                if VERBOSE_UPDATES:
+                    try:
+                        print(
+                            f"[{ts}] UPDATE from {peer} id={player.id} pos=({player.x:.2f},{player.y:.2f},{player.z:.2f}) "
+                            f"state={player.state} rotation={(player.rotation if player.rotation is not None else '-')} frozen={player.frozen} "
+                            f"known={len(players)} -> broadcast",
+                            flush=True,
+                        )
+                    except Exception:
+                        pass
 
                 await broadcast_filtered(msg, player.channel, player.level)
 
@@ -475,7 +554,80 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         net_ops = apply_edit_ops_to_level(lvl, ops_in)
                         new_ver = get_mapdiff(lvl).version
                     if net_ops:
+                        # Log each block add/remove (map diff)
+                        try:
+                            for op in net_ops:
+                                if op.get('op') == 'add':
+                                    hz = 1 if op.get('t') == 1 else 0
+                                    print(f"[MAP] level={lvl} add key={op.get('key')} hazard={hz} v{new_ver}", flush=True)
+                                elif op.get('op') == 'remove':
+                                    print(f"[MAP] level={lvl} remove key={op.get('key')} v{new_ver}", flush=True)
+                        except Exception:
+                            pass
                         await broadcast_map_ops(lvl, net_ops, new_ver)
+                continue
+
+            elif typ == "item_edit":
+                # { type:'item_edit', ops:[{op:'add'|'remove', gx,gy,y,kind,payload?}] }
+                ops_in = data.get("ops")
+                if isinstance(ops_in, list):
+                    meta = ws_meta.get(ws)
+                    if not meta: continue
+                    _channel, lvl = meta
+                    valid_ops: List[Dict[str, Any]] = []
+                    async with lock:
+                        for entry in ops_in[:MAX_OPS_PER_BATCH]:
+                            if not isinstance(entry, dict): continue
+                            op = entry.get('op')
+                            if op not in ('add','remove'): continue
+                            try:
+                                gx = int(entry.get('gx'))
+                                gy = int(entry.get('gy'))
+                                y = float(entry.get('y') or 0.75)
+                                kind = int(entry.get('kind') or 0)
+                            except Exception:
+                                continue
+                            if gx < 0 or gy < 0 or gx > 8192 or gy > 8192: continue
+                            payload = entry.get('payload') if kind == 0 else ''
+                            # Normalize payload
+                            if payload is None: payload = ''
+                            # Apply
+                            lst = level_items.setdefault(lvl, [])
+                            if op == 'add':
+                                # replace existing same signature
+                                replaced = False
+                                for i,it in enumerate(lst):
+                                    if it.gx==gx and it.gy==gy and it.kind==kind and ((kind==0 and it.payload==payload) or kind==1):
+                                        lst[i] = MapItem(gx=gx, gy=gy, y=y, kind=kind, payload=payload)
+                                        replaced = True
+                                        break
+                                if not replaced:
+                                    lst.append(MapItem(gx=gx, gy=gy, y=y, kind=kind, payload=payload))
+                                db_upsert_item(lvl, MapItem(gx=gx, gy=gy, y=y, kind=kind, payload=payload))
+                                valid_ops.append({'op':'add','gx':gx,'gy':gy,'y':y,'kind':kind, **({'payload':payload} if (kind==0 and payload) else {})})
+                            else:  # remove
+                                new_list = []
+                                removed_any = False
+                                for it in lst:
+                                    if it.gx==gx and it.gy==gy and it.kind==kind and (kind==1 or it.payload==payload):
+                                        db_delete_item(lvl, it.gx, it.gy, it.kind, it.payload)
+                                        removed_any = True
+                                    else:
+                                        new_list.append(it)
+                                if removed_any:
+                                    level_items[lvl] = new_list
+                                    valid_ops.append({'op':'remove','gx':gx,'gy':gy,'kind':kind, **({'payload':payload} if kind==0 and payload else {})})
+                    if valid_ops:
+                        # Log item add/remove operations (treated as block placements/removals)
+                        try:
+                            for op in valid_ops:
+                                if op.get('op') == 'add':
+                                    print(f"[ITEM] level={lvl} add gx={op.get('gx')} gy={op.get('gy')} kind={op.get('kind')} payload={op.get('payload','')}", flush=True)
+                                elif op.get('op') == 'remove':
+                                    print(f"[ITEM] level={lvl} remove gx={op.get('gx')} gy={op.get('gy')} kind={op.get('kind')} payload={op.get('payload','')}", flush=True)
+                        except Exception:
+                            pass
+                        await broadcast_item_ops(lvl, valid_ops)
                 continue
 
             # Client explicitly requesting map sync if behind
