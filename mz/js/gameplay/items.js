@@ -29,8 +29,13 @@ function initItemsFromBuilder(list){
   for (const it of list){
     if (!it || typeof it.x !== 'number' || typeof it.y !== 'number') continue;
     const w = gridToWorld(it.x, it.y);
-  // Skip items previously collected (from save)
-  try { if (window.gameSave && gameSave.isItemCollected(w.x, w.z)) continue; } catch(_){ }
+    // Skip legacy-collected OR new composite collected (yellow builder items have payloads; purple builder items currently not from builder)
+    try {
+      if (window.gameSave){
+        if (it.payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(it.payload)) continue;
+        if (!it.payload && gameSave.isItemCollected && gameSave.isItemCollected(w.x, w.z)) continue; // legacy fallback
+      }
+    } catch(_){ }
     // random unit axis for 3D spin
     let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
     const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
@@ -56,6 +61,8 @@ function spawnItemWorld(x, y, z, payload){
 }
 
 function spawnPurpleItemWorld(x, y, z){
+  // Skip spawning if already collected (composite purple 3D key)
+  try { if (window.gameSave && gameSave.isPurpleCollected && gameSave.isPurpleCollected(null, x, y, z)) return; } catch(_){ }
   let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
   const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
   let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
@@ -99,7 +106,18 @@ function updateItems(dt){
       const r = pr + 0.26;
       if (dist2 <= r*r){
         it.gone = true;
-        try { if (window.gameSave) gameSave.markItemCollected(it); } catch(_){ }
+        // Mark yellow collection using new composite system; legacy fallback kept
+        try {
+          if (window.gameSave){
+            if (it.payload && gameSave.markYellowCollected){
+              gameSave.markYellowCollected(null, it.payload);
+              try { console.debug('[SAVE][yellow] collected payload', it.payload); } catch(__){}
+            } else if (gameSave.markItemCollected){
+              gameSave.markItemCollected(it);
+            }
+            if (gameSave.saveNow) gameSave.saveNow();
+          }
+        } catch(_){ }
         if (typeof dispatchAction === 'function' && it.payload){ dispatchAction(it.payload, it); }
         try { if (window.sfx) sfx.play('./sfx/VRUN_HealthGet.mp3'); } catch(_){ }
         p.speed = 0.0; p.movementMode = 'stationary'; p.isDashing = false;
@@ -140,10 +158,12 @@ function updatePurpleItems(dt){
       it.gone = true;
       // Play distinct SFX
       try { if (window.sfx) sfx.play('./sfx/TunnelRun_EnterVRUN.mp3'); } catch(_){ }
-      // Track purple collections per level
+      // Track purple collections per level (composite key) via save API
       try {
-        if (window.gameSave && typeof window.trackPurpleItemCollected === 'function'){
-          window.trackPurpleItemCollected(it);
+        if (window.gameSave && gameSave.trackPurpleItemCollected){
+          gameSave.trackPurpleItemCollected(it);
+          try { console.debug('[SAVE][purple] collected', it.x.toFixed(2), it.y.toFixed(2), it.z.toFixed(2)); } catch(__){}
+          if (gameSave.saveNow) gameSave.saveNow();
         }
       } catch(_){ }
       // Enhanced FX: triple density, faster spin/drift, longer life

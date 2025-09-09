@@ -3,18 +3,27 @@
 (function(){
   if (typeof window === 'undefined') return;
   const SAVE_KEY = 'mz-save-v1';
+  // LEGACY (pre-composite) simple collected world-pos keys (x,z) - retained for backward compat
   const collected = new Set();
-  // Also track collected payload strings so identical ability tokens aren't re-collected elsewhere (optional)
-  const collectedPayloads = new Set();
-  // Track purple items per level: levelId -> Set of keys (x,z)
-  const purpleCollected = new Map();
+  const collectedPayloads = new Set(); // legacy global payloads
+  const purpleCollected = new Map();   // legacy level -> Set(x,z)
+  // NEW: Yellow items keyed by (levelId + '|' + payload)
+  const yellowByLevel = new Map(); // levelId -> Set(payload)
+  // NEW: Purple items keyed by (levelId + '|' + x,y,z) with rounded coords
+  const purple3DByLevel = new Map(); // levelId -> Set("x,y,z")
   let autosaveId = null;
   let suppressSaving = false;
   function onBeforeUnloadHandler(){ try { if (!suppressSaving) saveNow(); } catch(_){ } }
 
   function round2(n){ return Math.round(n * 100) / 100; }
   // Identify items by x,z only (y may vary slightly or be implicit)
-  function itemKey(x, z){ return `${round2(x)},${round2(z)}`; }
+  function itemKey(x, z){ return `${round2(x)},${round2(z)}`; } // legacy 2D key
+  function xyzKey(x,y,z){ return `${round2(x)},${round2(y)},${round2(z)}`; }
+  function getLevelId(){
+    try { if (state && state.level && state.level.id) return String(state.level.id); } catch(_){ }
+    try { if (typeof MP_LEVEL === 'string') return MP_LEVEL; } catch(_){ }
+    return 'ROOT';
+  }
 
   function buildPayload(){
     const p = state.player || {};
@@ -40,9 +49,11 @@
         lockCameraYaw: !!state.lockCameraYaw,
         seamRatio: state.seamRatio
       },
-  items: Array.from(collected),
-  itemPayloads: Array.from(collectedPayloads)
-  , purple: Array.from(purpleCollected.entries()).map(([lvl,set])=>[lvl, Array.from(set)])
+  items: Array.from(collected), // legacy
+  itemPayloads: Array.from(collectedPayloads), // legacy
+  purple: Array.from(purpleCollected.entries()).map(([lvl,set])=>[lvl, Array.from(set)]), // legacy
+  yellowComposite: Array.from(yellowByLevel.entries()).map(([lvl,set])=>[lvl, Array.from(set)]),
+  purple3d: Array.from(purple3DByLevel.entries()).map(([lvl,set])=>[lvl, Array.from(set)])
     };
   }
 
@@ -71,7 +82,7 @@
         state.lockCameraYaw = !!data.ui.lockCameraYaw;
         if (typeof data.ui.seamRatio === 'number') state.seamRatio = Math.min(0.95, Math.max(0.05, data.ui.seamRatio));
       }
-      if (Array.isArray(data.items)){
+  if (Array.isArray(data.items)){
         collected.clear();
         for (const k of data.items){ if (typeof k === 'string') collected.add(k); }
       }
@@ -86,6 +97,36 @@
             const lvl = row[0]; const arr = row[1];
             if (!purpleCollected.has(lvl)) purpleCollected.set(lvl, new Set());
             const set = purpleCollected.get(lvl);
+            if (Array.isArray(arr)) for (const k of arr){ if (typeof k === 'string') set.add(k); }
+          }
+        }
+      }
+      // New composite yellow
+      if (Array.isArray(data.yellowComposite)){
+        yellowByLevel.clear();
+        for (const row of data.yellowComposite){
+          if (Array.isArray(row) && row.length===2){
+            const lvl = row[0]; const arr = row[1];
+            if (!yellowByLevel.has(lvl)) yellowByLevel.set(lvl, new Set());
+            const set = yellowByLevel.get(lvl);
+            if (Array.isArray(arr)) for (const p of arr){ if (typeof p === 'string') set.add(p); }
+          }
+        }
+      } else {
+        // Migration heuristic: map old global collectedPayloads into current level ROOT if present
+        if (collectedPayloads.size){
+          const lvl = 'ROOT';
+            yellowByLevel.set(lvl, new Set(collectedPayloads));
+        }
+      }
+      // New composite purple 3D
+      if (Array.isArray(data.purple3d)){
+        purple3DByLevel.clear();
+        for (const row of data.purple3d){
+          if (Array.isArray(row) && row.length===2){
+            const lvl = row[0]; const arr = row[1];
+            if (!purple3DByLevel.has(lvl)) purple3DByLevel.set(lvl, new Set());
+            const set = purple3DByLevel.get(lvl);
             if (Array.isArray(arr)) for (const k of arr){ if (typeof k === 'string') set.add(k); }
           }
         }
@@ -140,26 +181,27 @@
   // Public API
   const api = {
     saveNow, load, clear, startAuto, stopAuto, suspendSaving, resumeSaving,
+    // LEGACY query (kept so old code still filters builder items)
     isItemCollected(x, yOrZ, maybeZ){
-      // Support isItemCollected(x, z) or isItemCollected(x, y, z)
       const z = (typeof maybeZ === 'number') ? maybeZ : yOrZ;
       return collected.has(itemKey(x, z));
     },
-  markItemCollected(it){ try { collected.add(itemKey(it.x, it.z)); if (it.payload) collectedPayloads.add(String(it.payload)); } catch(_){ } },
-  hasCollectedPayload(payload){ return collectedPayloads.has(String(payload||'')); },
-    trackPurpleItemCollected(it){
-      try {
-        const lvl = (state.level && state.level.id) || 1;
-        const key = itemKey(it.x, it.z);
-        if (!purpleCollected.has(lvl)) purpleCollected.set(lvl, new Set());
-        purpleCollected.get(lvl).add(key);
-      } catch(_){ }
+    // New yellow composite checks
+    isYellowCollected(levelId, payload){
+      try { const lvl = String(levelId||getLevelId()); const set = yellowByLevel.get(lvl); return !!(set && set.has(String(payload||''))); } catch(_){ return false; }
     },
-    getPurpleProgress(){
-      const lvl = (state.level && state.level.id) || 1;
-      const set = purpleCollected.get(lvl);
-      return set ? set.size : 0;
-    }
+    markYellowCollected(levelId, payload){
+      try { const lvl = String(levelId||getLevelId()); if (!yellowByLevel.has(lvl)) yellowByLevel.set(lvl, new Set()); yellowByLevel.get(lvl).add(String(payload||'')); } catch(_){ }
+    },
+    // Backward compat alias
+    markItemCollected(it){ try { if (it && it.payload) api.markYellowCollected(getLevelId(), it.payload); } catch(_){ } },
+    isYellowPayloadCollected(payload){ return api.isYellowCollected(getLevelId(), payload); },
+    // Purple 3D composite
+    isPurpleCollected(levelId, x,y,z){ try { const lvl = String(levelId||getLevelId()); const set = purple3DByLevel.get(lvl); return !!(set && set.has(xyzKey(x,y,z))); } catch(_){ return false; } },
+    trackPurpleItemCollected(it){
+      try { const lvl = getLevelId(); const key3 = xyzKey(it.x, it.y, it.z); if (!purple3DByLevel.has(lvl)) purple3DByLevel.set(lvl, new Set()); purple3DByLevel.get(lvl).add(key3); } catch(_){ }
+    },
+    getPurpleProgress(){ const lvl = getLevelId(); const set = purple3DByLevel.get(lvl); return set ? set.size : 0; }
   };
   window.gameSave = api;
 

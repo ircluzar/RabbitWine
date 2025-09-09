@@ -334,14 +334,28 @@ async def broadcast_item_ops(level: str, ops: List[Dict[str, Any]]) -> None:
     if not ops:
         return
     payload = json.dumps({"type":"item_ops","ops":ops}, separators=(",",":"))
-    awaitables = []
+    targets = []
     for ws in list(connections):
         meta = ws_meta.get(ws)
-        if not meta: continue
+        if not meta:
+            continue
         _channel, _level = meta
-        if _level != level: continue
-        awaitables.append(ws.send(payload))
-    await asyncio.gather(*awaitables, return_exceptions=True)
+        if _level != level:
+            continue
+        targets.append(ws)
+    try:
+        print(f"[ITEM] broadcasting {len(ops)} ops to {len(targets)} client(s) level={level}")
+    except Exception:
+        pass
+    awaitables = [ws.send(payload) for ws in targets]
+    results = await asyncio.gather(*awaitables, return_exceptions=True)
+    # Log failures if any
+    for ws, res in zip(targets, results):
+        if isinstance(res, Exception):
+            try:
+                print(f"[ITEM] broadcast send failure: {res}")
+            except Exception:
+                pass
 
 
 def now_ms() -> int:
@@ -627,7 +641,28 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                                     print(f"[ITEM] level={lvl} remove gx={op.get('gx')} gy={op.get('gy')} kind={op.get('kind')} payload={op.get('payload','')}", flush=True)
                         except Exception:
                             pass
+                        # Extra debug summary
+                        try:
+                            print(f"[ITEM] processed batch size={len(valid_ops)} (level={lvl})", flush=True)
+                        except Exception:
+                            pass
                         await broadcast_item_ops(lvl, valid_ops)
+                continue
+
+            elif typ == "items_sync":
+                # Client requests a resend of full items list for its current level
+                try:
+                    meta = ws_meta.get(ws)
+                    if meta:
+                        _channel, lvl = meta
+                        items_list = [
+                            {"gx": it.gx, "gy": it.gy, "y": it.y, "kind": it.kind, **({"payload": it.payload} if (it.kind==0 and it.payload) else {})}
+                            for it in level_items.get(lvl, [])
+                        ]
+                        await ws.send(json.dumps({"type":"items_full","items": items_list}, separators=(",",":")))
+                        print(f"[ITEM] items_sync responded count={len(items_list)} level={lvl}")
+                except Exception as e:
+                    print(f"[ITEM] items_sync failed: {e}")
                 continue
 
             # Client explicitly requesting map sync if behind

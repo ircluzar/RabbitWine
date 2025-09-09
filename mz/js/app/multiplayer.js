@@ -185,6 +185,100 @@ function mpEnsureWS(nowMs){
   __mp_cooldownActive = false;
   const ws = new WebSocket(url);
   mpWS = ws;
+  // --- Item replication integration (replaces former items-net.js) ---
+  // Shadow store of authoritative items for the current level (from server). Each entry: {gx,gy,y,kind,payload}
+  // kind: 0 = yellow(payload), 1 = purple
+  let shadowItems = [];
+  function __mp_worldFromGrid(gx, gy){
+    // Prefer lexical MAP_W/MAP_H (declared via const in map-data.js) instead of window properties (const doesn't attach to window)
+    let W, H;
+    try { if (typeof MAP_W === 'number') W = MAP_W; } catch(_){ }
+    try { if (typeof MAP_H === 'number') H = MAP_H; } catch(_){ }
+    if (typeof W !== 'number') W = (typeof window !== 'undefined' && typeof window.MAP_W === 'number') ? window.MAP_W : 128;
+    if (typeof H !== 'number') H = (typeof window !== 'undefined' && typeof window.MAP_H === 'number') ? window.MAP_H : 128;
+    return { x: (gx + 0.5) - W*0.5, z: (gy + 0.5) - H*0.5 };
+  }
+  function __mp_clearRuntimeItems(){
+    if (typeof window.removeItemsAtWorld !== 'function') return;
+    try {
+      for (const it of shadowItems){
+        const w = __mp_worldFromGrid(it.gx, it.gy);
+        window.removeItemsAtWorld(w.x, w.z);
+      }
+    } catch(_){ }
+  }
+  function __mp_applyItemsFull(list){
+    if (!Array.isArray(list)) return;
+    __mp_clearRuntimeItems();
+    shadowItems = [];
+    for (const it of list){
+      if (!it || typeof it.gx !== 'number' || typeof it.gy !== 'number') continue;
+      const gx = it.gx|0, gy = it.gy|0;
+      const y = (typeof it.y === 'number') ? it.y : 0.75;
+      const kind = (it.kind === 1) ? 1 : 0;
+      const payload = (kind===0 && typeof it.payload === 'string') ? it.payload : '';
+      const w = __mp_worldFromGrid(gx, gy);
+      // Skip spawning if already collected according to save system
+      try {
+        if (window.gameSave){
+          if (kind===0 && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) continue;
+          if (kind===1 && gameSave.isPurpleCollected){
+            let collected = gameSave.isPurpleCollected(null, w.x, y, w.z);
+            if (!collected){
+              // Try common alternate float heights (0 / 0.75) in case of legacy mismatch
+              if (Math.abs(y-0.75)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0.75, w.z)) collected = true;
+              else if (Math.abs(y-0)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0, w.z)) collected = true;
+            }
+            if (collected){ try { console.debug('[MP][items] skip purple already collected', w.x, y, w.z); } catch(__){}; continue; }
+          }
+        }
+      } catch(_){ }
+      try {
+        if (kind === 1){
+          if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z);
+        } else {
+          if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload);
+        }
+        shadowItems.push({ gx, gy, y, kind, payload });
+      } catch(_){ }
+    }
+    try { console.log('[MP] items_full applied count=', shadowItems.length); } catch(_){ }
+  }
+  function __mp_applyItemOps(ops){
+    if (!Array.isArray(ops)) return;
+    for (const op of ops){
+      if (!op || typeof op.op !== 'string') continue;
+      const kind = (op.kind===1)?1:0;
+      if (op.op === 'add'){
+        const gx = op.gx|0, gy = op.gy|0; const y = (typeof op.y==='number')? op.y : 0.75;
+        const w = __mp_worldFromGrid(gx, gy);
+        if (kind === 1){
+          // Skip if purple already collected
+          let skip = false; try {
+            if (window.gameSave && gameSave.isPurpleCollected){
+              if (gameSave.isPurpleCollected(null, w.x, y, w.z) || (Math.abs(y-0.75)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0.75, w.z)) || (Math.abs(y-0)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0, w.z))) skip = true;
+              if (skip) try { console.debug('[MP][items] skip purple op already collected', w.x, y, w.z); } catch(__){}
+            }
+          } catch(_){ }
+          if (!skip){ try { if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z); } catch(_){ } }
+          shadowItems.push({ gx, gy, y, kind:1, payload:'' });
+        } else {
+          const payload = (typeof op.payload === 'string') ? op.payload : '';
+            // Skip if yellow already collected
+            let skip = false; try { if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) skip = true; } catch(_){ }
+            if (!skip){ try { if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload); } catch(_){ } }
+          shadowItems.push({ gx, gy, y, kind:0, payload });
+        }
+      } else if (op.op === 'remove'){
+        const gx = op.gx|0, gy = op.gy|0;
+        const w = __mp_worldFromGrid(gx, gy);
+        try { if (typeof window.removeItemsAtWorld === 'function') window.removeItemsAtWorld(w.x, w.z); } catch(_){ }
+        shadowItems = shadowItems.filter(it => !(it.gx===gx && it.gy===gy && (op.kind==null || it.kind===kind)));
+      }
+    }
+  }
+  // Expose a lightweight debug accessor
+  try { window.mpListShadowItems = ()=> shadowItems.map(it=>({ ...it })); } catch(_){ }
   ws.onopen = ()=>{
     mpWSState = 'open';
   __mp_cooldownActive = false; mpNextConnectAt = 0; __mp_retryMs = MP_FAIL_BASE_MS;
@@ -226,6 +320,8 @@ function mpEnsureWS(nowMs){
   ws.onmessage = (ev)=>{
     let msg = null; try { msg = JSON.parse(ev.data); } catch(_){ return; }
     const t = msg && msg.type;
+  if (t === 'items_full'){ try { console.log('[MP][items] recv items_full', (msg.items||[]).length); } catch(_){ } __mp_applyItemsFull(msg.items||[]); return; }
+  if (t === 'item_ops'){ try { console.log('[MP][items] recv item_ops', msg.ops); } catch(_){ } __mp_applyItemOps(msg.ops||[]); return; }
     if (t === 'snapshot'){
       const serverNow = msg.now || 0; mpComputeOffset(serverNow);
       if (Array.isArray(msg.players)){
@@ -587,8 +683,15 @@ window.mpSendItemOps = function(ops){
     }
     if (!clean.length) return false;
     mpWS.send(JSON.stringify({ type:'item_edit', ops: clean }));
+    try { console.log('[MP][items] sent ops', clean); } catch(_){ }
     return true;
   } catch(_){ return false; }
+};
+
+// Manual force sync (in case initial items_full missed, or for debugging)
+window.mpForceItemsSync = function(){
+  try { if (mpWS && mpWS.readyState === WebSocket.OPEN){ mpWS.send(JSON.stringify({ type:'items_sync' })); console.log('[MP][items] items_sync requested'); return true; } } catch(_){ }
+  return false;
 };
 
 // Network reachability hooks: reconnect immediately on regain; close on offline
