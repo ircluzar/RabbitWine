@@ -7,8 +7,52 @@
 
 // Config
 const __MP_SCHEME = (location.protocol === 'https:' ? 'wss' : 'ws');
+// Derive default endpoint lazily; allow window.MP_SERVER override before connect
+// Dev flag: set window.MP_ALLOW_INSECURE = true BEFORE this script loads (or early) to
+// skip automatic ws->wss upgrade on HTTPS pages (browser will still block mixed content).
+try { if (typeof window !== 'undefined' && typeof window.MP_ALLOW_INSECURE === 'undefined') window.MP_ALLOW_INSECURE = false; } catch(_){ }
 const __MP_DEFAULT = ((window.MP_SERVER && window.MP_SERVER.trim()) || (`${__MP_SCHEME}://${location.hostname}:42666`)).replace(/\/$/, "");
-let MP_SERVER = __MP_DEFAULT; // WebSocket endpoint (ws:// or wss://)
+let MP_SERVER = __MP_DEFAULT; // User-configurable (can be ws(s)://, http(s)://, host[:port], or empty)
+
+// Normalize and build final ws:// or wss:// URL honoring page scheme.
+function mpBuildServerURL(){
+  try {
+    let raw = (MP_SERVER || '').trim();
+    if (!raw) raw = __MP_DEFAULT;
+    // If starts with http(s), convert to ws(s) keeping host/port/path
+    if (/^https?:\/\//i.test(raw)){
+      const u = new URL(raw);
+      const scheme = (location.protocol === 'https:' ? 'wss' : 'ws');
+      return `${scheme}://${u.host}${u.pathname}`.replace(/\/$/, '');
+    }
+    // If starts with ws(s) adjust for mixed-content upgrade (https page => wss)
+    if (/^wss?:\/\//i.test(raw)){
+      if (location.protocol === 'https:' && /^ws:\/\//i.test(raw)){
+        if (!(typeof window !== 'undefined' && window.MP_ALLOW_INSECURE)){
+          raw = raw.replace(/^ws:/i, 'wss:');
+        } else {
+          try { console.warn('[MP] MP_ALLOW_INSECURE=true: attempting ws:// from https page (may be blocked by browser).'); } catch(_){ }
+        }
+      } else if (location.protocol !== 'https:' && /^wss:\/\//i.test(raw)) {
+        // allow explicit wss on http page (fine), no change
+      }
+      return raw.replace(/\/$/, '');
+    }
+    // Bare host[:port] or path
+    if (/^[A-Za-z0-9_.:-]+$/.test(raw)){
+      // If contains a slash, treat after first slash as path (unlikely under regex)
+      const scheme = (location.protocol === 'https:' ? 'wss' : 'ws');
+      return `${scheme}://${raw}`.replace(/\/$/, '');
+    }
+    // Anything else (e.g. relative path like /socket) -> attach to current host
+    if (raw.startsWith('/')){
+      const scheme = (location.protocol === 'https:' ? 'wss' : 'ws');
+      return `${scheme}://${location.host}${raw}`.replace(/\/$/, '');
+    }
+    // Fallback
+    return __MP_DEFAULT;
+  } catch(_){ return __MP_DEFAULT; }
+}
 const MP_TTL_MS = 3000;
 const MP_UPDATE_MS = 100; // 10 Hz
 const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into the ground
@@ -164,11 +208,7 @@ function mpEnsureWS(nowMs){
   if (mpWSState === 'open' || mpWSState === 'connecting') return;
   // Use wall-clock for cooldown gating to avoid mismatch with game timebases
   if (Date.now() < mpNextConnectAt) return; // cooldown
-  let url = MP_SERVER.replace(/\/$/, '');
-  // Allow users to provide http(s) and convert scheme
-  if (/^https?:\/\//i.test(url)){
-    url = url.replace(/^http/i, (location.protocol === 'https:' ? 'wss' : 'ws'));
-  }
+  const url = mpBuildServerURL();
   try { console.log('[MP] WS connecting', url); } catch(_){}
   mpWSState = 'connecting';
   __mp_cooldownActive = false;
@@ -237,6 +277,8 @@ function mpEnsureWS(nowMs){
       const o = msg;
       if (!o || typeof o.id !== 'string') return;
       if (o.id === MP_ID) return;
+  // Voice frame relay (MVP) before ghost position processing
+  try { if (typeof window.__voiceOnIncoming === 'function') window.__voiceOnIncoming(o); } catch(_){ }
       let g = ghosts.get(o.id);
       if (!g){
         g = { samples: [], renderPos: {x:o.pos.x, y:o.pos.y, z:o.pos.z}, renderRot: (o.rotation||0), renderState: (o.state==='ball'?'ball':'good'), renderFrozen: !!o.frozen, lastSeen: 0 };
@@ -279,7 +321,23 @@ function mpEnsureWS(nowMs){
     try {
       const code = ev && typeof ev.code === 'number' ? ev.code : undefined;
       const reason = ev && typeof ev.reason === 'string' ? ev.reason : '';
-      console.warn(`[MP] WS closed; retry in ~${Math.max(0, wait|0)}ms`, { code, reason });
+      // Build diagnostics (browser doesn't expose low-level TLS error, so we give guidance)
+      const diag = { pageProtocol: location.protocol, attemptedURL: url, code, reason, hints: [] };
+      const isHTTPSPage = location.protocol === 'https:';
+      const isWSS = /^wss:\/\//i.test(url);
+      if (isHTTPSPage && !isWSS){
+        diag.hints.push('HTTPS page must use wss:// (secure WebSocket); mixed content ws:// will be blocked.');
+      }
+      if (isHTTPSPage && isWSS){
+        diag.hints.push('If this is a self-signed cert, open the URL in a new tab: ' + url.replace(/^wss:/,'https:') + ' and accept the certificate, then retry.');
+        diag.hints.push('Confirm server log shows "[TLS] Enabled TLS"; if not, cryptography may be missing and server fell back to ws://.');
+      }
+      diag.hints.push('Verify the server is listening: e.g. use "nc -vz host port" or firewall rules.');
+      diag.hints.push('Check SAN/hostname: the cert must include the domain (auto-added for cc.r5x.cc).');
+      diag.hints.push('Browser gives only a generic error; inspect the Network > WS or Security panel for more detail.');
+      console.warn(`[MP] WS closed; retry in ~${Math.max(0, wait|0)}ms`, diag);
+      // Expose last diagnostics globally for UI / manual inspection
+      try { window.__mp_lastWSFail = diag; } catch(_){ }
     } catch(_){}
   };
   ws.onerror = (e)=>{ startCooldown(e); };
@@ -313,6 +371,8 @@ function mpTickNet(nowMs){
   const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
   if (myState === 'ball') payload.rotation = rotDeg;
   if (frozen) payload.frozen = true;
+  // Voice hook (if present)
+  try { if (typeof window.__voiceAttachUpdate === 'function') { window.__voiceAttachUpdate(payload); } } catch(_){ }
   try { mpWS && mpWS.send(JSON.stringify(payload)); } catch(_){ }
   __mp_lastSendReal = Date.now();
 }
@@ -334,6 +394,7 @@ function mpSendUpdateOneShot(){
   const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
   if (myState === 'ball') payload.rotation = rotDeg;
   if (frozen) payload.frozen = true;
+  try { if (typeof window.__voiceAttachUpdate === 'function') { window.__voiceAttachUpdate(payload); } } catch(_){ }
   try { mpWS.send(JSON.stringify(payload)); } catch(_){ }
   __mp_lastSendReal = Date.now();
 }

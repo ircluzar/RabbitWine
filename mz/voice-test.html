@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Codec2 Voice Sandbox</title>
+  <style>body{font-family:system-ui,Arial,sans-serif;margin:12px;background:#111;color:#eee} textarea{width:100%;height:140px} button{margin:4px 0;padding:6px 14px} .row{margin-bottom:10px} .stat{font:12px monospace}</style>
+</head>
+<body>
+  <h1>Codec2 450 bps Sandbox</h1>
+  <p>Phase 0 quick validation: capture mic ~1s, encode @450, decode, play back. Logs raw frame byte lengths & timings.</p>
+  <div class="row">
+    <button id="btn-init">Init Codec2</button>
+    <button id="btn-cap" disabled>Capture 1s & Roundtrip</button>
+  </div>
+  <div class="row stat" id="log"></div>
+  <audio id="play" controls></audio>
+  <script>
+  // Assumes codec2 build assets (createC2Enc/createC2Dec/SOXModule) already loaded elsewhere if needed.
+  // We lazy-load encoder/decoder scripts on demand.
+  let encMod=null, decMod=null, encReady=false, decReady=false;
+  const MODE='450';
+  const logEl = document.getElementById('log');
+  function log(msg){ console.log('[VTEST]', msg); logEl.textContent += msg+'\n'; }
+  async function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.onload=()=>res(); s.onerror=e=>rej(e); s.src=src; document.head.appendChild(s); }); }
+  async function init(){
+    log('Loading encoder/decoder WASM...');
+    await loadScript('./codec2/c2enc.js');
+    await loadScript('./codec2/c2dec.js');
+    log('Loaded scripts');
+    encReady = true; decReady = true; // wrappers build modules per call
+    document.getElementById('btn-cap').disabled=false;
+  }
+  async function encodeFrame(rawPCM){
+    return new Promise((resolve)=>{
+      const module = { arguments:[MODE,'in.raw','out.bit'], preRun:()=>{ module.FS.writeFile('in.raw', new Uint8Array(rawPCM.buffer)); }, postRun:()=>{ const buf=module.FS.readFile('out.bit',{encoding:'binary'}); resolve(buf); } }; createC2Enc(module); });
+  }
+  async function decodeBytes(bytes){
+    return new Promise((resolve)=>{
+      const module = { arguments:[MODE,'in.bit','out.raw'], preRun:()=>{ module.FS.writeFile('in.bit', new Uint8Array(bytes)); }, postRun:()=>{ const buf=module.FS.readFile('out.raw',{encoding:'binary'}); resolve(buf); } }; createC2Dec(module); });
+  }
+  // Simple 48k->8k naive decimator for test (assumes mono Float32 samples)
+  function downsampleTo8k(f32){ const ratio = 48000/8000; const out = new Int16Array(Math.floor(f32.length/ratio)); let o=0; for (let i=0;i<out.length;i++){ const idx=Math.floor(i*ratio); let s=Math.max(-1,Math.min(1,f32[idx])); out[o++]= (s*32767)|0; } return out; }
+  function upsampleLinear(int16){ const inRate=8000,outRate=48000; const ratio = outRate/inRate; const out = new Int16Array(int16.length*ratio); for(let i=0;i<int16.length-1;i++){ const a=int16[i], b=int16[i+1]; for(let k=0;k<ratio;k++){ const t=k/ratio; out[i*ratio+k] = (a + (b-a)*t)|0; } } // hold last
+    const last=int16[int16.length-1]; for(let k=0;k<ratio;k++){ out[out.length-ratio+k]=last; } return out; }
+  document.getElementById('btn-init').onclick=()=>{ init().catch(e=>log('Init error '+e)); };
+  document.getElementById('btn-cap').onclick=async ()=>{
+    log('Requesting mic...');
+    // Secure origin requirement (except localhost)
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      if (!(window.isSecureContext)) {
+        log('ERROR: getUserMedia requires a secure context (HTTPS).');
+        alert('Microphone requires HTTPS (secure context). Re-open via https:// or run on localhost.');
+        return;
+      }
+    }
+    // Legacy shim
+    if (!navigator.mediaDevices) navigator.mediaDevices = {};
+    if (!navigator.mediaDevices.getUserMedia) {
+      const legacy = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+      if (legacy) {
+        navigator.mediaDevices.getUserMedia = (constraints)=> new Promise((res,rej)=> legacy.call(navigator, constraints, res, rej));
+      }
+    }
+    if (!navigator.mediaDevices.getUserMedia){
+      log('ERROR: getUserMedia unsupported in this browser/environment.');
+      alert('getUserMedia not supported in this browser.');
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch(e){
+      log('ERROR: mic denied '+ (e && e.name ? e.name : 'unknown')); alert('Microphone access denied: '+ (e && e.message ? e.message : 'unknown error')); return;
+    }
+    const ctx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate:48000 });
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(2048,1,1);
+    const frames=[]; let collected=0; const targetMs=1000; const start=performance.now();
+    proc.onaudioprocess = (ev)=>{
+      const ch = ev.inputBuffer.getChannelData(0); frames.push(new Float32Array(ch)); collected += (ch.length/ctx.sampleRate)*1000; if (performance.now()-start >= targetMs){ src.disconnect(); proc.disconnect(); ctx.close(); finish(); }
+    };
+    src.connect(proc); proc.connect(ctx.destination);
+    async function finish(){
+      // Concatenate
+      let total=0; for(const f of frames) total+=f.length; const all=new Float32Array(total); let o=0; for(const f of frames){ all.set(f,o); o+=f.length; }
+      // Downsample to 8k
+      const ds = downsampleTo8k(all);
+      // Frame into 40ms (320 samples) windows
+      const SAMPLES_PER_FRAME = 320; const frames8k=[]; for(let i=0;i+SAMPLES_PER_FRAME<=ds.length;i+=SAMPLES_PER_FRAME){ frames8k.push(ds.subarray(i,i+SAMPLES_PER_FRAME)); }
+      log('Captured '+frames8k.length+' frames');
+      const encBytes=[]; const t0=performance.now();
+      for(const fr of frames8k){ const b = await encodeFrame(fr); encBytes.push(b); }
+      const t1=performance.now();
+      log('Encoded '+encBytes.length+' frames in '+(t1-t0).toFixed(1)+'ms avg='+( (t1-t0)/encBytes.length ).toFixed(3)+'ms');
+      log('Sample frame sizes: '+encBytes.map(b=>b.length).slice(0,10).join(','));
+      // Decode back
+      let decPcmAll = new Int16Array(0);
+      for(const b of encBytes){ const raw = await decodeBytes(b); const pcmi = new Int16Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset+raw.byteLength)); // expect 320 samples
+        // concat
+        const merged = new Int16Array(decPcmAll.length + pcmi.length); merged.set(decPcmAll,0); merged.set(pcmi, decPcmAll.length); decPcmAll = merged; }
+      // Upsample for playback
+      const up = upsampleLinear(decPcmAll);
+      // Int16 -> Float32 WAV creation
+      const wav = pcm16ToWav(up, 48000);
+      const blob = new Blob([wav], { type:'audio/wav' }); document.getElementById('play').src = URL.createObjectURL(blob);
+      log('Roundtrip complete. Playback ready.');
+    }
+  };
+
+  function pcm16ToWav(samples, sampleRate){
+    const buffer = new ArrayBuffer(44 + samples.length*2); const view = new DataView(buffer);
+    function wstr(o,s){ for(let i=0;i<s.length;i++){ view.setUint8(o+i, s.charCodeAt(i)); } }
+    function w16(o,v){ view.setUint16(o,v,true); }
+    function w32(o,v){ view.setUint32(o,v,true); }
+    wstr(0,'RIFF'); w32(4,36 + samples.length*2); wstr(8,'WAVE'); wstr(12,'fmt '); w32(16,16); w16(20,1); w16(22,1); w32(24,sampleRate); w32(28,sampleRate*2); w16(32,2); w16(34,16); wstr(36,'data'); w32(40,samples.length*2); let off=44; for(let i=0;i<samples.length;i++){ view.setInt16(off, samples[i], true); off+=2; } return buffer;
+  }
+  </script>
+</body>
+</html>

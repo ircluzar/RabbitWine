@@ -1,11 +1,14 @@
 <?php
-// HTTPS downgrade disabled to avoid redirect loops behind proxies/HSTS.
 // Cache-bust all linked resources by appending a random version parameter per request
 $v = random_int(1, PHP_INT_MAX);
 function bust($path) {
-    global $v;
-    return $path . ((strpos($path, '?') !== false) ? '&' : '?') . 'v=' . $v;
+  global $v;
+  return $path . ((strpos($path, '?') !== false) ? '&' : '?') . 'v=' . $v;
 }
+
+// Toggle: force HTTPS -> HTTP downgrade (NOT recommended if you need getUserMedia / mic)
+// Set to true to re-enable legacy behavior; false keeps secure contexts for microphone access.
+$FORCE_HTTP_DOWNGRADE = true;  // change to true to restore redirect
 ?>
 <!doctype html>
 <html lang="en">
@@ -13,17 +16,18 @@ function bust($path) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0f" />
+    <?php if ($FORCE_HTTP_DOWNGRADE): ?>
     <script>
       (function(){
         try {
           if (location.protocol === 'https:') {
             var target = 'http://' + location.host + location.pathname + location.search + location.hash;
-            // Use replace to avoid history pollution
             window.location.replace(target);
           }
         } catch(e){}
       })();
     </script>
+    <?php endif; ?>
     <title>VRUN MZ</title>
     <link rel="preload" href="<?php echo bust('./styles.css'); ?>" as="style" />
     <link rel="stylesheet" href="<?php echo bust('./styles.css'); ?>" />
@@ -110,6 +114,8 @@ function bust($path) {
   <script>window.MP_SERVER = "";</script>
   <!-- Multiplayer client -->
   <script src="<?php echo bust('./js/app/multiplayer.js'); ?>"></script>
+  <!-- Voice chat MVP -->
+  <script src="<?php echo bust('./js/app/voice.js'); ?>"></script>
     <!-- App bootstrap (Milestone 6) -->
     <script src="<?php echo bust('./js/app/bootstrap.js'); ?>"></script>
   </body>
