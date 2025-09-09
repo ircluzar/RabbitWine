@@ -218,26 +218,21 @@ function mpEnsureWS(nowMs){
       const kind = (it.kind === 1) ? 1 : 0;
       const payload = (kind===0 && typeof it.payload === 'string') ? it.payload : '';
       const w = __mp_worldFromGrid(gx, gy);
-      // Skip spawning if already collected according to save system
+      // Determine ghost state instead of skipping spawn
+      let ghost = false;
       try {
         if (window.gameSave){
-          if (kind===0 && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) continue;
+          if (kind===0 && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true;
           if (kind===1 && gameSave.isPurpleCollected){
-            let collected = gameSave.isPurpleCollected(null, w.x, y, w.z);
-            if (!collected){
-              // Try common alternate float heights (0 / 0.75) in case of legacy mismatch
-              if (Math.abs(y-0.75)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0.75, w.z)) collected = true;
-              else if (Math.abs(y-0)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0, w.z)) collected = true;
-            }
-            if (collected){ try { console.debug('[MP][items] skip purple already collected', w.x, y, w.z); } catch(__){}; continue; }
+            if (gameSave.isPurpleCollected(null, w.x, y, w.z) || gameSave.isPurpleCollected(null, w.x, 0.75, w.z) || gameSave.isPurpleCollected(null, w.x, 0, w.z)) ghost = true;
           }
         }
       } catch(_){ }
       try {
         if (kind === 1){
-          if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z);
+          if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z, { ghost });
         } else {
-          if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload);
+          if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost });
         }
         shadowItems.push({ gx, gy, y, kind, payload });
       } catch(_){ }
@@ -253,20 +248,13 @@ function mpEnsureWS(nowMs){
         const gx = op.gx|0, gy = op.gy|0; const y = (typeof op.y==='number')? op.y : 0.75;
         const w = __mp_worldFromGrid(gx, gy);
         if (kind === 1){
-          // Skip if purple already collected
-          let skip = false; try {
-            if (window.gameSave && gameSave.isPurpleCollected){
-              if (gameSave.isPurpleCollected(null, w.x, y, w.z) || (Math.abs(y-0.75)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0.75, w.z)) || (Math.abs(y-0)>1e-3 && gameSave.isPurpleCollected(null, w.x, 0, w.z))) skip = true;
-              if (skip) try { console.debug('[MP][items] skip purple op already collected', w.x, y, w.z); } catch(__){}
-            }
-          } catch(_){ }
-          if (!skip){ try { if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z); } catch(_){ } }
+          let ghost = false; try { if (window.gameSave && gameSave.isPurpleCollected && (gameSave.isPurpleCollected(null, w.x, y, w.z) || gameSave.isPurpleCollected(null, w.x, 0.75, w.z) || gameSave.isPurpleCollected(null, w.x, 0, w.z))) ghost = true; } catch(_){ }
+          try { if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z, { ghost, fadeIn:false }); } catch(_){ }
           shadowItems.push({ gx, gy, y, kind:1, payload:'' });
         } else {
           const payload = (typeof op.payload === 'string') ? op.payload : '';
-            // Skip if yellow already collected
-            let skip = false; try { if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) skip = true; } catch(_){ }
-            if (!skip){ try { if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload); } catch(_){ } }
+          let ghost = false; try { if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true; } catch(_){ }
+          try { if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost, fadeIn:false }); } catch(_){ }
           shadowItems.push({ gx, gy, y, kind:0, payload });
         }
       } else if (op.op === 'remove'){

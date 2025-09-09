@@ -11,6 +11,11 @@
 // Internal store
 const items = [];
 const purpleItems = [];
+
+// Ghost (picked-up) presentation constants
+const GHOST_ALPHA = 0.05;              // target alpha for ghost items (reduced from 0.4)
+const GHOST_FADE_DURATION = 0.8;       // seconds for fade-in
+const GHOST_RESPAWN_DELAY = 3.0;       // seconds after pickup to reappear as ghost
 // Default visual float height for items without explicit Y
 const ITEM_DEFAULT_FLOAT_Y = 0.75;
 
@@ -22,52 +27,45 @@ function gridToWorld(gx, gy){
 }
 
 function initItemsFromBuilder(list){
-  items.length = 0;
-  purpleItems.length = 0;
+  items.length = 0; purpleItems.length = 0;
   if (!Array.isArray(list)) return;
-  const t0 = (state.nowSec || performance.now()/1000);
   for (const it of list){
     if (!it || typeof it.x !== 'number' || typeof it.y !== 'number') continue;
     const w = gridToWorld(it.x, it.y);
-    // Skip legacy-collected OR new composite collected (yellow builder items have payloads; purple builder items currently not from builder)
-    try {
-      if (window.gameSave){
-        if (it.payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(it.payload)) continue;
-        if (!it.payload && gameSave.isItemCollected && gameSave.isItemCollected(w.x, w.z)) continue; // legacy fallback
-      }
-    } catch(_){ }
-    // random unit axis for 3D spin
-    let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
-    const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
-  // inner cube axis (independent random unit axis)
-  let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
-  const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
-  // Default Y for legacy/sample content is 0.0; allow optional builder-provided Y
-  // Default float height when not explicitly provided
-  const iyOpt = (typeof it.yWorld === 'number') ? it.yWorld
-         : (typeof it.yBase === 'number') ? it.yBase
-         : (typeof it.y0 === 'number') ? it.y0
-         : ITEM_DEFAULT_FLOAT_Y;
-  items.push({ x: w.x, z: w.z, y: iyOpt, payload: String(it.payload || ''), spawnT: t0, gone: false, ax, ay, az, ix, iy, iz });
+    const iyOpt = (typeof it.yWorld === 'number') ? it.yWorld
+               : (typeof it.yBase === 'number') ? it.yBase
+               : (typeof it.y0 === 'number') ? it.y0
+               : ITEM_DEFAULT_FLOAT_Y;
+    spawnItemWorld(w.x, iyOpt, w.z, it.payload||'');
   }
 }
 
-function spawnItemWorld(x, y, z, payload){
+function spawnItemWorld(x, y, z, payload, opts){
+  let ghost = false, fadeIn = false;
+  try {
+    if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost;
+    else if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true;
+    else if (window.gameSave && !payload && gameSave.isItemCollected && gameSave.isItemCollected(x, z)) ghost = true; // legacy fallback
+    if (opts && opts.fadeIn) fadeIn = true;
+  } catch(_){ }
   let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
   const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
   let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
   const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
-  items.push({ x, y, z, payload: String(payload || ''), spawnT: state.nowSec || performance.now()/1000, gone: false, ax, ay, az, ix, iy, iz });
+  items.push({ x, y, z, payload: String(payload || ''), spawnT: state.nowSec || performance.now()/1000, gone: false, ghost, fadeInStart: fadeIn ? (state.nowSec || performance.now()/1000) : -1, ax, ay, az, ix, iy, iz });
 }
 
-function spawnPurpleItemWorld(x, y, z){
-  // Skip spawning if already collected (composite purple 3D key)
-  try { if (window.gameSave && gameSave.isPurpleCollected && gameSave.isPurpleCollected(null, x, y, z)) return; } catch(_){ }
+function spawnPurpleItemWorld(x, y, z, opts){
+  let ghost = false, fadeIn = false;
+  try {
+    if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost; else if (window.gameSave && gameSave.isPurpleCollected && gameSave.isPurpleCollected(null, x, y, z)) ghost = true;
+    if (opts && opts.fadeIn) fadeIn = true;
+  } catch(_){ }
   let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
   const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
   let ix = Math.random()*2-1, iy = Math.random()*2-1, iz = Math.random()*2-1;
   const il = Math.hypot(ix,iy,iz) || 1; ix/=il; iy/=il; iz/=il;
-  purpleItems.push({ x, y, z, spawnT: state.nowSec || performance.now()/1000, gone: false, ax, ay, az, ix, iy, iz });
+  purpleItems.push({ x, y, z, spawnT: state.nowSec || performance.now()/1000, gone: false, ghost, fadeInStart: fadeIn ? (state.nowSec || performance.now()/1000) : -1, ax, ay, az, ix, iy, iz });
 }
 
 // Remove items at (world x,z) cell (within small epsilon). Returns number removed.
@@ -93,7 +91,8 @@ function updateItems(dt){
   const pr = Math.max(0.25, p.radius || 0.3);
   if (items.length){
     for (const it of items){
-      if (it.gone) continue;
+  if (it.gone) continue;
+  if (it.ghost) continue; // ghosts ignore collisions
       const dx = it.x - p.x;
       const dz = it.z - p.z;
       const itemHalf = 0.24;
@@ -105,7 +104,7 @@ function updateItems(dt){
       const dist2 = dx*dx + dz*dz + dy*dy;
       const r = pr + 0.26;
       if (dist2 <= r*r){
-        it.gone = true;
+  it.gone = true;
         // Mark yellow collection using new composite system; legacy fallback kept
         try {
           if (window.gameSave){
@@ -118,8 +117,10 @@ function updateItems(dt){
             if (gameSave.saveNow) gameSave.saveNow();
           }
         } catch(_){ }
-        if (typeof dispatchAction === 'function' && it.payload){ dispatchAction(it.payload, it); }
+  if (typeof dispatchAction === 'function' && it.payload){ dispatchAction(it.payload, it); }
         try { if (window.sfx) sfx.play('./sfx/VRUN_HealthGet.mp3'); } catch(_){ }
+  // Schedule ghost respawn
+  try { setTimeout(()=>{ spawnItemWorld(it.x, it.y, it.z, it.payload, { ghost:true, fadeIn:true }); }, GHOST_RESPAWN_DELAY*1000); } catch(_){ }
         p.speed = 0.0; p.movementMode = 'stationary'; p.isDashing = false;
         const nowSec = state.nowSec || (performance.now()/1000);
         const age = Math.max(0, nowSec - (it.spawnT || nowSec));
@@ -143,7 +144,8 @@ function updatePurpleItems(dt){
   if (!purpleItems.length) return;
   const p = state.player; const pr = Math.max(0.25, p.radius || 0.3);
   for (const it of purpleItems){
-    if (it.gone) continue;
+  if (it.gone) continue;
+  if (it.ghost) continue; // ignore collisions when ghost
     const dx = it.x - p.x;
     const dz = it.z - p.z;
     const itemHalf = 0.24;
@@ -155,7 +157,7 @@ function updatePurpleItems(dt){
     const dist2 = dx*dx + dz*dz + dy*dy;
     const r = pr + 0.26;
     if (dist2 <= r*r){
-      it.gone = true;
+  it.gone = true;
       // Play distinct SFX
       try { if (window.sfx) sfx.play('./sfx/TunnelRun_EnterVRUN.mp3'); } catch(_){ }
       // Track purple collections per level (composite key) via save API
@@ -166,6 +168,8 @@ function updatePurpleItems(dt){
           if (gameSave.saveNow) gameSave.saveNow();
         }
       } catch(_){ }
+  // Schedule ghost respawn
+  try { setTimeout(()=>{ spawnPurpleItemWorld(it.x, it.y, it.z, { ghost:true, fadeIn:true }); }, GHOST_RESPAWN_DELAY*1000); } catch(_){ }
       // Enhanced FX: triple density, faster spin/drift, longer life
       try {
         if (typeof spawnPickupFloatingLinesWithRotation === 'function'){
@@ -192,114 +196,91 @@ function updatePurpleItems(dt){
 }
 
 function drawItems(mvp){
-  const active = items.filter(it => !it.gone);
-  const activePurple = purpleItems.filter(it=>!it.gone);
-  if (active.length === 0 && activePurple.length === 0) return;
-  // Build instance buffer [x,y,z,spawnT] per item; animate in shader via spawnT
   const tNow = state.nowSec || (performance.now()/1000);
-  const inst = new Float32Array(active.length * 4);
-  const axis = new Float32Array(active.length * 3);
-  const axisInner = new Float32Array(active.length * 3);
-  for (let i=0;i<active.length;i++){
-    const it = active[i];
-    inst[i*4+0] = it.x;
-    inst[i*4+1] = it.y; // already floating a bit above ground
-    inst[i*4+2] = it.z;
-    inst[i*4+3] = it.spawnT;
-    axis[i*3+0] = it.ax || 0.0;
-    axis[i*3+1] = it.ay || 1.0;
-    axis[i*3+2] = it.az || 0.0;
-    axisInner[i*3+0] = it.ix || 0.0;
-    axisInner[i*3+1] = it.iy || 1.0;
-    axisInner[i*3+2] = it.iz || 0.0;
-  }
+  const activeY = items.filter(it => !it.gone && !it.ghost);
+  const ghostYStable = items.filter(it => !it.gone && it.ghost && !(it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+  const ghostYFading = items.filter(it => !it.gone && it.ghost && (it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+  const activeP = purpleItems.filter(it => !it.gone && !it.ghost);
+  const ghostPStable = purpleItems.filter(it => !it.gone && it.ghost && !(it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+  const ghostPFading = purpleItems.filter(it => !it.gone && it.ghost && (it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+  if (!activeY.length && !ghostYStable.length && !ghostYFading.length && !activeP.length && !ghostPStable.length && !ghostPFading.length) return;
+
   gl.useProgram(trailCubeProgram);
   gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
-  // Base scale: 0.50 would match the green player cube; use slightly smaller
-  gl.uniform1f(tc_u_scale, 0.46);
-  gl.uniform1f(tc_u_now, tNow);
-  gl.uniform1f(tc_u_ttl, 99999.0); // never fade automatically
-  gl.uniform1i(tc_u_dashMode, 0);
-  gl.uniform1f(tc_u_mulAlpha, 1.0);
-  // Enable animation uniforms
   gl.uniform1i(tc_u_useAnim, 1);
-  gl.uniform1f(tc_u_rotSpeed, 0.35);      // slower spin
-  gl.uniform1f(tc_u_wobbleAmp, 0.06);    // meters
-  gl.uniform1f(tc_u_wobbleSpeed, 0.5);   // Hz
+  gl.uniform1f(tc_u_wobbleAmp, 0.06);
+  gl.uniform1f(tc_u_wobbleSpeed, 0.5);
+  gl.uniform1f(tc_u_ttl, 99999.0);
+  gl.uniform1i(tc_u_dashMode, 0);
   gl.bindVertexArray(trailCubeVAO);
-  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
-  gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
-  // Per-instance corner offsets keyed per item: jitter on top view, zeros on bottom
-  if (typeof trailCubeVBO_Corners !== 'undefined'){
-    if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
-      const keys = new Array(active.length);
-      for (let i=0;i<active.length;i++){ const it=active[i]; keys[i] = `item@${it.x.toFixed(2)},${it.y.toFixed(2)},${it.z.toFixed(2)}`; }
-      const packed = getTrailCornerOffsetsBuffer(keys, tNow);
-      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-      gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
-    } else {
-      const zeros = new Float32Array(active.length * 8 * 3);
-      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
-    }
-  }
-  // Upload per-instance rotation axes
-  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
-  gl.bufferData(gl.ARRAY_BUFFER, axis, gl.DYNAMIC_DRAW);
-  // Thicker lines look achieved by drawing slight multi-pass scales
   gl.depthMask(false);
   gl.disable(gl.BLEND);
-  // Outer yellow box
-  gl.uniform3f(tc_u_lineColor, 1.0, 0.95, 0.2); // yellow-ish
-  const scales = [1.00, 1.02, 1.04, 1.06]; // stays < 0.5 overall (0.46 * 1.06 = 0.488)
-  for (let s of scales){
-    gl.uniform1f(tc_u_scale, 0.46 * s);
-    gl.drawArraysInstanced(gl.LINES, 0, 24, active.length);
-  }
-  // Inner smaller white box (different random axis and slightly different speed)
-  gl.uniform1f(tc_u_rotSpeed, 0.55);
-  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
-  gl.bufferData(gl.ARRAY_BUFFER, axisInner, gl.DYNAMIC_DRAW);
-  gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
+
+  const scales = [1.00, 1.02, 1.04, 1.06];
   const innerBase = 0.28;
   const innerScales = [1.00, 1.02, 1.04];
-  for (let s of innerScales){
-    gl.uniform1f(tc_u_scale, innerBase * s);
-    gl.drawArraysInstanced(gl.LINES, 0, 24, active.length);
-  }
-  // Draw purple items (reuse buffers per pass)
-  if (activePurple.length){
-    const tNow2 = state.nowSec || (performance.now()/1000);
-    const inst2 = new Float32Array(activePurple.length * 4);
-    const axis2 = new Float32Array(activePurple.length * 3);
-    const axisInner2 = new Float32Array(activePurple.length * 3);
-    for (let i=0;i<activePurple.length;i++){
-      const it = activePurple[i];
-      inst2[i*4+0] = it.x; inst2[i*4+1] = it.y; inst2[i*4+2] = it.z; inst2[i*4+3] = it.spawnT;
-      axis2[i*3+0] = it.ax; axis2[i*3+1] = it.ay; axis2[i*3+2] = it.az;
-      axisInner2[i*3+0] = it.ix; axisInner2[i*3+1] = it.iy; axisInner2[i*3+2] = it.iz;
+
+  function drawBatch(list, outerColor, innerColor, alphaMul){
+    if (!list.length) return;
+    const inst = new Float32Array(list.length * 4);
+    const axis = new Float32Array(list.length * 3);
+    const axisInner = new Float32Array(list.length * 3);
+    for (let i=0;i<list.length;i++){
+      const it = list[i];
+      inst[i*4+0] = it.x; inst[i*4+1] = it.y; inst[i*4+2] = it.z; inst[i*4+3] = it.spawnT;
+      axis[i*3+0] = it.ax || 0; axis[i*3+1] = it.ay || 1; axis[i*3+2] = it.az || 0;
+      axisInner[i*3+0] = it.ix || 0; axisInner[i*3+1] = it.iy || 1; axisInner[i*3+2] = it.iz || 0;
     }
-    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, inst2, gl.DYNAMIC_DRAW);
+    gl.uniform1f(tc_u_now, tNow);
+    gl.uniform1f(tc_u_mulAlpha, alphaMul);
+    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
     if (typeof trailCubeVBO_Corners !== 'undefined'){
       if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
-        const keys = new Array(activePurple.length);
-        for (let i=0;i<activePurple.length;i++){ const it=activePurple[i]; keys[i] = `pitem@${it.x.toFixed(2)},${it.y.toFixed(2)},${it.z.toFixed(2)}`; }
-        const packed = getTrailCornerOffsetsBuffer(keys, tNow2);
-        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-        gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+        const keys = new Array(list.length);
+        for (let i=0;i<list.length;i++){ const it=list[i]; keys[i] = `itm@${it.x.toFixed(2)},${it.y.toFixed(2)},${it.z.toFixed(2)}`; }
+        const packed = getTrailCornerOffsetsBuffer(keys, tNow);
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners); gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
       } else {
-        const zeros = new Float32Array(activePurple.length * 8 * 3);
-        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-        gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+        const zeros = new Float32Array(list.length * 8 * 3);
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners); gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
       }
     }
-    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, axis2, gl.DYNAMIC_DRAW);
-    gl.uniform3f(tc_u_lineColor, 0.72, 0.35, 1.0); // purple outer
-    for (let s of scales){ gl.uniform1f(tc_u_scale, 0.46 * s); gl.drawArraysInstanced(gl.LINES, 0, 24, activePurple.length); }
-    gl.uniform1f(tc_u_rotSpeed, 0.55); gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, axisInner2, gl.DYNAMIC_DRAW);
-    gl.uniform3f(tc_u_lineColor, 0.95, 0.85, 1.0); // pale inner
-    for (let s of innerScales){ gl.uniform1f(tc_u_scale, innerBase * s); gl.drawArraysInstanced(gl.LINES, 0, 24, activePurple.length); }
+    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, axis, gl.DYNAMIC_DRAW);
+    gl.uniform1f(tc_u_rotSpeed, 0.35);
+    gl.uniform3f(tc_u_lineColor, outerColor[0], outerColor[1], outerColor[2]);
+    for (let s of scales){ gl.uniform1f(tc_u_scale, 0.46 * s); gl.drawArraysInstanced(gl.LINES, 0, 24, list.length); }
+    gl.uniform1f(tc_u_rotSpeed, 0.55);
+    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, axisInner, gl.DYNAMIC_DRAW);
+    gl.uniform3f(tc_u_lineColor, innerColor[0], innerColor[1], innerColor[2]);
+    for (let s of innerScales){ gl.uniform1f(tc_u_scale, innerBase * s); gl.drawArraysInstanced(gl.LINES, 0, 24, list.length); }
   }
+
+  // Active batches (opaque)
+  drawBatch(activeY, [1.0,0.95,0.2], [1.0,1.0,1.0], 1.0);
+  drawBatch(activeP, [0.72,0.35,1.0], [0.95,0.85,1.0], 1.0);
+
+  // Enable blending for ghost passes
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  // Stable ghosts (gray, semi-transparent)
+  drawBatch(ghostYStable, [0.5,0.5,0.5], [0.7,0.7,0.7], GHOST_ALPHA);
+  drawBatch(ghostPStable, [0.45,0.45,0.55], [0.65,0.65,0.75], GHOST_ALPHA);
+  // Fading ghosts (draw individually for per-item alpha)
+  function drawFading(list, outerColor, innerColor){
+    for (const it of list){
+      const age = (tNow - it.fadeInStart);
+      const a = Math.min(1, age / GHOST_FADE_DURATION) * GHOST_ALPHA;
+      drawBatch([it], outerColor, innerColor, a);
+    }
+  }
+  drawFading(ghostYFading, [0.5,0.5,0.5], [0.7,0.7,0.7]);
+  drawFading(ghostPFading, [0.45,0.45,0.55], [0.65,0.65,0.75]);
+
+  // Disable blending again (cleanup)
+  gl.disable(gl.BLEND);
+  gl.uniform1f(tc_u_mulAlpha, 1.0);
+
   gl.depthMask(true);
   gl.bindVertexArray(null);
 }
