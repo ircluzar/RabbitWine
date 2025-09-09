@@ -116,7 +116,12 @@ if (typeof window !== 'undefined'){
     const key = `${gx},${gy}`; return columnSpans.get(key) ? columnSpans.get(key).map(s=>({ ...s })) : [];
   };
   window.setSpansAt = function(gx,gy,spans){
-    const key = `${gx},${gy}`; if (Array.isArray(spans)) columnSpans.set(key, spans.map(s=>({ b:(s.b|0), h:(s.h|0) })).filter(s=>s.h>0));
+    const key = `${gx},${gy}`;
+    if (Array.isArray(spans)) {
+      columnSpans.set(key, spans
+        .map(s=>({ b:(s.b|0), h:(s.h|0), ...( (s.t|0)===1 ? { t:1 } : {}) }))
+        .filter(s=>s.h>0));
+    }
     // Derive topmost for legacy maps
     const arr = columnSpans.get(key) || [];
     if (arr.length){ const top = arr.reduce((a,b)=> ((a.b+a.h) >= (b.b+b.h) ? a : b)); columnHeights.set(key, top.h); columnBases.set(key, top.b|0);

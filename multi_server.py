@@ -105,7 +105,8 @@ lock = asyncio.Lock()
 @dataclass
 class MapDiff:
     version: int
-    adds: Set[str]
+    # adds maps block key -> hazard flag (0 normal, 1 hazard/BAD)
+    adds: Dict[str, int]
     removes: Set[str]
 
 # level_id -> MapDiff
@@ -141,7 +142,16 @@ def db_load_all():
     rows = cur.fetchall()
     for level, version, adds_json, removes_json in rows:
         try:
-            adds = set(json.loads(adds_json)) if adds_json else set()
+            raw_adds = json.loads(adds_json) if adds_json else []
+            adds: Dict[str,int] = {}
+            # Backward compatibility: entries either 'key' (normal) or 'key#1' (hazard)
+            for ent in raw_adds:
+                if not isinstance(ent, str):
+                    continue
+                if ent.endswith('#1'):
+                    adds[ent[:-2]] = 1
+                else:
+                    adds[ent] = 0
             removes = set(json.loads(removes_json)) if removes_json else set()
             level_diffs[level] = MapDiff(version=version, adds=adds, removes=removes)
             print(f"[DB] Loaded level '{level}' v{version} adds={len(adds)} removes={len(removes)}")
@@ -151,9 +161,12 @@ def db_load_all():
 def db_persist_level(level: str, diff: MapDiff):
     if not _db_conn: return
     try:
+        enc_adds = []
+        for k, hz in diff.adds.items():
+            enc_adds.append(f"{k}#1" if hz else k)
         _db_conn.execute(
             "REPLACE INTO map_diffs(level, version, adds, removes, updated) VALUES (?,?,?,?,?)",
-            (level, diff.version, json.dumps(sorted(diff.adds)), json.dumps(sorted(diff.removes)), now_ms())
+            (level, diff.version, json.dumps(sorted(enc_adds)), json.dumps(sorted(diff.removes)), now_ms())
         )
         _db_conn.commit()
     except Exception as e:
@@ -162,16 +175,19 @@ def db_persist_level(level: str, diff: MapDiff):
 def get_mapdiff(level: str) -> MapDiff:
     md = level_diffs.get(level)
     if not md:
-        md = MapDiff(version=1, adds=set(), removes=set())
+        md = MapDiff(version=1, adds={}, removes=set())
         level_diffs[level] = md
     return md
 
-def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Apply edit ops; supports hazard flag via 't':1 on add ops.
+
+    Returns net ops (with 't':1 where applicable) to broadcast.
+    """
     if not raw_ops:
         return []
     md = get_mapdiff(level)
-    # Last op wins per key
-    last: Dict[str, str] = {}
+    last: Dict[str, Tuple[str,int]] = {}
     for entry in raw_ops:
         if not isinstance(entry, dict):
             continue
@@ -183,31 +199,42 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
             continue
         if len(key) == 0 or len(key) > KEY_MAX_LEN:
             continue
-        last[key] = op
+        if op == 'add':
+            hz = 1 if entry.get('t') in (1, '1', True) else 0
+            last[key] = ('add', hz)
+        else:
+            last[key] = ('remove', 0)
     if not last:
         return []
-    net: List[Dict[str, str]] = []
-    for key, op in last.items():
-        if op == "add":
-            if key in md.removes:
-                md.removes.discard(key)
-                net.append({"op": "add", "key": key})
-            elif key not in md.adds:
-                md.adds.add(key)
-                net.append({"op": "add", "key": key})
+    net: List[Dict[str, Any]] = []
+    for key, (op, hz) in last.items():
+        if op == 'add':
+            prev = md.adds.get(key)
+            if prev is None:
+                if key in md.removes:
+                    md.removes.discard(key)
+                md.adds[key] = hz
+                net.append({ 'op':'add', 'key': key, **({'t':1} if hz else {}) })
+            else:
+                if prev != hz:
+                    md.adds[key] = hz
+                    net.append({ 'op':'add', 'key': key, **({'t':1} if hz else {}) })
         else:  # remove
+            changed = False
             if key in md.adds:
-                md.adds.discard(key)
-                net.append({"op": "remove", "key": key})
-            elif key not in md.removes:
+                md.adds.pop(key, None)
+                changed = True
+            if key not in md.removes:
                 md.removes.add(key)
-                net.append({"op": "remove", "key": key})
+                changed = True
+            if changed:
+                net.append({ 'op':'remove', 'key': key })
     if net:
         md.version += 1
         db_persist_level(level, md)
     return net
 
-async def broadcast_map_ops(level: str, ops: List[Dict[str, str]], version: int) -> None:
+async def broadcast_map_ops(level: str, ops: List[Dict[str, Any]], version: int) -> None:
     if not ops:
         return
     payload = json.dumps({
@@ -376,7 +403,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 try:
                     md = get_mapdiff(level)
                     if md.adds or md.removes:
-                        full_ops = ([{"op": "add", "key": k} for k in sorted(md.adds)] +
+                        full_ops = ([{"op": "add", "key": k, **({'t':1} if hz else {})} for k, hz in sorted(md.adds.items())] +
                                     [{"op": "remove", "key": k} for k in sorted(md.removes)])
                     else:
                         full_ops = []
@@ -466,7 +493,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     md = get_mapdiff(lvl)
                     if have != md.version:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k} for k in sorted(md.adds)] +
+                            full_ops = ([{"op": "add", "key": k, **({'t':1} if hz else {})} for k, hz in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []

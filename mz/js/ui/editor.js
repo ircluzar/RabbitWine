@@ -52,7 +52,9 @@
     // Clear any lingering inputs to avoid stuck movement upon transition
     try { state.inputs.keys.clear(); } catch(_){ }
     // Show crosshair
-    try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'block'; } catch(_){ }
+  try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'block'; } catch(_){ }
+  // Block type bar
+  try { ensureBlockTypeBar && ensureBlockTypeBar(); } catch(_){ }
   }
   // Mouse wheel to pull/push visor distance along the view ray (zoom the interaction point)
   window.addEventListener('wheel', (ev)=>{
@@ -80,7 +82,7 @@
   }
   function __setSpans(gx, gy, spans){ try { window.setSpansAt(gx, gy, spans); } catch(_){} }
   function __normalize(spans){
-    const a = spans.filter(s=>s && (s.h|0)>0).map(s=>({ b:s.b|0, h:s.h|0 }));
+  const a = spans.filter(s=>s && (s.h|0)>0).map(s=>({ b:s.b|0, h:s.h|0, t: (s.t|0)===1 ? 1:0 }));
     a.sort((p,q)=>p.b-q.b);
     // merge adjacent same-base? not necessary for single blocks, but compact overlaps
     const out=[];
@@ -89,7 +91,9 @@
       const t = out[out.length-1];
       if (s.b <= t.b + t.h){
         const top = Math.max(t.b+t.h, s.b+s.h);
-        t.h = top - t.b;
+    t.h = top - t.b;
+    // If either segment is hazardous keep hazard flag
+    if ((s.t|0)===1) t.t = 1;
       } else out.push(s);
     }
     return out;
@@ -155,17 +159,18 @@
     // check if block exists at y
     for (const s of spans){ if (y >= (s.b|0) && y < (s.b|0)+(s.h|0)) return false; }
     // insert as its own span and normalize
-  spans.push({ b:y, h:1 });
+    const isBad = (state.editor.blockSlot === 2);
+    spans.push(isBad ? { b:y, h:1, t:1 } : { b:y, h:1 });
     spans = __normalize(spans);
     __setSpans(gx,gy,spans);
     // if ground-level, mark wall tile for visibility
     if (y===0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-      try { map[mapIdx(gx,gy)] = TILE.WALL; } catch(_){}
+      try { map[mapIdx(gx,gy)] = isBad ? TILE.BAD : TILE.WALL; } catch(_){ }
     }
     try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){}
     // Send network op (one block) -> encode per-block key including base height
     try {
-      if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}` }]); }
+      if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: isBad?1:0 }]); }
     } catch(_){ }
     return true;
   }
@@ -248,6 +253,7 @@
     try { state.editor.preview = []; } catch(_){}
     try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'none'; } catch(_){}
     try { if (document.pointerLockElement === CANVAS && document.exitPointerLock) document.exitPointerLock(); } catch(_){}
+  try { const bt=document.getElementById('mz-editor-blockbar'); if (bt) bt.remove(); } catch(_){ }
   }
 
   // Mouse buttons while in editor:
@@ -427,9 +433,10 @@
         if (window.mpSendMapOps){
           const pts = (state.editor.preview||[]).slice();
           const ops = [];
+          const isBad = (state.editor.blockSlot === 2);
           for (const it of pts){
             for (let dy=0; dy<(it.h|0); dy++){
-              ops.push({ op:'add', key:`${it.gx},${it.gy},${(it.b|0)+dy}` });
+              ops.push({ op:'add', key:`${it.gx},${it.gy},${(it.b|0)+dy}`, t: isBad?1:0 });
             }
           }
           if (ops.length) mpSendMapOps(ops);
@@ -461,21 +468,25 @@
   function applyStructureFromForm(){
     // Use column API to add spans for preview set
     const pts = state.editor.preview || [];
+    const isBad = (state.editor.blockSlot === 2);
     for (const it of pts){
       const key = `${it.gx},${it.gy}`;
       const spans = window.columnSpans.get(key) || [];
       // Merge or replace span at same base with max height
       let replaced = false;
       for (let i=0;i<spans.length;i++){
-        const s = spans[i]; if ((s.b|0) === (it.b|0)){ spans[i] = { b: it.b|0, h: Math.max(it.h|0, s.h|0) }; replaced = true; break; }
+        const s = spans[i]; if ((s.b|0) === (it.b|0)){
+          const hazard = ((s.t|0)===1) || isBad;
+          spans[i] = hazard ? { b: it.b|0, h: Math.max(it.h|0, s.h|0), t:1 } : { b: it.b|0, h: Math.max(it.h|0, s.h|0) };
+          replaced = true; break; }
       }
-      if (!replaced) spans.push({ b: it.b|0, h: it.h|0 });
+      if (!replaced) spans.push(isBad ? { b: it.b|0, h: it.h|0, t:1 } : { b: it.b|0, h: it.h|0 });
       // normalize and apply
-      const norm = spans.filter(s=>s && (s.h|0)>0).map(s=>({ b:s.b|0, h:s.h|0 }));
+      const norm = spans.filter(s=>s && (s.h|0)>0).map(s=>({ b:s.b|0, h:s.h|0, ...( (s.t|0)===1 ? { t:1 } : {} ) }));
       window.setSpansAt(it.gx, it.gy, norm);
       // Also set ground tile if base==0 to WALL for visibility
       if ((it.b|0) === 0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-        const idx = mapIdx(it.gx, it.gy); map[idx] = TILE.WALL;
+        const idx = mapIdx(it.gx, it.gy); map[idx] = isBad ? TILE.BAD : TILE.WALL;
       }
     }
   }
@@ -688,4 +699,70 @@
   window.editorHandleInput = handleEditorInput;
   window.editorRaycastVisor = raycastGridFromEditor;
   window.drawEditorVisorAndPreview = drawEditorVisorAndPreview;
+
+  // Block type definitions & UI (BASE + BAD now, rest placeholders)
+  const BLOCK_TYPES = {
+    1: { name: 'BASE', color: '#0fd5db' },
+    2: { name: 'BAD', color: '#d92b2f' },
+  };
+  function ensureBlockTypeBar(){
+    if (state.editor.mode !== 'fps') return;
+    let bar = document.getElementById('mz-editor-blockbar');
+    if (!bar){
+      bar = document.createElement('div');
+      bar.id = 'mz-editor-blockbar';
+      bar.style.position='fixed';
+      bar.style.top='10px';
+      bar.style.left='50%';
+      bar.style.transform='translateX(-50%)';
+      bar.style.display='flex';
+      bar.style.gap='6px';
+      bar.style.padding='6px 10px';
+      bar.style.background='#0f1722cc';
+      bar.style.border='1px solid #2a3a4a';
+      bar.style.borderRadius='6px';
+      bar.style.fontFamily='monospace';
+      bar.style.fontSize='12px';
+      bar.style.zIndex='2500';
+      bar.style.pointerEvents='none';
+      document.body.appendChild(bar);
+    }
+    updateBlockTypeBar();
+  }
+  function updateBlockTypeBar(){
+    const bar = document.getElementById('mz-editor-blockbar'); if (!bar) return;
+    const active = state.editor.blockSlot|0;
+    bar.innerHTML='';
+    for (let i=1;i<=9;i++){
+      const info = BLOCK_TYPES[i] || BLOCK_TYPES[1];
+      const el = document.createElement('div');
+      el.setAttribute('aria-label', 'Slot ' + i + ' ' + (BLOCK_TYPES[i]? info.name : 'BASE'));
+      el.style.width='22px';
+      el.style.height='22px';
+      el.style.boxSizing='border-box';
+      el.style.border='2px solid ' + info.color;
+      el.style.borderRadius='4px';
+      el.style.background = (i===active) ? info.color : 'transparent';
+      el.style.opacity = BLOCK_TYPES[i] ? '1' : '0.25';
+      el.style.transition='background 0.15s, opacity 0.15s';
+      bar.appendChild(el);
+    }
+    const label = document.createElement('div');
+    label.style.marginLeft='8px';
+    label.style.display='flex';
+    label.style.alignItems='center';
+    label.style.fontWeight='600';
+    label.style.color='#ddd';
+    label.textContent='Block: ' + (BLOCK_TYPES[active] ? BLOCK_TYPES[active].name : 'BASE');
+    bar.appendChild(label);
+  }
+  window.ensureBlockTypeBar = ensureBlockTypeBar;
+  // Keyboard 1-9 selection
+  window.addEventListener('keydown', (ev)=>{
+    if (state.editor.mode !== 'fps') return;
+    if (ev.key >= '1' && ev.key <= '9'){
+      state.editor.blockSlot = parseInt(ev.key,10);
+      updateBlockTypeBar();
+    }
+  });
 })();

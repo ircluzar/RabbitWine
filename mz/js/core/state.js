@@ -106,5 +106,7 @@ const state = {
   topCamDist: 4.0,
   topCamHeight: 2.6,
   draggingTopCam: false,
+  // Selected block type slot (1..9). Slot 1 = BASE (normal), slot 2 = BAD (hazard), others default to BASE for now.
+  blockSlot: 1,
   },
 };

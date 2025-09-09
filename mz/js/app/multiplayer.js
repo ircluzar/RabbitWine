@@ -61,7 +61,10 @@ function mpApplyFullMap(version, ops){
   mpMap.adds.clear(); mpMap.removes.clear();
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
-    if (op.op === 'add') mpMap.adds.add(op.key);
+    if (op.op === 'add') {
+      // Encode hazard flag by storing key#1 in adds set
+      if (op.t === 1) mpMap.adds.add(op.key+'#1'); else mpMap.adds.add(op.key);
+    }
     else if (op.op === 'remove') mpMap.removes.add(op.key);
   }
   mpMap.version = version|0;
@@ -72,9 +75,10 @@ function mpApplyOps(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
-      if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(op.key);
+      const addKey = (op.t===1) ? (op.key+'#1') : op.key;
+      if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
     } else if (op.op === 'remove'){
-      if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key); else mpMap.removes.add(op.key);
+      if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key); else if (mpMap.adds.has(op.key+'#1')) mpMap.adds.delete(op.key+'#1'); else mpMap.removes.add(op.key);
     }
   }
   mpMap.version = version|0;
@@ -89,33 +93,40 @@ function __mp_rebuildWorldFromDiff(){
   // We'll apply adds (voxels) then removes (carves) on top of existing spans.
   // Each key format: gx,gy,y
   const addByCell = new Map();
-  for (const key of mpMap.adds){
+  for (const rawKey of mpMap.adds){
+    const hazard = rawKey.endsWith('#1');
+    const key = hazard ? rawKey.slice(0,-2) : rawKey;
     const parts = key.split(','); if (parts.length!==3) continue;
     const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
     if (!Number.isFinite(gx)||!Number.isFinite(gy)||!Number.isFinite(y)) continue;
     const cellK = gx+','+gy;
     let set = addByCell.get(cellK); if (!set){ set = new Set(); addByCell.set(cellK,set); }
-    set.add(y);
+    set.add(JSON.stringify({ y, t: hazard?1:0 }));
   }
   // Apply adds into spans (ensure contiguity)
   for (const [cellK, ys] of addByCell.entries()){
-    const arr = Array.from(ys.values()).sort((a,b)=>a-b);
-    const spans = []; let b = arr[0]; let prev = arr[0];
-    for (let i=1;i<arr.length;i++){
-      const y = arr[i];
-      if (y === prev + 1){ prev = y; continue; }
-      spans.push({ b, h: (prev - b + 1)|0 });
-      b = y; prev = y;
+    // Expand and sort by y
+    const arrObjs = Array.from(ys.values()).map(s=>{ try { return JSON.parse(s); } catch(_) { return null; } }).filter(o=>o && Number.isFinite(o.y));
+    arrObjs.sort((a,b)=>a.y-b.y);
+    const spans = [];
+    if (arrObjs.length){
+      let b = arrObjs[0].y; let prev = arrObjs[0].y; let hazard = arrObjs[0].t|0; // merge hazard if ANY voxel hazard inside span
+      for (let i=1;i<arrObjs.length;i++){
+        const yObj = arrObjs[i]; const y = yObj.y|0; const hz = yObj.t|0;
+        if (y === prev + 1){ prev = y; if (hz) hazard = 1; continue; }
+        spans.push(hazard? { b, h: (prev - b + 1)|0, t:1 } : { b, h:(prev - b + 1)|0 });
+        b = y; prev = y; hazard = hz;
+      }
+      spans.push(hazard? { b, h: (prev - b + 1)|0, t:1 } : { b, h:(prev - b + 1)|0 });
     }
-    spans.push({ b, h: (prev - b + 1)|0 });
     // Merge with existing spans first (so base map blocks persist unless removed)
     const [gx,gy] = cellK.split(',').map(n=>parseInt(n,10));
     let baseSpans = window.columnSpans.get(cellK) || [];
     // Add new spans then normalize merge
     baseSpans = baseSpans.concat(spans);
     baseSpans.sort((p,q)=>p.b-q.b);
-    const merged=[]; for (const s of baseSpans){ if (!merged.length){ merged.push({ b:s.b|0, h:s.h|0 }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; } else merged.push({ b:s.b|0, h:s.h|0 }); }
-    window.setSpansAt(gx,gy,merged);
+    const merged=[]; for (const s of baseSpans){ if (!merged.length){ merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:{}) }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; if (s.t===1) t.t=1; } else merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:{}) }); }
+    window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:{}) })));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){
@@ -542,7 +553,9 @@ window.mpSendMapOps = function(ops){
     for (const o of ops){
       if (!o || (o.op!=='add' && o.op!=='remove')) continue;
       if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
-      clean.push({ op:o.op, key:o.key });
+  const rec = { op:o.op, key:o.key };
+  if (o.op==='add' && (o.t===1)) rec.t = 1;
+  clean.push(rec);
       if (clean.length >= 512) break; // clamp
     }
     if (!clean.length) return false;
