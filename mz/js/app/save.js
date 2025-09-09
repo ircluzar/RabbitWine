@@ -4,6 +4,8 @@
   if (typeof window === 'undefined') return;
   const SAVE_KEY = 'mz-save-v1';
   const collected = new Set();
+  // Also track collected payload strings so identical ability tokens aren't re-collected elsewhere (optional)
+  const collectedPayloads = new Set();
   let autosaveId = null;
   let suppressSaving = false;
   function onBeforeUnloadHandler(){ try { if (!suppressSaving) saveNow(); } catch(_){ } }
@@ -36,7 +38,8 @@
         lockCameraYaw: !!state.lockCameraYaw,
         seamRatio: state.seamRatio
       },
-      items: Array.from(collected)
+  items: Array.from(collected),
+  itemPayloads: Array.from(collectedPayloads)
     };
   }
 
@@ -68,6 +71,10 @@
       if (Array.isArray(data.items)){
         collected.clear();
         for (const k of data.items){ if (typeof k === 'string') collected.add(k); }
+      }
+      if (Array.isArray(data.itemPayloads)){
+        collectedPayloads.clear();
+        for (const pld of data.itemPayloads){ if (typeof pld === 'string') collectedPayloads.add(pld); }
       }
       // Always spawn stationary on load so first swipe counts as first accel
       try {
@@ -124,7 +131,8 @@
       const z = (typeof maybeZ === 'number') ? maybeZ : yOrZ;
       return collected.has(itemKey(x, z));
     },
-    markItemCollected(it){ try { collected.add(itemKey(it.x, it.z)); } catch(_){ } },
+  markItemCollected(it){ try { collected.add(itemKey(it.x, it.z)); if (it.payload) collectedPayloads.add(String(it.payload)); } catch(_){ } },
+  hasCollectedPayload(payload){ return collectedPayloads.has(String(payload||'')); },
   };
   window.gameSave = api;
 

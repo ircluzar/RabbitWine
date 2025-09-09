@@ -263,9 +263,51 @@
   CANVAS.addEventListener('mousedown', (ev)=>{
     if (state.editor.mode !== 'fps') return;
     if (state.editor.modalOpen) return;
-    if (ev.button === 0){ addBlockAtVisor(); ev.preventDefault(); return; }
+    // Item placement mode (slot 3)
+    if (ev.button === 0){
+      if (state.editor.blockSlot === 3){
+        try {
+          const vs = state.editor.visor; if (!vs || vs.gx < 0) return;
+          const worldX = (vs.gx - MAP_W*0.5 + 0.5);
+          const worldZ = (vs.gy - MAP_H*0.5 + 0.5);
+          const worldY = (vs.base|0) + 0.75; // float a bit above base
+          let defPayload = (window._lastEditorItemPayload)||'';
+          const payload = window.prompt('Enter item payload string:', defPayload) || '';
+          if (!payload.trim()) { showTopNotification && showTopNotification('Item cancelled (empty payload)'); ev.preventDefault(); return; }
+          window._lastEditorItemPayload = payload.trim();
+          if (typeof spawnItemWorld === 'function') spawnItemWorld(worldX, worldY, worldZ, payload.trim());
+          // Track for export (grid coords + payload + world y)
+          if (!window._editorPlacedItems) window._editorPlacedItems = [];
+          window._editorPlacedItems.push({ gx: vs.gx, gy: vs.gy, payload: payload.trim(), yWorld: worldY });
+          if (typeof showTopNotification === 'function') showTopNotification('Item placed: ' + payload.trim());
+        } catch(_){ }
+        ev.preventDefault();
+        return;
+      }
+      addBlockAtVisor(); ev.preventDefault(); return;
+    }
     if (ev.button === 1){ if (document.pointerLockElement === CANVAS){ if (document.exitPointerLock) document.exitPointerLock(); } openEditorModal(); ev.preventDefault(); return; }
-    if (ev.button === 2){ removeBlockAtVisor(); ev.preventDefault(); return; }
+    if (ev.button === 2){
+      if (state.editor.blockSlot === 3){
+        // Remove item(s) at visor grid cell (by world X/Z match tolerance)
+        try {
+          const vs = state.editor.visor; if (vs && vs.gx>=0){
+            const wx = (vs.gx - MAP_W*0.5 + 0.5);
+            const wz = (vs.gy - MAP_H*0.5 + 0.5);
+            if (typeof removeItemsAtWorld === 'function'){
+              const removed = removeItemsAtWorld(wx, wz);
+              if (removed>0 && typeof showTopNotification === 'function') showTopNotification('Removed ' + removed + ' item'+(removed>1?'s':'')+' at cell');
+            }
+            // Also prune from editor placed list
+            if (Array.isArray(window._editorPlacedItems)){
+              window._editorPlacedItems = window._editorPlacedItems.filter(it=> !(it.gx===vs.gx && it.gy===vs.gy));
+            }
+          }
+        } catch(_){ }
+        ev.preventDefault();
+        return;
+      }
+      removeBlockAtVisor(); ev.preventDefault(); return; }
   });
 
   function raycastGridFromEditor(){
@@ -708,6 +750,7 @@
   const BLOCK_TYPES = {
     1: { name: 'BASE', get color(){ return getBaseBlockColor(); } },
     2: { name: 'BAD', color: '#d92b2f' },
+  3: { name: 'ITEM', color: '#f5d938' },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;
@@ -757,7 +800,7 @@
     label.style.alignItems='center';
     label.style.fontWeight='600';
     label.style.color='#ddd';
-    label.textContent='Block: ' + (BLOCK_TYPES[active] ? BLOCK_TYPES[active].name : 'BASE');
+  label.textContent='Slot: ' + (BLOCK_TYPES[active] ? BLOCK_TYPES[active].name : 'BASE');
     bar.appendChild(label);
   }
   window.ensureBlockTypeBar = ensureBlockTypeBar;

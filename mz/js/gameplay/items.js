@@ -53,6 +53,19 @@ function spawnItemWorld(x, y, z, payload){
   items.push({ x, y, z, payload: String(payload || ''), spawnT: state.nowSec || performance.now()/1000, gone: false, ax, ay, az, ix, iy, iz });
 }
 
+// Remove items at (world x,z) cell (within small epsilon). Returns number removed.
+function removeItemsAtWorld(x, z){
+  let removed = 0;
+  for (let i=items.length-1;i>=0;i--){
+    const it = items[i]; if (!it || it.gone) continue;
+    if (Math.abs(it.x - x) < 0.4 && Math.abs(it.z - z) < 0.4){ items.splice(i,1); removed++; }
+  }
+  return removed;
+}
+
+// Query active items (for export or debug)
+function listActiveItems(){ return items.filter(it=>!it.gone).map(it=>({ x: it.x, y: it.y, z: it.z, payload: it.payload })); }
+
 function updateItems(dt){
   if (!items.length) return;
   // Player collision (simple sphere vs sphere)
@@ -186,6 +199,8 @@ function drawItems(mvp){
 if (typeof window !== 'undefined'){
   window.initItemsFromBuilder = initItemsFromBuilder;
   window.spawnItemWorld = spawnItemWorld;
+  window.removeItemsAtWorld = removeItemsAtWorld;
+  window.listActiveItems = listActiveItems;
   window.updateItems = updateItems;
   window.drawItems = drawItems;
   if (Array.isArray(window._pendingItems)){
