@@ -5,12 +5,43 @@
  * Dependencies: BASE_WIDTH, BASE_HEIGHT from constants.js. Side effects: Accesses window.devicePixelRatio and performance.now().
  */
 
+// Level base colors & style flags (extend / tweak as more levels are added)
+// coloredOutlines = true -> use derived wall color for cube outlines; false -> force black outlines
+// coloredBg = true -> tint scene & viewport clears with darkened base color; false -> use black background
+const LEVEL_BASE_COLORS = {
+  1: { color: '#0fd5db', coloredOutlines: false, coloredBg: false  },
+  2: { color: '#db8b0f', coloredOutlines: true,  coloredBg: true  },
+  3: { color: '#db0f7a', coloredOutlines: false, coloredBg: false },
+};
+
+function hexToRgb01(hex){
+  if (!hex) return [1,1,1];
+  const h = hex.replace('#','');
+  if (h.length === 3){
+    const r = parseInt(h[0]+h[0],16), g=parseInt(h[1]+h[1],16), b=parseInt(h[2]+h[2],16);
+    return [r/255,g/255,b/255];
+  }
+  const r = parseInt(h.slice(0,2),16);
+  const g = parseInt(h.slice(2,4),16);
+  const b = parseInt(h.slice(4,6),16);
+  return [r/255,g/255,b/255];
+}
+
 // Global state (moved from config.js)
 const state = {
   dpr: Math.min(window.devicePixelRatio || 1, 3),
   logicalWidth: BASE_WIDTH,
   logicalHeight: BASE_HEIGHT,
   timeStart: performance.now(),
+  // Active level & palette (baseColor propagates to UI / rendering elements formerly hard-coded to teal)
+  level: {
+    id: 1,
+    baseColor: (typeof LEVEL_BASE_COLORS[1] === 'string') ? LEVEL_BASE_COLORS[1] : LEVEL_BASE_COLORS[1].color,
+    baseColorRGB: hexToRgb01((typeof LEVEL_BASE_COLORS[1] === 'string') ? LEVEL_BASE_COLORS[1] : LEVEL_BASE_COLORS[1].color),
+  outlineColored: (typeof LEVEL_BASE_COLORS[1] === 'object' && !!LEVEL_BASE_COLORS[1].coloredOutlines) || false,
+  backgroundColored: (typeof LEVEL_BASE_COLORS[1] === 'object' && !!LEVEL_BASE_COLORS[1].coloredBg) || false,
+    palette: { wallRGB: [0,0,0], gridRGB: [0,0,0] }, // temp, filled below
+  },
   inputs: {
     pointers: new Map(), // id -> {x,y,dx,dy,startX,startY,lastT}
     keys: new Set(),
@@ -110,3 +141,39 @@ const state = {
   blockSlot: 1,
   },
 };
+
+// Public helpers to update level & propagate derived color
+window.setLevel = function(levelId){
+  if (!LEVEL_BASE_COLORS[levelId]) {
+    console.warn('[MZ] setLevel: unknown level', levelId, 'falling back to 1');
+    levelId = 1;
+  }
+  const def = LEVEL_BASE_COLORS[levelId];
+  const baseHex = (typeof def === 'string') ? def : def.color;
+  state.level.id = levelId;
+  state.level.baseColor = baseHex;
+  state.level.baseColorRGB = hexToRgb01(baseHex);
+  state.level.outlineColored = (typeof def === 'object' && !!def.coloredOutlines) || false;
+  state.level.backgroundColored = (typeof def === 'object' && !!def.coloredBg) || false;
+  // Derive palette variants from base
+  try {
+    const [r,g,b] = state.level.baseColorRGB;
+    function clamp01(x){ return Math.min(1, Math.max(0, x)); }
+    const wall = [clamp01(r*1.02), clamp01(g*0.54), clamp01(b*0.56)];
+    const grid = [clamp01(r*0.85), clamp01(g*0.419), clamp01(b*0.385)];
+    state.level.palette.wallRGB = wall;
+    state.level.palette.gridRGB = grid;
+  } catch(e){ console.warn('Palette derivation failed', e); }
+};
+
+window.getLevelBaseColor = function(){ return state.level.baseColor; };
+window.getLevelBaseColorRGB = function(){ return state.level.baseColorRGB; };
+window.getLevelWallColorRGB = function(){ return (state.level && state.level.palette && state.level.palette.wallRGB) || [0.06,0.45,0.48]; };
+window.getLevelGridColorRGB = function(){ return (state.level && state.level.palette && state.level.palette.gridRGB) || [0.05,0.35,0.33]; };
+window.getLevelOutlineColored = function(){ return !!(state.level && state.level.outlineColored); };
+window.getLevelOutlineColorRGB = function(){ return window.getLevelOutlineColored() ? window.getLevelWallColorRGB() : [0,0,0]; };
+window.getLevelBackgroundColored = function(){ return !!(state.level && state.level.backgroundColored); };
+
+// Initialize palette immediately for initial level without requiring explicit setLevel call
+try { window.setLevel(state.level.id); } catch(_){ }
+

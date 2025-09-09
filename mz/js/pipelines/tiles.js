@@ -101,7 +101,13 @@ function drawTiles(mvp, kind){
   gl.uniform2f(tile_u_origin, -MAP_W*0.5, -MAP_H*0.5);
   gl.uniform1f(tile_u_scale, 1.0);
   gl.uniform1f(tile_u_y, -0.001);
-  gl.uniform3fv(tile_u_color, new Float32Array([0.0, 0.0, 0.0]));
+  // Derive floor color as a darkened wall color for subtle tint
+  let floorCol = [0,0,0];
+  try {
+    const wall = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+    floorCol = wall.map(c=>c*0.15);
+  } catch(_){ }
+  gl.uniform3fv(tile_u_color, new Float32Array(floorCol));
   gl.bindVertexArray(tileVAO);
   // Point attribute 0 to the appropriate position buffer per view
   gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? tileVBO_PosJitter : tileVBO_PosBase);

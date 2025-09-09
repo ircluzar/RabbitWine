@@ -155,7 +155,16 @@ function renderGridViewport(x, y, w, h, cameraKind /* 'top'|'bottom' */) {
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.SCISSOR_TEST);
   gl.scissor(x, y, w, h);
-  if (cameraKind === 'top') gl.clearColor(0.025, 0.05, 0.055, 1.0); else gl.clearColor(0.02, 0.045, 0.05, 1.0);
+  // Derive subtle background tints from base level color (darkened strongly)
+  const useCol = (typeof getLevelBackgroundColored === 'function') ? getLevelBackgroundColored() : true;
+  if (useCol){
+    const base = (typeof getLevelBaseColorRGB === 'function') ? getLevelBaseColorRGB() : [0.06,0.45,0.48];
+    const dark = base.map(c=>c*0.15);
+    const dark2 = base.map(c=>c*0.11);
+    if (cameraKind === 'top') gl.clearColor(dark[0], dark[1], dark[2], 1.0); else gl.clearColor(dark2[0], dark2[1], dark2[2], 1.0);
+  } else {
+    gl.clearColor(0,0,0,1);
+  }
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.disable(gl.SCISSOR_TEST);
 }
@@ -163,7 +172,8 @@ function renderGridViewport(x, y, w, h, cameraKind /* 'top'|'bottom' */) {
 function drawGridOverlay(mvp, camEye, isThirdPerson) {
   gl.useProgram(gridProgram);
   gl.uniformMatrix4fv(grid_u_mvp, false, mvp);
-  gl.uniform3fv(grid_u_color, new Float32Array([0.05, 0.35, 0.33]));
+  const gridCol = (typeof getLevelGridColorRGB === 'function') ? getLevelGridColorRGB() : [0.05,0.35,0.33];
+  gl.uniform3fv(grid_u_color, new Float32Array(gridCol));
   // No sphere mask for the general overlay
   if (grid_u_useSphereMask) gl.uniform1i(grid_u_useSphereMask, 0);
   if (grid_u_offset) gl.uniform3f(grid_u_offset, 0,0,0);

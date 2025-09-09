@@ -237,7 +237,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // First: normal walls
   if (wallsNormal.length){
     gl.bufferData(gl.ARRAY_BUFFER, wallsNormal, gl.DYNAMIC_DRAW);
-    gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
+  const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+  gl.uniform3fv(wall_u_color, new Float32Array(wallCol));
     gl.uniform1f(wall_u_alpha, 0.65);
     gl.uniform1i(wall_u_glitterMode, 0);
   // Depth pre-pass
@@ -307,7 +308,10 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.bindVertexArray(null);
 
   // Silhouette outlines per wall tile
-  if (wallsNormal.length) drawOutlinesForTileArray(mvp, wallsNormal, 0.5, 1.0, [0.0,0.0,0.0]);
+  if (wallsNormal.length){
+    const wallOutline = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
+    drawOutlinesForTileArray(mvp, wallsNormal, 0.5, 1.0, wallOutline);
+  }
   if (wallsBad.length) drawOutlinesForTileArray(mvp, wallsBad, 0.5, 1.02, [1.0,0.2,0.2]);
 }
 
@@ -494,7 +498,8 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       }
     }
     // Draw normal then BAD
-    drawGroupPts(normPts, [0.06, 0.45, 0.48], 0.65, false);
+  const wallCol2 = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+  drawGroupPts(normPts, wallCol2, 0.65, false);
     drawGroupPts(badPts, [0.85, 0.10, 0.12], 0.85, true);
 
   // Note: color passes for normal and BAD pillars are already drawn above via drawGroupPts().
@@ -506,7 +511,8 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       if (normPts.length){
         const offs2 = new Float32Array(normPts.length * 2);
         for (let i=0;i<normPts.length;i++){ offs2[i*2+0]=normPts[i][0]; offs2[i*2+1]=normPts[i][1]; }
-        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, [0,0,0]);
+  const wallOutline2 = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
+  drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, wallOutline2);
       }
       if (badPts.length){
         const offs3 = new Float32Array(badPts.length * 2);
@@ -526,7 +532,8 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
   gl.uniform1f(wall_u_scale, 1.0);
   gl.uniform1f(wall_u_height, 1.0);
-  gl.uniform3fv(wall_u_color, new Float32Array([0.06, 0.45, 0.48]));
+  const wallCol3 = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+  gl.uniform3fv(wall_u_color, new Float32Array(wallCol3));
   gl.uniform1f(wall_u_alpha, 0.65);
   gl.uniform1i(wall_u_glitterMode, 0);
   gl.uniform3f(wall_u_voxCount, 1,1,1);

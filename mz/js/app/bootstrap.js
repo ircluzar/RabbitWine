@@ -41,7 +41,17 @@ function render(now) {
   gl.viewport(0, 0, offscreen.w, offscreen.h);
   // Clear offscreen
   gl.disable(gl.SCISSOR_TEST);
-  gl.clearColor(0.04, 0.04, 0.06, 1.0);
+  // Offscreen base clear: darkened base color
+  try {
+    const useCol = (typeof getLevelBackgroundColored === 'function') ? getLevelBackgroundColored() : true;
+    if (useCol){
+      const base = (typeof getLevelBaseColorRGB === 'function') ? getLevelBaseColorRGB() : [0.06,0.45,0.48];
+      const c = base.map(v=>v*0.08);
+      gl.clearColor(c[0], c[1], c[2], 1.0);
+    } else {
+      gl.clearColor(0,0,0,1);
+    }
+  } catch(_){ gl.clearColor(0,0,0,1); }
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   const W = offscreen.w, H = offscreen.h;
@@ -232,7 +242,16 @@ function render(now) {
   // Clear screen background
   gl.viewport(0, 0, Wpx, Hpx);
   gl.disable(gl.SCISSOR_TEST);
-  gl.clearColor(0.012, 0.028, 0.03, 1.0);
+  try {
+    const useCol2 = (typeof getLevelBackgroundColored === 'function') ? getLevelBackgroundColored() : true;
+    if (useCol2){
+      const base2 = (typeof getLevelBaseColorRGB === 'function') ? getLevelBaseColorRGB() : [0.06,0.45,0.48];
+      const c2 = base2.map(v=>v*0.05);
+      gl.clearColor(c2[0], c2[1], c2[2], 1.0);
+    } else {
+      gl.clearColor(0,0,0,1);
+    }
+  } catch(_){ gl.clearColor(0,0,0,1); }
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   // Draw textured quad into letterboxed viewport

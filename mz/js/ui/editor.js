@@ -663,7 +663,8 @@
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(prev.length * 3), gl.DYNAMIC_DRAW);
       }
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
-      for (const it of prev){
+  const [baseR, baseG, baseB] = (window.getLevelBaseColorRGB ? window.getLevelBaseColorRGB() : [0.2,0.9,0.9]);
+  for (const it of prev){
         const cx = (it.gx - MAP_W*0.5 + 0.5);
         const cz = (it.gy - MAP_H*0.5 + 0.5);
         for (let level=0; level<it.h; level++){
@@ -671,7 +672,7 @@
           gl.uniform1f(tc_u_scale, 1.0);
           gl.uniform1f(tc_u_ttl, 1.0);
           gl.uniform1f(tc_u_mulAlpha, 0.8);
-          gl.uniform3f(tc_u_lineColor, 0.2, 0.9, 0.9);
+          gl.uniform3f(tc_u_lineColor, baseR, baseG, baseB);
           gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
           const tNow2 = state.nowSec || (performance.now()/1000);
           // Multi-pass jitter for thickness
@@ -701,8 +702,11 @@
   window.drawEditorVisorAndPreview = drawEditorVisorAndPreview;
 
   // Block type definitions & UI (BASE + BAD now, rest placeholders)
+  function getBaseBlockColor(){
+    return (window.getLevelBaseColor && window.getLevelBaseColor()) || '#0fd5db';
+  }
   const BLOCK_TYPES = {
-    1: { name: 'BASE', color: '#0fd5db' },
+    1: { name: 'BASE', get color(){ return getBaseBlockColor(); } },
     2: { name: 'BAD', color: '#d92b2f' },
   };
   function ensureBlockTypeBar(){
