@@ -98,7 +98,7 @@ function buildSampleMap(){
 
   // Hazard test: one BAD block at (12,12) elevated at Y:5 (1 unit thick)
   // Represented in map as TILE.BAD so it renders red and damages on contact
-  //builder.rect(12, 12, 13, 13, TILE.BAD, 2.0, { y: 5 });
+  builder.rect(12, 12, 13, 13, TILE.BAD, 2.0, { y: 5 });
 
 
 
@@ -111,7 +111,7 @@ function buildSampleMap(){
   builder.item(3, 19, 'ABILITY_BACK');
   builder.item(3, 3, 'ABILITY_MOVE');
   builder.item(14, 20, 'ABILITY_JUMP');
-  builder.item(11, 14, 'ABILITY_WALLJUMP');
+  builder.item(12, 10, 'ABILITY_WALLJUMP');
   builder.item(14, 4, 'ABILITY_DASH', { y: 23 });
 
 //---------------------------------

@@ -122,7 +122,11 @@
     } catch(_){ }
     // Initialize audio volumes but don't auto-start movement - let user initiate
     try {
-      if (window.sfx) { sfx.volume = 0.5; }
+      if (window.sfx) {
+        // Respect persisted volume if already applied; only set default if volume appears uninitialized (~exact defaults)
+        const persisted = (function(){ try { return localStorage.getItem('mz_sfx_vol'); } catch(_){ return null; }})();
+        if (!persisted) { sfx.volume = 0.5; }
+      }
       // Music and movement will start when user actually moves via controls
     } catch(_){ }
   }

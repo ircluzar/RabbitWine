@@ -12,7 +12,16 @@ function startMusicOnce(){
   __mzMusicStarted = true;
   try {
     if (window.music){
-      music.volume = 0.5;
+      // Respect persisted volume if present; only set default if no saved value.
+      try {
+        const saved = localStorage.getItem('mz_music_vol');
+        if (!saved) {
+          // Only apply default if volume is at its module initial value (<= ~0.21) to avoid clobbering early adjustments
+          if (typeof music.volume === 'number' && music.volume <= 0.21) {
+            music.volume = 0.5;
+          }
+        }
+      } catch(_) {}
       if (!music.isUnlocked) music.unlock('./music/1.mp3');
       else music.play('./music/1.mp3');
     }

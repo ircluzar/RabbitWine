@@ -53,6 +53,15 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
 // Settings button + modal
 (function setupSettings(){
   if (!SETTINGS_BTN) return;
+  // Restore persisted audio volumes early (before user opens settings)
+  try {
+    const mv = parseFloat(localStorage.getItem('mz_music_vol')||'');
+    if (!isNaN(mv) && mv >= 0 && mv <= 100 && window.music) { music.volume = mv/100; }
+  } catch(_){}
+  try {
+    const sv = parseFloat(localStorage.getItem('mz_sfx_vol')||'');
+    if (!isNaN(sv) && sv >= 0 && sv <= 100 && window.sfx) { sfx.volume = sv/100; }
+  } catch(_){}
   // Inject cog icon SVG once
   try {
     const cogSVG = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g fill="none" stroke="#fff" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter"><path d="M30 10 h40 M85 35 v30 M70 90 h-40 M15 65 v-30" opacity="0.0001"/></g><g fill="none" stroke="#e9f3ff" stroke-width="8"><path d="M50 28 l8 3 l6 -6 l10 6 l-2 9 l7 7 l-7 7 l2 9 l-10 6 l-6 -6 l-8 3 l-8 -3 l-6 6 l-10 -6 l2 -9 l-7 -7 l7 -7 l-2 -9 l10 -6 l6 6 l8 -3 z"/><circle cx="50" cy="50" r="10"/></g></svg>';
@@ -133,6 +142,71 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     channelRow.appendChild(btnApplyChannel);
     channelWrap.appendChild(channelLabel);
     channelWrap.appendChild(channelRow);
+    // Audio section (Music + SFX volume)
+    const audioWrap = document.createElement('div');
+    audioWrap.style.margin = '0 0 20px';
+    audioWrap.style.display = 'flex';
+    audioWrap.style.flexDirection = 'column';
+    audioWrap.style.gap = '8px';
+    const audioTitle = document.createElement('div');
+    audioTitle.textContent = 'Audio';
+    audioTitle.style.fontSize = '12px';
+    audioTitle.style.opacity = '0.85';
+    audioTitle.style.marginBottom = '4px';
+    // Helper to build a slider row
+    function makeSliderRow(labelText, id, initial, onChange){
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '10px';
+      const lab = document.createElement('label');
+      lab.textContent = labelText;
+      lab.setAttribute('for', id);
+      lab.style.flex = '0 0 90px';
+      lab.style.fontSize = '13px';
+      const valSpan = document.createElement('span');
+      valSpan.id = id + '-val';
+      valSpan.textContent = String(initial);
+      valSpan.style.width = '34px';
+      valSpan.style.textAlign = 'right';
+      valSpan.style.fontSize = '12px';
+      valSpan.style.opacity = '0.85';
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = '0';
+      input.max = '100';
+      input.value = String(initial);
+      input.id = id;
+      input.style.flex = '1';
+      input.style.appearance = 'none';
+      input.style.height = '6px';
+      input.style.background = '#1b2230';
+      input.style.border = '1px solid #2e3648';
+      input.style.borderRadius = '4px';
+      input.addEventListener('input', ()=>{
+        const v = parseInt(input.value,10); valSpan.textContent = String(v);
+        try { onChange(v); } catch(_){}
+      });
+      row.appendChild(lab);
+      row.appendChild(input);
+      row.appendChild(valSpan);
+      return row;
+    }
+    const curMusic = (window.music && typeof music.volume === 'number') ? Math.round(music.volume * 100) : 20;
+    const curSFX = (window.sfx && typeof sfx.volume === 'number') ? Math.round(sfx.volume * 100) : 45;
+    const musicRow = makeSliderRow('Music', 'mz-music-vol', curMusic, (v)=>{
+      const norm = Math.max(0, Math.min(100, v));
+      try { if (window.music) music.volume = norm/100; } catch(_){ }
+      try { localStorage.setItem('mz_music_vol', String(norm)); } catch(_){ }
+    });
+    const sfxRow = makeSliderRow('SFX', 'mz-sfx-vol', curSFX, (v)=>{
+      const norm = Math.max(0, Math.min(100, v));
+      try { if (window.sfx) sfx.volume = norm/100; } catch(_){ }
+      try { localStorage.setItem('mz_sfx_vol', String(norm)); } catch(_){ }
+    });
+    audioWrap.appendChild(audioTitle);
+    audioWrap.appendChild(musicRow);
+    audioWrap.appendChild(sfxRow);
   const actions = document.createElement('div');
     actions.className = 'mz-settings-actions';
   const btnRestart = document.createElement('button');
@@ -152,6 +226,7 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     actions.appendChild(btnReturn);
     card.appendChild(h);
   card.appendChild(channelWrap);
+  card.appendChild(audioWrap);
   card.appendChild(actions);
     ov.appendChild(card);
     document.body.appendChild(ov);
