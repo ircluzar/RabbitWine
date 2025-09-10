@@ -64,8 +64,9 @@ function mpApplyFullMap(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add') {
-      // Encode hazard flag by storing key#1 in adds set
-      if (op.t === 1) mpMap.adds.add(op.key+'#1'); else mpMap.adds.add(op.key);
+      // Encode type flag by storing key#N in adds set where N in {1,2,3,4}
+      const tt = (op.t===1||op.t===2||op.t===3||op.t===4) ? op.t|0 : 0;
+      if (tt===1) mpMap.adds.add(op.key+'#1'); else if (tt===2) mpMap.adds.add(op.key+'#2'); else if (tt===3) mpMap.adds.add(op.key+'#3'); else if (tt===4) mpMap.adds.add(op.key+'#4'); else mpMap.adds.add(op.key);
     }
     else if (op.op === 'remove') mpMap.removes.add(op.key);
   }
@@ -77,10 +78,16 @@ function mpApplyOps(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
-      const addKey = (op.t===1) ? (op.key+'#1') : op.key;
+      const tt = (op.t===1||op.t===2||op.t===3||op.t===4) ? op.t|0 : 0;
+      const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : op.key;
       if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
     } else if (op.op === 'remove'){
-      if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key); else if (mpMap.adds.has(op.key+'#1')) mpMap.adds.delete(op.key+'#1'); else mpMap.removes.add(op.key);
+  if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key);
+  else if (mpMap.adds.has(op.key+'#1')) mpMap.adds.delete(op.key+'#1');
+  else if (mpMap.adds.has(op.key+'#2')) mpMap.adds.delete(op.key+'#2');
+  else if (mpMap.adds.has(op.key+'#3')) mpMap.adds.delete(op.key+'#3');
+      else if (mpMap.adds.has(op.key+'#4')) mpMap.adds.delete(op.key+'#4');
+  else mpMap.removes.add(op.key);
     }
   }
   mpMap.version = version|0;
@@ -134,14 +141,18 @@ function __mp_rebuildWorldFromDiff(){
   // Each key format: gx,gy,y
   const addByCell = new Map();
   for (const rawKey of mpMap.adds){
-    const hazard = rawKey.endsWith('#1');
-    const key = hazard ? rawKey.slice(0,-2) : rawKey;
+  const is1 = rawKey.endsWith('#1');
+  const is2 = rawKey.endsWith('#2');
+  const is3 = rawKey.endsWith('#3');
+  const is4 = rawKey.endsWith('#4');
+  const tt = is1?1 : is2?2 : is3?3 : is4?4 : 0;
+  const key = (tt? rawKey.slice(0,-2) : rawKey);
     const parts = key.split(','); if (parts.length!==3) continue;
     const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
     if (!Number.isFinite(gx)||!Number.isFinite(gy)||!Number.isFinite(y)) continue;
     const cellK = gx+','+gy;
     let set = addByCell.get(cellK); if (!set){ set = new Set(); addByCell.set(cellK,set); }
-    set.add(JSON.stringify({ y, t: hazard?1:0 }));
+  set.add(JSON.stringify({ y, t: tt }));
   }
   // Apply adds into spans (ensure contiguity)
   for (const [cellK, ys] of addByCell.entries()){
@@ -150,14 +161,21 @@ function __mp_rebuildWorldFromDiff(){
     arrObjs.sort((a,b)=>a.y-b.y);
     const spans = [];
     if (arrObjs.length){
-      let b = arrObjs[0].y; let prev = arrObjs[0].y; let hazard = arrObjs[0].t|0; // merge hazard if ANY voxel hazard inside span
-      for (let i=1;i<arrObjs.length;i++){
-        const yObj = arrObjs[i]; const y = yObj.y|0; const hz = yObj.t|0;
-        if (y === prev + 1){ prev = y; if (hz) hazard = 1; continue; }
-        spans.push(hazard? { b, h: (prev - b + 1)|0, t:1 } : { b, h:(prev - b + 1)|0 });
-        b = y; prev = y; hazard = hz;
+      // Separate unit voxels vs half-slabs (t=4)
+      const units = arrObjs.filter(o=> (o.t|0) !== 4);
+      const slabs = arrObjs.filter(o=> (o.t|0) === 4);
+      if (units.length){
+        let b = units[0].y|0; let prev = units[0].y|0; let typeAccum = units[0].t|0; // 1 overrides; else keep 2/3
+        for (let i=1;i<units.length;i++){
+          const yObj = units[i]; const y = yObj.y|0; const tcur = yObj.t|0;
+          if (y === prev + 1){ prev = y; if (tcur===1) typeAccum = 1; else if (typeAccum!==1 && (tcur===2||tcur===3)) typeAccum = tcur; continue; }
+          spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
+          b = y; prev = y; typeAccum = tcur;
+        }
+        spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
       }
-      spans.push(hazard? { b, h: (prev - b + 1)|0, t:1 } : { b, h:(prev - b + 1)|0 });
+      // Add half-slabs individually (b=y, h=0.5)
+      for (const s of slabs){ spans.push({ b: s.y|0, h: 0.5 }); }
     }
     // Merge with existing spans first (so base map blocks persist unless removed)
     const [gx,gy] = cellK.split(',').map(n=>parseInt(n,10));
@@ -165,8 +183,8 @@ function __mp_rebuildWorldFromDiff(){
     // Add new spans then normalize merge
     baseSpans = baseSpans.concat(spans);
     baseSpans.sort((p,q)=>p.b-q.b);
-  const merged=[]; for (const s of baseSpans){ if (!merged.length){ merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:(s.t===2?{t:2}:{})) }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; if (s.t===1) t.t=1; if (s.t===2 && t.t!==1) t.t=2; } else merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:(s.t===2?{t:2}:{})) }); }
-  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:{})) })));
+  const merged=[]; for (const s of baseSpans){ const hh = (typeof s.h==='number')? s.h : ((s.h|0)); if (!merged.length){ merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:{})))) }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; if (s.t===1) t.t=1; if ((s.t===2||s.t===3||s.t===4) && t.t!==1) t.t=s.t; } else merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:{})))) }); }
+  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:{})))) })));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){
@@ -176,7 +194,19 @@ function __mp_rebuildWorldFromDiff(){
     const cellK = gx+','+gy;
     let spans = window.columnSpans.get(cellK) || [];
     if (!spans.length) continue;
-    const out=[]; for (const s of spans){ const sb=s.b|0, sh=s.h|0, top=sb+sh-1; if (y < sb || y > top){ out.push(s); continue;} if (sh===1){ /* drop */ } else if (y===sb){ out.push({ b:sb+1, h:sh-1 }); } else if (y===top){ out.push({ b:sb, h:sh-1 }); } else { const h1=y-sb; const h2=top-y; if (h1>0) out.push({ b:sb, h:h1 }); if (h2>0) out.push({ b:y+1, h:h2 }); } }
+    const out=[]; 
+    for (const s of spans){ 
+      const sb=s.b|0; const sh=(typeof s.h==='number')? s.h : (s.h|0); const tt=(s.t===1||s.t===2||s.t===3||s.t===4)?(s.t|0):0;
+      const segStart = sb; const segEnd = sb + sh; // [segStart, segEnd)
+      const remStart = y; const remEnd = y + 1;       // remove [y, y+1)
+      if (remEnd <= segStart || remStart >= segEnd){ out.push(s); continue; }
+      // left piece [segStart, min(segEnd, remStart))
+      const leftStart = segStart; const leftEnd = Math.min(segEnd, remStart);
+      if (leftEnd - leftStart > 1e-6){ out.push({ b: leftStart|0, h: leftEnd - leftStart, ...(tt?{t:tt}:{}) }); }
+      // right piece [max(segStart, remEnd), segEnd)
+      const rightStart = Math.max(segStart, remEnd); const rightEnd = segEnd;
+      if (rightEnd - rightStart > 1e-6){ out.push({ b: rightStart|0, h: rightEnd - rightStart, ...(tt?{t:tt}:{}) }); }
+    }
     if (out.length){ window.setSpansAt(gx,gy,out); } else { window.setSpansAt(gx,gy,[]); }
   }
   try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
@@ -713,7 +743,7 @@ window.mpSendMapOps = function(ops){
       if (!o || (o.op!=='add' && o.op!=='remove')) continue;
       if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
   const rec = { op:o.op, key:o.key };
-  if (o.op==='add' && (o.t===1)) rec.t = 1;
+  if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4)) rec.t = (o.t|0);
   clean.push(rec);
       if (clean.length >= 512) break; // clamp
     }

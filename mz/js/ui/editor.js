@@ -185,7 +185,8 @@
             spans.sort((p,q)=>p.b-q.b);
             __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            // Network: send as add voxel at integer base (approx). Fractional not supported by ops; skip network for elevated HALF.
+            // Network: approximate elevated half-step as t:4 marker at integer base y
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 4 }]); } } catch(_){ }
             return true;
           }
         }
@@ -215,8 +216,8 @@
             spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:{})) ) })).sort((p,q)=>p.b-q.b);
             __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            // Network hint: send map op with t:2 to indicate fence span
-            // Map ops schema doesn't carry t:2; keeping client-local for now.
+            // Network: send map op add with t:2 to replicate to others
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 2 }]); } } catch(_){ }
             return true;
           }
         }
@@ -244,6 +245,7 @@
             spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:{})) ) })).sort((p,q)=>p.b-q.b);
             __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 3 }]); } } catch(_){ }
             return true;
           }
         }
@@ -361,7 +363,7 @@
             out.sort((p,q)=>p.b-q.b);
             __setSpans(gx,gy,out);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 2 }]); } } catch(_){ }
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 3 }]); } } catch(_){ }
             return true;
           }
         }

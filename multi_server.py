@@ -108,7 +108,7 @@ lock = asyncio.Lock()
 @dataclass
 class MapDiff:
     version: int
-    # adds maps block key -> hazard flag (0 normal, 1 hazard/BAD)
+    # adds maps block key -> type flag (0 normal, 1 BAD/hazard, 2 FENCE, 3 BADFENCE)
     adds: Dict[str, int]
     removes: Set[str]
 
@@ -192,12 +192,18 @@ def db_load_all():
         try:
             raw_adds = json.loads(adds_json) if adds_json else []
             adds: Dict[str,int] = {}
-            # Backward compatibility: entries either 'key' (normal) or 'key#1' (hazard)
+            # Backward compatibility: entries either 'key' (normal) or 'key#N' where N in {1,2,3,4}
             for ent in raw_adds:
                 if not isinstance(ent, str):
                     continue
                 if ent.endswith('#1'):
                     adds[ent[:-2]] = 1
+                elif ent.endswith('#2'):
+                    adds[ent[:-2]] = 2
+                elif ent.endswith('#3'):
+                    adds[ent[:-2]] = 3
+                elif ent.endswith('#4'):
+                    adds[ent[:-2]] = 4
                 else:
                     adds[ent] = 0
             removes = set(json.loads(removes_json)) if removes_json else set()
@@ -234,8 +240,12 @@ def db_persist_level(level: str, diff: MapDiff):
     if not _db_conn: return
     try:
         enc_adds = []
-        for k, hz in diff.adds.items():
-            enc_adds.append(f"{k}#1" if hz else k)
+        for k, tt in diff.adds.items():
+            # Persist as 'key' or 'key#N' (N in {1,2,3}) for backward compatibility
+            if tt in (1, 2, 3, 4):
+                enc_adds.append(f"{k}#{tt}")
+            else:
+                enc_adds.append(k)
         _db_conn.execute(
             "REPLACE INTO map_diffs(level, version, adds, removes, updated) VALUES (?,?,?,?,?)",
             (level, diff.version, json.dumps(sorted(enc_adds)), json.dumps(sorted(diff.removes)), now_ms())
@@ -293,9 +303,12 @@ def get_tilediff(level: str) -> TileDiff:
     return td
 
 def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Apply edit ops; supports hazard flag via 't':1 on add ops.
+    """Apply edit ops; supports type flag via 't' on add ops.
 
-    Returns net ops (with 't':1 where applicable) to broadcast.
+    t semantics:
+        0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail)
+
+    Returns net ops (with 't' where applicable) to broadcast.
     """
     if not raw_ops:
         return []
@@ -313,25 +326,32 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
         if len(key) == 0 or len(key) > KEY_MAX_LEN:
             continue
         if op == 'add':
-            hz = 1 if entry.get('t') in (1, '1', True) else 0
-            last[key] = ('add', hz)
+            tval_raw = entry.get('t')
+            # Normalize t to one of {0,1,2,3}
+            try:
+                tval = int(tval_raw)
+            except Exception:
+                tval = 0
+            if tval not in (1,2,3,4):
+                tval = 0
+            last[key] = ('add', tval)
         else:
             last[key] = ('remove', 0)
     if not last:
         return []
     net: List[Dict[str, Any]] = []
-    for key, (op, hz) in last.items():
+    for key, (op, tt) in last.items():
         if op == 'add':
             prev = md.adds.get(key)
             if prev is None:
                 if key in md.removes:
                     md.removes.discard(key)
-                md.adds[key] = hz
-                net.append({ 'op':'add', 'key': key, **({'t':1} if hz else {}) })
+                md.adds[key] = tt
+                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4) else {}) })
             else:
-                if prev != hz:
-                    md.adds[key] = hz
-                    net.append({ 'op':'add', 'key': key, **({'t':1} if hz else {}) })
+                if prev != tt:
+                    md.adds[key] = tt
+                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4) else {}) })
         else:  # remove
             changed = False
             if key in md.adds:
@@ -581,7 +601,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 try:
                     md = get_mapdiff(level)
                     if md.adds or md.removes:
-                        full_ops = ([{"op": "add", "key": k, **({'t':1} if hz else {})} for k, hz in sorted(md.adds.items())] +
+                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4) else {})} for k, t in sorted(md.adds.items())] +
                                     [{"op": "remove", "key": k} for k in sorted(md.removes)])
                     else:
                         full_ops = []
@@ -673,8 +693,8 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         try:
                             for op in net_ops:
                                 if op.get('op') == 'add':
-                                    hz = 1 if op.get('t') == 1 else 0
-                                    print(f"[MAP] level={lvl} add key={op.get('key')} hazard={hz} v{new_ver}", flush=True)
+                                    tt = op.get('t')
+                                    print(f"[MAP] level={lvl} add key={op.get('key')} t={tt if tt is not None else 0} v{new_ver}", flush=True)
                                 elif op.get('op') == 'remove':
                                     print(f"[MAP] level={lvl} remove key={op.get('key')} v{new_ver}", flush=True)
                         except Exception:
@@ -781,7 +801,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     md = get_mapdiff(lvl)
                     if have != md.version:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k, **({'t':1} if hz else {})} for k, hz in sorted(md.adds.items())] +
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4) else {})} for k, t in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []

@@ -9,9 +9,13 @@
 // coloredOutlines = true -> use derived wall color for cube outlines; false -> force black outlines
 // coloredBg = true -> tint scene & viewport clears with darkened base color; false -> use black background
 const LEVEL_BASE_COLORS = {
-  1: { color: '#0fd5db', coloredOutlines: false, coloredBg: false  },
-  2: { color: '#db8b0f', coloredOutlines: true,  coloredBg: true  },
-  3: { color: '#db0f7a', coloredOutlines: false, coloredBg: false },
+  1: { color: '#0fd5db', coloredOutlines: false, coloredBg: false },
+  2: { color: '#ed92ff', coloredOutlines: true,  coloredBg: true },
+  3: { color: '#db8b0f', coloredOutlines: true,  coloredBg: false },
+  4: { color: '#82ff5d', coloredOutlines: false, coloredBg: true },
+  5: { color: '#ff4be7', coloredOutlines: true, coloredBg: true },
+  6: { color: '#c2bc9d', coloredOutlines: false, coloredBg: false },
+  7: { color: '#ff6a6a', coloredOutlines: true, coloredBg: true },
 };
 
 function hexToRgb01(hex){
