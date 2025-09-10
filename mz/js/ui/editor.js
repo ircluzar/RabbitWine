@@ -277,17 +277,43 @@
     // HALF tile removal when slot 5 is active: clear ground tile to OPEN
     try {
       if ((state.editor.blockSlot|0) === 5){
-        if (y !== 0) return false;
-        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-          const idx = mapIdx(gx, gy);
-          if (map[idx] === TILE.HALF){
-            map[idx] = TILE.OPEN;
-            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
-            return true;
+        if (y === 0){
+          if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] === TILE.HALF){
+              map[idx] = TILE.OPEN;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+              return true;
+            }
           }
+          return false;
+        } else {
+          // Elevated half-slab removal: spans encoded as { b:y, h:0.5 }
+          let spans = __getSpans(gx,gy);
+          if (!spans || !spans.length) return false;
+          let changed = false; const out = [];
+          for (const s of spans){
+            if (!s){ continue; }
+            const sb = s.b|0; const sh = (typeof s.h === 'number') ? s.h : (s.h|0);
+            const st = (s.t|0)||0; // preserve any flags
+            // We consider a half-slab at this base if it overlaps [y, y+1), but specifically drop 0.5-high starting at y
+            if (sh < 1 && Math.abs(sh - 0.5) < 1e-6 && sb === y){
+              // drop this slab entirely
+              changed = true;
+              continue;
+            }
+            out.push(s);
+          }
+          if (!changed) return false;
+          // Sort and apply, preserving t flags if any
+          out.sort((p,q)=> (p.b|0) - (q.b|0));
+          __setSpans(gx,gy,out.map(s=>({ b:(s.b|0), h: (typeof s.h==='number')? s.h : (s.h|0), ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:((s.t|0)===4?{t:4}:{}))) ) })));
+          try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+          // Network: send typed remove for half-slab (t:4)
+          try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 4 }]); } } catch(_){ }
+          return true;
         }
-        return false;
       }
     } catch(_){ }
     try {
