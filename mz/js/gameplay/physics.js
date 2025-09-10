@@ -24,10 +24,36 @@ function groundHeightAt(x, z){
           : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
           : null;
   } catch(_){ spans = null; }
+  // Detect if this cell's spans are purely fences (t==2) so synthesized columns should not be treated solid
+  const spansAllFenceGH = Array.isArray(spans) && spans.length>0 && spans.every(s => s && (((s.t|0)||0) === 2));
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
   // Remove fence spans (t==2) from ground computation; they are non-solid visuals
   spanList = spanList.filter(s => s && (((s.t|0)||0) !== 2));
+  // Rail-platform candidate from inner voxels (center cross) when within band
+  let railGroundCandidate = -Infinity;
+  try {
+    const RAIL_HW = 0.11;
+    const cellMinX = gx - MAP_W*0.5;
+    const cellMinZ = gz - MAP_H*0.5;
+    const lx = x - cellMinX;
+    const lz = z - cellMinZ;
+    const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
+    const centerHit = (inBand(lz,0.5,RAIL_HW) || inBand(lx,0.5,RAIL_HW));
+    if (centerHit && Array.isArray(spans)){
+      const py = (state && state.player) ? state.player.y : 0.0;
+      for (const s of spans){
+        if (!s) continue; const t=((s.t|0)||0); if (t!==2) continue; const b=(s.b|0), h=(s.h|0); if (h<=0) continue;
+        // Consider top faces of each voxel within this fence span
+        const topMost = b + h; // exclusive top
+        const maxLv = topMost - 1;
+        for (let lv=b; lv<=maxLv; lv++){
+          const top = lv + 1; // top face
+          if (top <= py + 1e-6 && top > railGroundCandidate) railGroundCandidate = top;
+        }
+      }
+    }
+  } catch(_){ }
   // Always also synthesize from columnHeights/bases so default map blocks are respected even with server spans present
   try {
   // Do not synthesize a full column for fence tiles; only inner rails should affect collisions/ground
@@ -38,7 +64,7 @@ function groundHeightAt(x, z){
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
         else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
       } catch(_){ }
-      if (h > 0) spanList.push({ b: b|0, h: h|0 });
+      if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceGH ? { t: 2 } : {}) });
     }
   } catch(_){ }
   // Always include ground wall/half as span if map tile is WALL/HALF (BAD handled via spans)
@@ -49,13 +75,14 @@ function groundHeightAt(x, z){
   if (isGroundWall){ spanList.push({ b: 0, h: 1 }); }
   else if (isGroundHalf){ spanList.push({ b: 0, h: 0.5 }); }
   else if (isGroundFence){ /* fences are thin; do not affect ground height */ }
+  const py = state.player ? state.player.y : 0.0;
   if (spanList.length){
-    const py = state.player ? state.player.y : 0.0;
     let best = 0.0;
     for (const s of spanList){
       if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
       const top = b + h; if (top <= py + 1e-6 && top > best) best = top;
     }
+    if (railGroundCandidate > best) best = railGroundCandidate;
     if (best > 0.0) return best;
   }
   // Resolve base offset reliably even if globals are attached on window
@@ -74,12 +101,13 @@ function groundHeightAt(x, z){
     return 0.0;
   }
   // Fallbacks when no spans and no column height applicable below player
-  if (map[mapIdx(gx,gz)] !== TILE.FENCE && columnHeights.has(key)){
+  if (map[mapIdx(gx,gz)] !== TILE.FENCE && columnHeights.has(key) && !spansAllFenceGH){
     const h = columnHeights.get(key) || 0.0;
     const b = getBaseFor(key);
-    const py = state.player ? state.player.y : 0.0;
     if (py >= b + h - 1e-6) return b + h;
   }
+  // As last resort, if a rail platform exists below and no solids, allow standing on it
+  if (railGroundCandidate !== -Infinity) return railGroundCandidate;
   if (isGroundWall) return 1.0;
   if (isGroundHalf) return 0.5;
   return 0.0;
@@ -116,6 +144,29 @@ function landingHeightAt(x, z, py, maxRise){
       }
     }
   } catch(_){ }
+  // From fence inner rails (center bands only) as narrow platforms
+  try {
+    const key = `${gx},${gz}`;
+    let spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+              : null;
+    const RAIL_HW = 0.11;
+    const cellMinX = gx - MAP_W*0.5;
+    const cellMinZ = gz - MAP_H*0.5;
+    const lx = x - cellMinX;
+    const lz = z - cellMinZ;
+    const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
+    if (Array.isArray(spans) && (inBand(lz,0.5,RAIL_HW) || inBand(lx,0.5,RAIL_HW))){
+      for (const s of spans){
+        if (!s) continue; const t=((s.t|0)||0); if (t!==2) continue; const b=(s.b|0), h=(s.h|0); if (h<=0) continue;
+        const topMost = b + h; const maxLv = topMost - 1;
+        for (let lv=b; lv<=maxLv; lv++){
+          const top = lv + 1;
+          if (top > py + 1e-6 && (top - py) <= (maxRise + 1e-6)) candidates.push(top);
+        }
+      }
+    }
+  } catch(_){ }
   // From map tile at ground level
   try {
     const cv = map[mapIdx(gx,gz)];
@@ -147,10 +198,33 @@ function ceilingHeightAt(x, z, py){
           : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
           : null;
   } catch(_){ spans = null; }
+  const spansAllFenceCH = Array.isArray(spans) && spans.length>0 && spans.every(s => s && (((s.t|0)||0) === 2));
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
   // Remove fence spans (t==2) from ceiling computation; they are non-solid visuals
   spanList = spanList.filter(s => s && (((s.t|0)||0) !== 2));
+  // Rail-platform ceilings (bottom faces) only if in inner center bands to avoid sudden clips
+  let railCeilCandidate = Infinity;
+  try {
+    const RAIL_HW = 0.11;
+    const cellMinX = gx - MAP_W*0.5;
+    const cellMinZ = gz - MAP_H*0.5;
+    const lx = x - cellMinX;
+    const lz = z - cellMinZ;
+    const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
+    const centerHit = (inBand(lz,0.5,RAIL_HW) || inBand(lx,0.5,RAIL_HW));
+    if (centerHit && Array.isArray(spans)){
+      for (const s of spans){
+        if (!s) continue; const t=((s.t|0)||0); if (t!==2) continue; const b=(s.b|0), h=(s.h|0); if (h<=0) continue;
+        // Consider bottom faces of each voxel within this fence span
+        const topMost = b + h; // exclusive top
+        for (let lv=b; lv<topMost; lv++){
+          const bottom = lv; // bottom face
+          if (bottom > py + 1e-6 && bottom < railCeilCandidate) railCeilCandidate = bottom;
+        }
+      }
+    }
+  } catch(_){ }
   // Always also synthesize from column data so default map blocks are respected
   try {
   const _cvCH = map[mapIdx(gx,gz)];
@@ -160,7 +234,7 @@ function ceilingHeightAt(x, z, py){
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
         else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
       } catch(_){ }
-      if (h > 0) spanList.push({ b: b|0, h: h|0 });
+      if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceCH ? { t: 2 } : {}) });
     }
   } catch(_){ }
   // Include ground wall/half tile as span if present (WALL/HALF). BAD uses spans.
@@ -170,14 +244,14 @@ function ceilingHeightAt(x, z, py){
   else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
   else if (cv === TILE.FENCE){ /* handled in lateral collision as thin rods */ }
   }
-  if (!spanList.length) return Infinity;
+  if (!spanList.length) return railCeilCandidate;
   let best = Infinity;
   const eps = 1e-6;
   for (const s of spanList){
     if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
     if (b > py + eps && b < best) best = b;
   }
-  return best;
+  return Math.min(best, railCeilCandidate);
 }
 
 /**
@@ -307,6 +381,7 @@ function moveAndCollide(dt){
   /** @type {Array<{b:number,h:number,t?:number}>} */
   let spanList = [];
   if (Array.isArray(spans) && spans.length) spanList = spans.slice();
+  const spansAllFenceLW = Array.isArray(spans) && spans.length>0 && spans.every(s => s && (((s.t|0)||0) === 2));
     // Always merge in default-map columns (but skip FENCE tiles; they use inner voxels)
     try {
       const _cvLW = map[mapIdx(gx,gz)];
@@ -316,7 +391,7 @@ function moveAndCollide(dt){
           if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
           else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
         } catch(_){ }
-        if (h > 0) spanList.push({ b: b|0, h: h|0 });
+    if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceLW ? { t: 2 } : {}) });
       }
     } catch(_){ }
     // Always include ground-level WALL/HALF/BAD tile as solid span so lateral collision matches ground height logic
@@ -335,10 +410,15 @@ function moveAndCollide(dt){
         if (t !== 2){ if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; return true; } else { continue; } }
         // Fence spans (t==2): voxel-accurate rails with a small vertical tolerance
         {
-          const V_EPS = 0.06; // tolerance to avoid slipping just under rails
+          const V_EPS = 0.04; // slightly tighter to reduce zip-ups
           if (!(py >= (b - V_EPS) && py <= (top - 0.02 + V_EPS))) continue;
           // Determine the integral level for connectivity (renderer uses integer lv slices)
           const lv = Math.max(b|0, Math.min((top|0)-1, Math.floor(py)));
+          // Central (inner) rails inside the current cell: thin cross through center
+          // Z-centered rail along X direction
+          if (inBand(lz, 0.5, RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir = 'E'; setResolveForRail('E'); return true; }
+          // X-centered rail along Z direction
+          if (inBand(lx, 0.5, RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir = 'N'; setResolveForRail('N'); return true; }
           const hasFenceAtLevel = (x,y,level)=>{
             const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
             if (!Array.isArray(sp)) return false; for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (tt===2 && hh>0 && level>=bb && level<bb+hh) return true; }
@@ -357,14 +437,18 @@ function moveAndCollide(dt){
           const connGround = (dx,dy)=>{
             const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
             const neighbor = map[mapIdx(nx,ny)];
-            return (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
+      // Treat the current cell as having a rail on its edges when it's a ground fence
+      const currentIsFence = (cellTile===TILE.FENCE);
+      return currentIsFence || (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
           };
           const connElev = (dx,dy)=>{
             const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
-            return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv);
+      // Current cell has a fence span at this level by construction of this branch
+      const currentHas = true;
+      return currentHas || hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv);
           };
           const connect = (cellTile===TILE.FENCE && b===0) ? connGround : connElev;
-          // Test four rail rectangles (E,W,N,S) using narrow edge bands
+          // Test four edge rails (E,W,N,S) using narrow bands near tile edges
           // East edge: z near center AND x near 1.0
           if (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='E'; setResolveForRail('E'); return true; }
           // West edge: z near center AND x near 0.0
@@ -379,7 +463,7 @@ function moveAndCollide(dt){
       return false;
     }
   // Column with optional raised base (skip for FENCE tiles)
-  if (map[mapIdx(gx,gz)] !== TILE.FENCE && columnHeights.has(key)){
+  if (map[mapIdx(gx,gz)] !== TILE.FENCE && columnHeights.has(key) && !spansAllFenceLW){
       const h = columnHeights.get(key) || 0.0;
       // Use same safe base lookup as groundHeightAt
       let b = 0.0;
@@ -906,7 +990,8 @@ function runBallMode(dt){
             : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
             : null;
     } catch(_){ spans = null; }
-    let spanList = Array.isArray(spans) && spans.length ? spans.slice() : [];
+  let spanList = Array.isArray(spans) && spans.length ? spans.slice() : [];
+  const spansAllFenceBM = Array.isArray(spans) && spans.length>0 && spans.every(s => s && (((s.t|0)||0) === 2));
     // Merge in default-map columns (skip FENCE tiles)
     try {
       const _cvBM = map[mapIdx(gx,gz)];
@@ -916,7 +1001,7 @@ function runBallMode(dt){
           if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
           else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
         } catch(_){ }
-        if (h > 0) spanList.push({ b: b|0, h: h|0 });
+    if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceBM ? { t: 2 } : {}) });
       }
     } catch(_){ }
     // Include ground wall/half/bad (fences handled separately)
@@ -929,15 +1014,18 @@ function runBallMode(dt){
   if (spanList.length){
       const py = p.y;
       for (const s of spanList){
-    if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-    const top=b+h; const t=((s.t|0)||0);
+  if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+  const top=b+h; const t=((s.t|0)||0);
     // Solid spans (non-fence) keep strict vertical check
     if (t !== 2){ if (py > b - 0.02 && py < top - 0.02) return true; else continue; }
-    // Fence spans: allow small vertical tolerance
-    const V_EPS = 0.06; if (!(py > b - V_EPS && py < top - 0.02 + V_EPS)) continue;
+  // Fence spans: allow small vertical tolerance
+  const V_EPS = 0.04; if (!(py > b - V_EPS && py < top - 0.02 + V_EPS)) continue;
+    // Inner cross rails inside tile center
+    if (inBand(lz,0.5,RAIL_HW)) return true;
+    if (inBand(lx,0.5,RAIL_HW)) return true;
         // Fence spans: voxel rails only; determine integral level for connectivity
         const lv = Math.max(b|0, Math.min((top|0)-1, Math.floor(py)));
-        const hasFenceAtLevel = (x,y,level)=>{
+  const hasFenceAtLevel = (x,y,level)=>{
           const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
           if (!Array.isArray(sp)) return false; for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (tt===2 && hh>0 && level>=bb && level<bb+hh) return true; }
           return false;
@@ -949,7 +1037,7 @@ function runBallMode(dt){
           }
           return false;
         };
-     const connect = (dx,dy)=>{ const nx=gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false; return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv); };
+  const connect = (dx,dy)=>{ const nx=gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false; return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv); };
      if ( (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) ||
        (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) ) return true;
      if ( (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) ||

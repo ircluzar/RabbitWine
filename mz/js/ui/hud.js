@@ -44,6 +44,14 @@ function updateHUD(now) {
     return;
   }
   if (HUD) HUD.setAttribute('aria-hidden', 'false');
+  const safeFixed = (v, d=2, def='0') => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(d) : def;
+  };
+  const safeInt = (v, def=0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.floor(n) : def;
+  };
   
   // Update FPS every 500ms
   if (now - state.lastFpsT >= 500) {
@@ -52,17 +60,21 @@ function updateHUD(now) {
     state.lastFpsT = now;
   }
   const pointerLines = [];
-  state.inputs.pointers.forEach((p, id) => {
-    pointerLines.push(`#${id}: x=${p.x.toFixed(1)} y=${p.y.toFixed(1)} dx=${p.dx.toFixed(1)} dy=${p.dy.toFixed(1)}`);
-  });
+  try {
+    state.inputs.pointers.forEach((p, id) => {
+      if (!p) return;
+      pointerLines.push(`#${id}: x=${safeFixed(p.x,1)} y=${safeFixed(p.y,1)} dx=${safeFixed(p.dx,1)} dy=${safeFixed(p.dy,1)}`);
+    });
+  } catch(_){ }
   // Convert world coordinates (origin-centered) to grid coordinates (0..MAP_W-1, 0..MAP_H-1)
-  const gridX = Math.floor(state.player.x + MAP_W * 0.5);
-  const gridY = Math.floor(state.player.z + MAP_H * 0.5);
+  const gridX = safeInt((state.player && state.player.x) + MAP_W * 0.5);
+  const gridY = safeInt((state.player && state.player.z) + MAP_H * 0.5);
+  const lb = state.letterboxCss || { w: 0, h: 0, x: 0, y: 0 };
   HUD.textContent = [
-    `FPS ${state.fps} | t ${elapsed.toFixed(1)}s | DPR ${state.dpr.toFixed(2)}`,
-    `Canvas ${CANVAS.width}x${CANVAS.height} (px) | seam ${(state.seamRatio*100).toFixed(1)}%`,
-    `Present ${state.letterboxCss.w}x${state.letterboxCss.h} css @ (${state.letterboxCss.x},${state.letterboxCss.y})`,
-    `Player grid=${gridX},${gridY} | world=${state.player.x.toFixed(2)},${state.player.z.toFixed(2)} | ang=${(state.player.angle*180/Math.PI).toFixed(0)} speed=${state.player.speed.toFixed(2)} mode=${state.player.movementMode}`,
+    `FPS ${state.fps} | t ${safeFixed(elapsed,1)}s | DPR ${safeFixed(state.dpr,2)}`,
+    `Canvas ${CANVAS && CANVAS.width || 0}x${CANVAS && CANVAS.height || 0} (px) | seam ${safeFixed((state.seamRatio*100),1)}%`,
+    `Present ${lb.w||0}x${lb.h||0} css @ (${lb.x||0},${lb.y||0})`,
+    `Player grid=${gridX},${gridY} | world=${safeFixed(state.player && state.player.x,2)} ,${safeFixed(state.player && state.player.z,2)} | ang=${safeFixed((state.player && state.player.angle)*180/Math.PI,0)} speed=${safeFixed(state.player && state.player.speed,2)} mode=${(state.player && state.player.movementMode) || 'n/a'}`,
     pointerLines.length ? `Pointers:\n${pointerLines.join('\n')}` : 'Pointers: none',
     state.inputs.keys.size ? `Keys: ${Array.from(state.inputs.keys).join(',')}` : 'Keys: none',
   ].join('\n');

@@ -165,8 +165,8 @@ function __mp_rebuildWorldFromDiff(){
     // Add new spans then normalize merge
     baseSpans = baseSpans.concat(spans);
     baseSpans.sort((p,q)=>p.b-q.b);
-    const merged=[]; for (const s of baseSpans){ if (!merged.length){ merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:{}) }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; if (s.t===1) t.t=1; } else merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:{}) }); }
-    window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:{}) })));
+  const merged=[]; for (const s of baseSpans){ if (!merged.length){ merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:(s.t===2?{t:2}:{})) }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; if (s.t===1) t.t=1; if (s.t===2 && t.t!==1) t.t=2; } else merged.push({ b:s.b|0, h:s.h|0, ...(s.t===1?{t:1}:(s.t===2?{t:2}:{})) }); }
+  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:{})) })));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){
@@ -464,7 +464,16 @@ function mpTickNet(nowMs){
     rotDeg = ((angRad * 180/Math.PI) % 360 + 360) % 360;
   }
   const frozen = (()=>{ try { return !!(s && s.player && !s.player.isBallMode && s.player.isFrozen); } catch(_){ return false; } })();
-  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
+  // Sanitize position to avoid invalid_pos server closes
+  const safeNum = (v, def=0)=>{ const n=Number(v); return Number.isFinite(n)? n : def; };
+  // Clamp within reasonable world extents (grid +/- a safety margin); fall back to 0 if not yet set
+  const W = (typeof MAP_W==='number')? MAP_W : (window.MAP_W||128);
+  const H = (typeof MAP_H==='number')? MAP_H : (window.MAP_H||128);
+  const maxX = W, maxZ = H; // world coords are roughly -W/2..+W/2; server likely tolerates
+  const sx = Math.max(-maxX, Math.min(maxX, safeNum(p.x, 0)));
+  const sy = Math.max(-64, Math.min(256, safeNum(p.y, 0)));
+  const sz = Math.max(-maxZ, Math.min(maxZ, safeNum(p.z, 0)));
+  const payload = { type: 'update', id: MP_ID, pos: { x: sx, y: sy, z: sz }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
   if (myState === 'ball') payload.rotation = rotDeg;
   if (frozen) payload.frozen = true;
   try { mpWS && mpWS.send(JSON.stringify(payload)); } catch(_){ }
@@ -485,7 +494,14 @@ function mpSendUpdateOneShot(){
     rotDeg = ((angRad * 180/Math.PI) % 360 + 360) % 360;
   }
   const frozen = (()=>{ try { return !!(s && s.player && !s.player.isBallMode && s.player.isFrozen); } catch(_){ return false; } })();
-  const payload = { type: 'update', id: MP_ID, pos: { x: p.x, y: p.y, z: p.z }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
+  const safeNum = (v, def=0)=>{ const n=Number(v); return Number.isFinite(n)? n : def; };
+  const W = (typeof MAP_W==='number')? MAP_W : (window.MAP_W||128);
+  const H = (typeof MAP_H==='number')? MAP_H : (window.MAP_H||128);
+  const maxX = W, maxZ = H;
+  const sx = Math.max(-maxX, Math.min(maxX, safeNum(p.x, 0)));
+  const sy = Math.max(-64, Math.min(256, safeNum(p.y, 0)));
+  const sz = Math.max(-maxZ, Math.min(maxZ, safeNum(p.z, 0)));
+  const payload = { type: 'update', id: MP_ID, pos: { x: sx, y: sy, z: sz }, state: myState, channel: MP_CHANNEL, level: MP_LEVEL };
   if (myState === 'ball') payload.rotation = rotDeg;
   if (frozen) payload.frozen = true;
   try { mpWS.send(JSON.stringify(payload)); } catch(_){ }
