@@ -9,7 +9,8 @@
 // BAD: hazardous tile that damages on contact
 // HALF: half-height base block (0.5 tall) used for step-ups
 // FENCE: connectable fence post + rails (visual + collision), brightened level color
-const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6 };
+// BADFENCE: like FENCE but hazardous on contact with inner rails and rendered red
+const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6, BADFENCE: 7 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
 

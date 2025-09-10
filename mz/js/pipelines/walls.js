@@ -165,6 +165,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   let wallsBad = new Float32Array(0);
   let wallsHalf = new Float32Array(0);
   let wallsFence = new Float32Array(0);
+  let wallsBadFence = new Float32Array(0);
   if (data.length) {
     // Prefer spans when available regardless of feature flag
     const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function' && columnSpans.size > 0;
@@ -174,6 +175,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const filteredBad = [];
   const filteredHalf = [];
   const filteredFence = [];
+  const filteredBadFence = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
@@ -200,7 +202,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       }
       if (!hideGroundWall){
         const cell = (typeof map !== 'undefined' && typeof mapIdx==='function' && typeof TILE!=='undefined') ? map[mapIdx(x,y)] : 0;
-        if (cell === TILE.FENCE) filteredFence.push(x,y);
+    if (cell === TILE.FENCE) filteredFence.push(x,y);
+    else if (cell === TILE.BADFENCE) filteredBadFence.push(x,y);
         else if (isBadTile) filteredBad.push(x,y);
         else if (isHalfTile) filteredHalf.push(x,y);
         else filteredNormal.push(x,y);
@@ -210,8 +213,9 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   wallsBad = new Float32Array(filteredBad);
   wallsHalf = new Float32Array(filteredHalf);
   wallsFence = new Float32Array(filteredFence);
+  wallsBadFence = new Float32Array(filteredBadFence);
   }
-  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length;
+  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length + wallsBadFence.length;
   if (!totalCount) return;
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
@@ -327,13 +331,13 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     // Helper: vertical adjacency checks for ground-level top-extension
     const hasFenceAtLevel0 = (x,y,lv)=>{
       const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
-      if (!Array.isArray(sp)) return false; for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (t===2 && h>0 && lv>=b && lv<b+h) return true; }
+      if (!Array.isArray(sp)) return false; for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if ((t===2||t===3) && h>0 && lv>=b && lv<b+h) return true; }
       return false;
     };
     const hasSolidAtLevel0 = (x,y,lv)=>{
       const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
       if (Array.isArray(sp)){
-        for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && t!==2 && lv>=b && lv<b+h) return true; }
+        for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && (t!==2 && t!==3) && lv>=b && lv<b+h) return true; }
       }
       return false;
     };
@@ -356,8 +360,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const gy = wallsFence[i*2+1]|0;
         const nx = gx + dx, ny = gy + dy;
         if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
-        const neighbor = map[mapIdx(nx,ny)];
-        const connect = (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF);
+  const neighbor = map[mapIdx(nx,ny)];
+  const connect = (neighbor===TILE.FENCE) || (neighbor===TILE.BADFENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF);
         if (connect){ railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++; }
       }
       if (!have) continue;
@@ -417,13 +421,106 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     gl.uniform1f(wall_u_height, 1.0);
     gl.uniform1f(wall_u_yBase, 0.0);
   }
-  // Floating/elevated fences from spans (t==2) at arbitrary heights (no collision, visuals only)
+  // BADFENCE rails: same geometry as fence but red and glittered; hazardous
+  if (wallsBadFence.length){
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+    gl.bufferData(gl.ARRAY_BUFFER, wallsBadFence, gl.DYNAMIC_DRAW);
+    // Red color like BAD
+    gl.uniform3fv(wall_u_color, new Float32Array([0.85, 0.10, 0.12]));
+    gl.uniform1f(wall_u_alpha, 0.95);
+    gl.uniform1i(wall_u_glitterMode, 1);
+    gl.uniform3f(wall_u_voxCount, 5.0, 5.0, 5.0);
+    // Match fence rail height/profile exactly so visuals/collision line up
+    gl.uniform1f(wall_u_height, 1.5);
+    gl.uniform1f(wall_u_yBase, 0.0);
+    // Precompute vertical extension for ground-level BADFENCE similar to fences
+    const hasFenceAtLevel0_B = (x,y,lv)=>{
+      const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+      if (!Array.isArray(sp)) return false; for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if ((t===2||t===3) && h>0 && lv>=b && lv<b+h) return true; }
+      return false;
+    };
+    const hasSolidAtLevel0_B = (x,y,lv)=>{
+      const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+      if (Array.isArray(sp)){
+        for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && (t!==2 && t!==3) && lv>=b && lv<b+h) return true; }
+      }
+      return false;
+    };
+    const groundAllB = new Set();
+    const groundTopB = new Set();
+    for (let i=0;i<wallsBadFence.length;i+=2){
+      const gx = wallsBadFence[i]|0, gy = wallsBadFence[i+1]|0; const key=`${gx},${gy}`; groundAllB.add(key);
+      if (hasFenceAtLevel0_B(gx,gy,1) || hasSolidAtLevel0_B(gx,gy,1)) groundTopB.add(key);
+    }
+    const count = wallsBadFence.length/2;
+    const dirs = [ [0,-1], [1,0], [0,1], [-1,0] ];
+    for (let d=0; d<dirs.length; d++){
+      const dx = dirs[d][0], dy = dirs[d][1];
+      const railInstances = new Float32Array(wallsBadFence.length);
+      let have = 0;
+      for (let i=0;i<count;i++){
+        const gx = wallsBadFence[i*2+0]|0;
+        const gy = wallsBadFence[i*2+1]|0;
+        const nx = gx + dx, ny = gy + dy;
+        if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
+        const neighbor = map[mapIdx(nx,ny)];
+        const connect = (neighbor===TILE.BADFENCE) || (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF);
+        if (connect){ railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++; }
+      }
+      if (!have) continue;
+      const arr = railInstances.subarray(0, have*2);
+      gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+      gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+      const drawVy = (vy, filterSet)=>{
+        let subset = arr;
+        if (filterSet){
+          const tmp = new Float32Array(arr.length);
+          let h2=0; const N = arr.length/2;
+          for (let i=0;i<N;i++){
+            const gx = arr[i*2+0]|0, gy = arr[i*2+1]|0; if (filterSet.has(`${gx},${gy}`)){ tmp[h2*2+0]=gx; tmp[h2*2+1]=gy; h2++; }
+          }
+          if (!h2) return; subset = tmp.subarray(0, h2*2);
+          gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, subset, gl.DYNAMIC_DRAW);
+        }
+        // Depth pre-pass
+        gl.disable(gl.BLEND);
+        gl.colorMask(false, false, false, false);
+        gl.depthMask(true);
+        gl.depthFunc(gl.LESS);
+        if (dx === 1 && dy === 0){ for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        else if (dx === -1 && dy === 0){ for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        else if (dx === 0 && dy === -1){ for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        else if (dx === 0 && dy === 1){ for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        // Color pass
+        gl.colorMask(true, true, true, true);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        gl.depthFunc(gl.LEQUAL);
+        if (dx === 1 && dy === 0){ for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        else if (dx === -1 && dy === 0){ for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        else if (dx === 0 && dy === -1){ for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        else if (dx === 0 && dy === 1){ for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+      };
+      // Base rail rows
+      for (const vy of [1,2]) drawVy(vy, null);
+      // Ground-level extension rows when adjacent content exists
+      drawVy(0, groundAllB);
+      if (groundTopB.size){ drawVy(3, groundTopB); drawVy(4, groundTopB); }
+    }
+    // Restore defaults for subsequent draws
+    gl.uniform1f(wall_u_height, 1.0);
+    gl.uniform1f(wall_u_yBase, 0.0);
+  }
+  // Floating/elevated fences from spans (t==2 normal, t==3 bad) at arbitrary heights (no collision, visuals only)
   {
     // Collect per-level sets of cells that contain a fence span at that exact level
     const hasSpanData = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.entries === 'function' && columnSpans.size > 0;
     if (hasSpanData){
       /** @type {Map<number, Set<string>>} */
       const byLevel = new Map();
+      /** @type {Map<number, boolean>} indicates if a level has any bad (t==3) fence spans */
+      const levelHasBad = new Map();
       for (const [key, spans] of columnSpans.entries()){
         if (!Array.isArray(spans)) continue;
         const [gxStr, gyStr] = key.split(',');
@@ -431,21 +528,22 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
         for (const s of spans){
           if (!s) continue; const h=(s.h|0); const b=(s.b|0); const t=((s.t|0)||0);
-          if (h<=0 || t!==2) continue; // only fence marker spans
+          if (h<=0 || (t!==2 && t!==3)) continue; // only fence marker spans (2=normal,3=bad)
           for (let lv=b; lv<b+h; lv++){
             if (lv === 0) continue; // ground-level fence handled by map-based pass above
             let set = byLevel.get(lv); if (!set){ set = new Set(); byLevel.set(lv, set); }
             set.add(`${gx},${gy}`);
+            if (t===3) levelHasBad.set(lv, true);
           }
         }
       }
       if (byLevel.size){
-        // Helper: check if a cell has a fence at given level (t==2 covering that y)
+        // Helper: check if a cell has a fence at given level (t==2 or t==3 covering that y)
         const hasFenceAtLevel = (x,y,lv)=>{
           const k = `${x},${y}`;
           const sp = columnSpans.get(k);
           if (!Array.isArray(sp)) return false;
-          for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (t===2 && h>0 && lv>=b && lv<b+h) return true; }
+          for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if ((t===2||t===3) && h>0 && lv>=b && lv<b+h) return true; }
           return false;
         };
         // Helper: check if a cell has any solid span covering level (for visual connectivity into columns)
@@ -453,16 +551,12 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
           const k = `${x},${y}`;
           const sp = columnSpans.get(k);
           if (Array.isArray(sp)){
-            for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && t!==2 && lv>=b && lv<b+h) return true; }
+            for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && (t!==2 && t!==3) && lv>=b && lv<b+h) return true; }
           }
           // Fallback: ground-only map tiles if lv==0 (already skipped above), keep false by default
           return false;
         };
-        // Shared color/style for fences
-        let baseCol2 = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
-        const bright2 = [Math.min(1, baseCol2[0]*1.35+0.05), Math.min(1, baseCol2[1]*1.35+0.05), Math.min(1, baseCol2[2]*1.35+0.05)];
-        gl.uniform3fv(wall_u_color, new Float32Array(bright2));
-        gl.uniform1f(wall_u_alpha, 0.95);
+        // Shared color/style for elevated fences (normal): brightened level color
         gl.uniform1i(wall_u_glitterMode, 0);
         gl.uniform3f(wall_u_voxCount, 5.0, 5.0, 5.0);
         gl.uniform1f(wall_u_height, 1.5);
@@ -470,6 +564,16 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const levels = Array.from(byLevel.keys()).sort((a,b)=>a-b);
         for (const lv of levels){
           const set = byLevel.get(lv); if (!set || set.size===0) continue;
+          // Choose color per-level: red/glitter if this level contains any bad-fence spans (t==3)
+          const anyBadFence = !!levelHasBad.get(lv);
+          if (anyBadFence){ gl.uniform3fv(wall_u_color, new Float32Array([0.85, 0.10, 0.12])); gl.uniform1f(wall_u_alpha, 0.95); gl.uniform1i(wall_u_glitterMode, 1); }
+          else {
+            let baseCol2 = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+            const bright2 = [Math.min(1, baseCol2[0]*1.35+0.05), Math.min(1, baseCol2[1]*1.35+0.05), Math.min(1, baseCol2[2]*1.35+0.05)];
+            gl.uniform3fv(wall_u_color, new Float32Array(bright2));
+            gl.uniform1f(wall_u_alpha, 0.95);
+            gl.uniform1i(wall_u_glitterMode, 0);
+          }
           // Pack instances for this level
           const pts = Array.from(set);
           const inst = new Float32Array(pts.length*2);
@@ -692,7 +796,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       const [gx,gy] = key.split(',').map(n=>parseInt(n,10));
       if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
       for (const s of spans){
-        if (!s) continue; const hF = Number(s.h)||0; const b=(s.b|0); const t=(s.t|0)||0; if (hF<=0) continue; if (t===2) continue; // skip fence spans
+  if (!s) continue; const hF = Number(s.h)||0; const b=(s.b|0); const t=(s.t|0)||0; if (hF<=0) continue; if (t===2 || t===3) continue; // skip fence spans (2=normal,3=bad)
         const full = Math.floor(hF);
         const frac = hF - full;
         if (full > 0){

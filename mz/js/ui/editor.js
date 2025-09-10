@@ -84,8 +84,8 @@
   function __normalize(spans){
   const a = spans.filter(s=>s && (s.h|0)>0).map(s=>{
     const tt = (s.t|0)||0;
-    const out = { b:s.b|0, h:s.h|0 };
-    if (tt===1 || tt===2) out.t = tt; // preserve BAD (1) and FENCE (2) markers
+  const out = { b:s.b|0, h:s.h|0 };
+  if (tt===1 || tt===2 || tt===3) out.t = tt; // preserve BAD (1), FENCE (2), BADFENCE (3) markers
     return out;
   });
     a.sort((p,q)=>p.b-q.b);
@@ -211,12 +211,39 @@
             // Prevent duplicate fence at this level
             for (const s of spans){ if (s && ((s.t|0)===2) && y >= (s.b|0) && y < ((s.b|0)+(Number(s.h)||0))) return false; }
             spans.push({ b: y, h: 1, t: 2 });
-            // Preserve t:2 during normalize
-            spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:{}) ) })).sort((p,q)=>p.b-q.b);
+            // Preserve t:1,2,3 during normalize
+            spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:{})) ) })).sort((p,q)=>p.b-q.b);
             __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
             // Network hint: send map op with t:2 to indicate fence span
             // Map ops schema doesn't carry t:2; keeping client-local for now.
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
+  // BADFENCE placement (slot 7): like fence but hazardous; ground tile BADFENCE, elevated spans t:3
+    try {
+      if ((state.editor.blockSlot|0) === 7){
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          if (y === 0){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] !== TILE.BADFENCE){
+              map[idx] = TILE.BADFENCE;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.BADFENCE }]); } catch(_){ }
+              return true;
+            }
+            return false;
+          } else {
+            // Elevated BADFENCE rails: encode as t=3 (distinct from t=2)
+            let spans = __getSpans(gx,gy);
+            for (const s of spans){ if (s && ((s.t|0)===3) && y >= (s.b|0) && y < ((s.b|0)+(Number(s.h)||0))) return false; }
+            spans.push({ b: y, h: 1, t: 3 });
+            spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:{})) ) })).sort((p,q)=>p.b-q.b);
+            __setSpans(gx,gy,spans);
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
             return true;
           }
         }
@@ -291,6 +318,44 @@
                 if (h1>0) out.push({ b:b, h:h1, t:2 });
                 if (h2>0) out.push({ b:y+1, h:h2, t:2 });
               }
+            }
+            if (!changed) return false;
+            out.sort((p,q)=>p.b-q.b);
+            __setSpans(gx,gy,out);
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 2 }]); } } catch(_){ }
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
+  // BADFENCE removal (slot 7)
+    try {
+      if ((state.editor.blockSlot|0) === 7){
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          if (y === 0){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] === TILE.BADFENCE){
+              map[idx] = TILE.OPEN;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+              return true;
+            }
+            return false;
+          } else {
+            // Remove only BADFENCE fence spans (t=3) at this level
+            let spans = __getSpans(gx,gy);
+            let changed=false; const out=[];
+            for (const s of spans){
+              if (!s){ continue; }
+              const b=s.b|0, h=s.h|0, t=(s.t|0)||0; const top=b+h-1;
+              if (t!==3 || y < b || y > top){ out.push(s); continue; }
+              changed=true;
+              if (h===1){ /* drop */ }
+              else if (y===b){ out.push({ b:b+1, h:h-1, t:3 }); }
+              else if (y===top){ out.push({ b:b, h:h-1, t:3 }); }
+              else { const h1=y-b, h2=top-y; if (h1>0) out.push({ b:b, h:h1, t:3 }); if (h2>0) out.push({ b:y+1, h:h2, t:3 }); }
             }
             if (!changed) return false;
             out.sort((p,q)=>p.b-q.b);
@@ -908,6 +973,7 @@
         return hex;
       } catch(_){ return '#9bdfe9'; }
     } },
+  7: { name: 'BADFENCE', color: '#d92b2f' },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;

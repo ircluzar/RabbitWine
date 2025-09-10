@@ -121,7 +121,8 @@ if (typeof window !== 'undefined'){
       columnSpans.set(key, spans
         .map(s=>{
           const tVal = ((s.t|0)||0);
-          return { b:(s.b|0), h: Math.max(0, Number(s.h) || 0), t: (tVal===1 ? 1 : (tVal===2 ? 2 : 0)) };
+          // Preserve BAD (1), FENCE (2), BADFENCE (3) markers; others map to 0 (solid)
+          return { b:(s.b|0), h: Math.max(0, Number(s.h) || 0), t: (tVal===1 ? 1 : (tVal===2 ? 2 : (tVal===3 ? 3 : 0))) };
         })
         .filter(s=>s.h>0));
     }
