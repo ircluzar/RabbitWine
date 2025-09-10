@@ -324,7 +324,27 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // Rails only (no posts). Set overall fence height scale for rail layers
   gl.uniform1f(wall_u_height, 1.5);
   gl.uniform1f(wall_u_yBase, 0.0);
-    // Rails per direction (N,E,S,W) at two heights
+    // Helper: vertical adjacency checks for ground-level top-extension
+    const hasFenceAtLevel0 = (x,y,lv)=>{
+      const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+      if (!Array.isArray(sp)) return false; for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (t===2 && h>0 && lv>=b && lv<b+h) return true; }
+      return false;
+    };
+    const hasSolidAtLevel0 = (x,y,lv)=>{
+      const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+      if (Array.isArray(sp)){
+        for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && t!==2 && lv>=b && lv<b+h) return true; }
+      }
+      return false;
+    };
+    // Precompute per-instance vertical extension sets for ground level
+    const groundAll = new Set(); // bottom always extends to map bottom
+    const groundTop = new Set();  // need top extension if solid/fence at level 1
+    for (let i=0;i<wallsFence.length;i+=2){
+      const gx = wallsFence[i]|0, gy = wallsFence[i+1]|0; const key=`${gx},${gy}`; groundAll.add(key);
+      if (hasFenceAtLevel0(gx,gy,1) || hasSolidAtLevel0(gx,gy,1)) groundTop.add(key);
+    }
+    // Rails per direction (N,E,S,W) with adaptive vertical rows
     const count = wallsFence.length/2;
     const dirs = [ [0,-1], [1,0], [0,1], [-1,0] ];
     for (let d=0; d<dirs.length; d++){
@@ -344,21 +364,31 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       const arr = railInstances.subarray(0, have*2);
       gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
       gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
-  // Two rail heights (approx layers 1 and 2 -> around 0.6 and 0.9..1.2 of total 1.5)
-  for (const vy of [1,2]){
+      // Helper to draw a filtered subset for a given vy
+      const drawVy = (vy, filterSet)=>{
+        let subset = arr;
+        if (filterSet){
+          const tmp = new Float32Array(arr.length);
+          let h2=0; const N = arr.length/2;
+          for (let i=0;i<N;i++){
+            const gx = arr[i*2+0]|0, gy = arr[i*2+1]|0; if (filterSet.has(`${gx},${gy}`)){ tmp[h2*2+0]=gx; tmp[h2*2+1]=gy; h2++; }
+          }
+          if (!h2) return; subset = tmp.subarray(0, h2*2);
+          gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, subset, gl.DYNAMIC_DRAW);
+        }
         // Depth pre-pass
         gl.disable(gl.BLEND);
         gl.colorMask(false, false, false, false);
         gl.depthMask(true);
         gl.depthFunc(gl.LESS);
         if (dx === 1 && dy === 0){ // East: from center (2) to edge (4)
-          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         } else if (dx === -1 && dy === 0){ // West: from center (2) to edge (0)
-          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         } else if (dx === 0 && dy === -1){ // North: from center (2) to edge (0)
-          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         } else if (dx === 0 && dy === 1){ // South: from center (2) to edge (4)
-          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         }
         // Color pass
         gl.colorMask(true, true, true, true);
@@ -367,15 +397,21 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         gl.depthMask(false);
         gl.depthFunc(gl.LEQUAL);
         if (dx === 1 && dy === 0){
-          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         } else if (dx === -1 && dy === 0){
-          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         } else if (dx === 0 && dy === -1){
-          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         } else if (dx === 0 && dy === 1){
-          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
         }
-      }
+      };
+      // Base rail rows
+      for (const vy of [1,2]){ drawVy(vy, null); }
+      // Extend to ground (bottom row) for all ground fences
+      drawVy(0, groundAll);
+      // Extend to top rows when there is solid/fence above level 1
+      if (groundTop.size){ drawVy(3, groundTop); drawVy(4, groundTop); }
     }
     // Restore defaults for subsequent draws
     gl.uniform1f(wall_u_height, 1.0);
@@ -442,6 +478,14 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
           gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
           // Offset all rails by base level
           gl.uniform1f(wall_u_yBase, lv * 1.0);
+          // Build per-level vertical extension sets
+          const needBottom = new Set();
+          const needTop = new Set();
+          for (let i=0;i<pts.length;i++){
+            const [gx,gy] = pts[i].split(',').map(n=>parseInt(n,10));
+            if (lv === 0 || hasFenceAtLevel(gx,gy,lv-1) || hasSolidAtLevel(gx,gy,lv-1)) needBottom.add(`${gx},${gy}`);
+            if (hasFenceAtLevel(gx,gy,lv+1) || hasSolidAtLevel(gx,gy,lv+1)) needTop.add(`${gx},${gy}`);
+          }
           const count = pts.length;
           const dirs = [ [0,-1], [1,0], [0,1], [-1,0] ];
           for (let d=0; d<dirs.length; d++){
@@ -461,20 +505,31 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
             const arr = railInstances.subarray(0, have*2);
             gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
             gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
-            for (const vy of [1,2]){
+            // Helper to draw subsets by vy with optional filters
+            const drawVy = (vy, filterSet)=>{
+              let subset = arr;
+              if (filterSet){
+                const tmp = new Float32Array(arr.length);
+                let h2=0; const N = arr.length/2;
+                for (let i=0;i<N;i++){
+                  const gx = arr[i*2+0]|0, gy = arr[i*2+1]|0; if (filterSet.has(`${gx},${gy}`)){ tmp[h2*2+0]=gx; tmp[h2*2+1]=gy; h2++; }
+                }
+                if (!h2) return; subset = tmp.subarray(0, h2*2);
+                gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, subset, gl.DYNAMIC_DRAW);
+              }
               // Depth pre-pass
               gl.disable(gl.BLEND);
               gl.colorMask(false, false, false, false);
               gl.depthMask(true);
               gl.depthFunc(gl.LESS);
               if (dx === 1 && dy === 0){ // East
-                for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               } else if (dx === -1 && dy === 0){ // West
-                for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               } else if (dx === 0 && dy === -1){ // North
-                for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               } else if (dx === 0 && dy === 1){ // South
-                for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               }
               // Color pass
               gl.colorMask(true, true, true, true);
@@ -483,15 +538,21 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
               gl.depthMask(false);
               gl.depthFunc(gl.LEQUAL);
               if (dx === 1 && dy === 0){
-                for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               } else if (dx === -1 && dy === 0){
-                for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               } else if (dx === 0 && dy === -1){
-                for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               } else if (dx === 0 && dy === 1){
-                for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+                for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
               }
-            }
+            };
+            // Base rail rows
+            drawVy(1, null); drawVy(2, null);
+            // Extend bottom if needed
+            if (needBottom.size) drawVy(0, needBottom);
+            // Extend top if needed
+            if (needTop.size){ drawVy(3, needTop); drawVy(4, needTop); }
           }
         }
         // Restore defaults for subsequent draws

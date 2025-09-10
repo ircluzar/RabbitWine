@@ -276,6 +276,24 @@ function moveAndCollide(dt){
     const gz = Math.floor(wz + MAP_H*0.5);
     if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true;
     const key = `${gx},${gz}`;
+    // Local cell-space coordinates (0..1) inside this tile
+    const cellMinX = gx - MAP_W*0.5;
+    const cellMinZ = gz - MAP_H*0.5;
+    const lx = wx - cellMinX;
+    const lz = wz - cellMinZ;
+  const RAIL_HW = 0.11; // half-width of rail collision band around center
+  const RAIL_MARGIN = 0.01; // extra push-out margin beyond band
+  const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
+    const setResolveForRail = (orient /* 'E'|'W'|'N'|'S' */)=>{
+      const eps = 0.002;
+      if (orient==='E' || orient==='W'){
+        // Rail runs along X, push Z out of the band around center
+        if (lz < 0.5) lastResolveZ = cellMinZ + (0.5 - (RAIL_HW + RAIL_MARGIN)); else lastResolveZ = cellMinZ + (0.5 + (RAIL_HW + RAIL_MARGIN));
+      } else if (orient==='N' || orient==='S'){
+        // Rail runs along Z, push X out of the band around center
+        if (lx < 0.5) lastResolveX = cellMinX + (0.5 - (RAIL_HW + RAIL_MARGIN)); else lastResolveX = cellMinX + (0.5 + (RAIL_HW + RAIL_MARGIN));
+      }
+    };
     // Collide if any span overlaps player Y; prefer explicit spans, else synthesize from column data and map tile
     let spans = null;
     try {
@@ -285,7 +303,7 @@ function moveAndCollide(dt){
     } catch(_){ spans = null; }
   /** @type {Array<{b:number,h:number,t?:number}>} */
   let spanList = [];
-  if (Array.isArray(spans) && spans.length) spanList = spans.slice().filter(s => s && (((s.t|0)||0) !== 2));
+  if (Array.isArray(spans) && spans.length) spanList = spans.slice();
     // Always merge in default-map columns
     try {
       if (columnHeights.has(key)){
@@ -308,9 +326,51 @@ function moveAndCollide(dt){
       const py = state.player.y;
       for (const s of spanList){
         if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-        const top = b + h;
-        // Only collide laterally when player Y lies strictly within the span slab
-    if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; return true; }
+        const top = b + h; const t = ((s.t|0)||0);
+        // Solid spans (non-fence) use strict vertical check (unchanged)
+        if (t !== 2){ if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; return true; } else { continue; } }
+        // Fence spans (t==2): voxel-accurate rails with a small vertical tolerance
+        {
+          const V_EPS = 0.06; // tolerance to avoid slipping just under rails
+          if (!(py >= (b - V_EPS) && py <= (top - 0.02 + V_EPS))) continue;
+          // Determine the integral level for connectivity (renderer uses integer lv slices)
+          const lv = Math.max(b|0, Math.min((top|0)-1, Math.floor(py)));
+          const hasFenceAtLevel = (x,y,level)=>{
+            const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+            if (!Array.isArray(sp)) return false; for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (tt===2 && hh>0 && level>=bb && level<bb+hh) return true; }
+            return false;
+          };
+          const hasSolidAtLevel = (x,y,level)=>{
+            const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+            if (Array.isArray(sp)){
+              for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && tt!==2 && level>=bb && level<bb+hh) return true; }
+            }
+            return false;
+          };
+          // Determine rail connections for this cell
+          const cellTile = map[mapIdx(gx,gz)];
+          // Ground-tile fence connectivity uses map tiles; elevated uses spans
+          const connGround = (dx,dy)=>{
+            const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
+            const neighbor = map[mapIdx(nx,ny)];
+            return (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
+          };
+          const connElev = (dx,dy)=>{
+            const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
+            return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv);
+          };
+          const connect = (cellTile===TILE.FENCE && b===0) ? connGround : connElev;
+          // Test four rail rectangles (E,W,N,S)
+          // East: z near center, x in [0.5,1)
+          if (connect(1,0) && inBand(lz,0.5,0.10) && lx >= 0.5 - 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='E'; setResolveForRail('E'); return true; }
+          // West: z near center, x in [0,0.5]
+          if (connect(-1,0) && inBand(lz,0.5,0.10) && lx <= 0.5 + 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='W'; setResolveForRail('W'); return true; }
+          // North: x near center, z in [0,0.5]
+          if (connect(0,-1) && inBand(lx,0.5,0.10) && lz <= 0.5 + 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='N'; setResolveForRail('N'); return true; }
+          // South: x near center, z in [0.5,1)
+          if (connect(0,1) && inBand(lx,0.5,0.10) && lz >= 0.5 - 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='S'; setResolveForRail('S'); return true; }
+          // If no rail footprint intersects, do not block
+        }
       }
       return false;
     }
@@ -336,12 +396,21 @@ function moveAndCollide(dt){
     if (py > top - 0.02) return false;
   lastHitSolidSpan = true; return true;
     }
-  // No spans/columns: fallback to ground wall tile only (WALL, HALF and ground-level BAD)
+  // No spans/columns: fallback to ground wall tile only (WALL, HALF and ground-level BAD/FENCE with voxel rails)
   const cv2 = map[mapIdx(gx,gz)];
   if (cv2 === TILE.WALL || cv2 === TILE.BAD){ if (state.player.y <= 1.0 - 0.02) { lastHitSolidSpan = true; return true; } else { return false; } }
   if (cv2 === TILE.HALF){ if (state.player.y <= 0.5 - 0.02) { lastHitSolidSpan = true; return true; } else { return false; } }
   if (cv2 === TILE.FENCE){
-    // Fence collision temporarily disabled for aesthetic work; fences are non-collidable for now.
+    if (state.player.y >= -0.06 && state.player.y <= 1.5 - 0.02 + 0.06){
+      // Voxel rail check like above using map-based connectivity
+      const connect = (dx,dy)=>{
+        const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
+        const neighbor = map[mapIdx(nx,ny)];
+        return (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
+      };
+      if (inBand(lz,0.5,0.10) && (connect(1,0) && lx >= 0.5 - 1e-4 || connect(-1,0) && lx <= 0.5 + 1e-4)) { lastHitFenceRail=true; lastHitFenceRailDir = (lx>=0.5? 'E':'W'); setResolveForRail(lastHitFenceRailDir); return true; }
+      if (inBand(lx,0.5,0.10) && (connect(0,1) && lz >= 0.5 - 1e-4 || connect(0,-1) && lz <= 0.5 + 1e-4)) { lastHitFenceRail=true; lastHitFenceRailDir = (lz>=0.5? 'S':'N'); setResolveForRail(lastHitFenceRailDir); return true; }
+    }
     return false;
   }
     return false;
@@ -554,8 +623,8 @@ function moveAndCollide(dt){
   }
 
   if (p.canWallJump && !p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
-    // Prevent wall-jump only if the blocking contact was a fence rail, and not a solid span
-    if (collidedFenceRail && !collidedSolidSpan) { return; }
+  // Prevent wall-jump if the blocking contact involved any fence
+  if (collidedFenceRail) { return; }
     p.angle += Math.PI;
     p.vy = 8.5;
     p.grounded = false;
@@ -772,7 +841,7 @@ function runBallMode(dt){
       // Randomize spin axis and speed on each ground bounce
       {
         let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
-        const L = Math.hypot(ax,ay,az) || 1; ax/=L; ay/=L; az/=L;
+      // fences are handled voxel-accurately below
         p._ballSpinAxisX = ax; p._ballSpinAxisY = ay; p._ballSpinAxisZ = az;
         p._ballSpinSpeed = 0.6 + Math.random()*1.2; // 0.6..1.8 rad/s
       }
@@ -809,11 +878,18 @@ function runBallMode(dt){
   let nx = 0, nz = 0; // collision normal accumulator
   let bounced = false;
   function isWallAtXZ(wx, wz){
-    // Reuse horizontal collision test from moveAndCollide scope
+    // Voxel-accurate lateral collision for ball mode (matches fence renderer)
     const gx = Math.floor(wx + MAP_W*0.5);
     const gz = Math.floor(wz + MAP_H*0.5);
     if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true; // treat border as wall
     const key = `${gx},${gz}`;
+    // Local cell-space coordinates (0..1) inside this tile
+    const cellMinX = gx - MAP_W*0.5;
+    const cellMinZ = gz - MAP_H*0.5;
+    const lx = wx - cellMinX;
+    const lz = wz - cellMinZ;
+  const RAIL_HW = 0.11;
+  const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
     let spans = null;
     try {
       spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
@@ -832,19 +908,51 @@ function runBallMode(dt){
         if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
     } catch(_){ }
-    // Include ground wall/bad to match lateral collision with ground height logic
+    // Include ground wall/half/bad (fences handled separately)
     {
       const cv = map[mapIdx(gx,gz)];
       if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
-  else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
+      else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
       else if (cv === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
     }
-    if (spanList.length){
+  if (spanList.length){
       const py = p.y;
       for (const s of spanList){
-        if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-        const top=b+h; if (py > b - 0.02 && py < top - 0.02) return true;
+    if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+    const top=b+h; const t=((s.t|0)||0);
+    // Solid spans (non-fence) keep strict vertical check
+    if (t !== 2){ if (py > b - 0.02 && py < top - 0.02) return true; else continue; }
+    // Fence spans: allow small vertical tolerance
+    const V_EPS = 0.06; if (!(py > b - V_EPS && py < top - 0.02 + V_EPS)) continue;
+        // Fence spans: voxel rails only; determine integral level for connectivity
+        const lv = Math.max(b|0, Math.min((top|0)-1, Math.floor(py)));
+        const hasFenceAtLevel = (x,y,level)=>{
+          const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+          if (!Array.isArray(sp)) return false; for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (tt===2 && hh>0 && level>=bb && level<bb+hh) return true; }
+          return false;
+        };
+        const hasSolidAtLevel = (x,y,level)=>{
+          const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
+          if (Array.isArray(sp)){
+            for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && tt!==2 && level>=bb && level<bb+hh) return true; }
+          }
+          return false;
+        };
+        const connect = (dx,dy)=>{ const nx=gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false; return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv); };
+        if (inBand(lz,0.5,0.10) && ((connect(1,0) && lx >= 0.5 - 1e-4) || (connect(-1,0) && lx <= 0.5 + 1e-4))) return true;
+        if (inBand(lx,0.5,0.10) && ((connect(0,1) && lz >= 0.5 - 1e-4) || (connect(0,-1) && lz <= 0.5 + 1e-4))) return true;
       }
+    }
+    // Fallback: no spans. Apply voxel rails for ground fence map tile
+    const cv = map[mapIdx(gx,gz)];
+  if (cv === TILE.FENCE && p.y >= -0.06 && p.y <= 1.5 - 0.02 + 0.06){
+      const connect = (dx,dy)=>{
+        const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
+        const neighbor = map[mapIdx(nx,ny)];
+        return (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
+      };
+      if (inBand(lz,0.5,0.10) && ((connect(1,0) && lx >= 0.5 - 1e-4) || (connect(-1,0) && lx <= 0.5 + 1e-4))) return true;
+      if (inBand(lx,0.5,0.10) && ((connect(0,1) && lz >= 0.5 - 1e-4) || (connect(0,-1) && lz <= 0.5 + 1e-4))) return true;
     }
     return false;
   }

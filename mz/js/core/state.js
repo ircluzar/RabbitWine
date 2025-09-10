@@ -9,7 +9,7 @@
 // coloredOutlines = true -> use derived wall color for cube outlines; false -> force black outlines
 // coloredBg = true -> tint scene & viewport clears with darkened base color; false -> use black background
 const LEVEL_BASE_COLORS = {
-  1: { color: '#0fd5db', coloredOutlines: false, coloredBg: false  },
+  1: { color: '#0fd5db', coloredOutlines: true, coloredBg: false  },
   2: { color: '#db8b0f', coloredOutlines: true,  coloredBg: true  },
   3: { color: '#db0f7a', coloredOutlines: false, coloredBg: false },
 };
