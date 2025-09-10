@@ -247,14 +247,26 @@ function mpEnsureWS(nowMs){
       if (op.op === 'add'){
         const gx = op.gx|0, gy = op.gy|0; const y = (typeof op.y==='number')? op.y : 0.75;
         const w = __mp_worldFromGrid(gx, gy);
+        // Skip spawning if we already have a recently suppressed local add marker
+        let suppress = false;
+        try {
+          if (window.__mp_localAddSuppress){
+            const key = kind+':'+gx+','+gy+','+y+(op.payload?':'+op.payload:'');
+            if (window.__mp_localAddSuppress.has(key)){
+              suppress = true;
+              window.__mp_localAddSuppress.delete(key);
+              if (!window.__mp_localAddSuppress.size) delete window.__mp_localAddSuppress;
+            }
+          }
+        } catch(_){ }
         if (kind === 1){
           let ghost = false; try { if (window.gameSave && gameSave.isPurpleCollected && (gameSave.isPurpleCollected(null, w.x, y, w.z) || gameSave.isPurpleCollected(null, w.x, 0.75, w.z) || gameSave.isPurpleCollected(null, w.x, 0, w.z))) ghost = true; } catch(_){ }
-          try { if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z, { ghost, fadeIn:false }); } catch(_){ }
+          if (!suppress){ try { if (typeof window.spawnPurpleItemWorld === 'function') window.spawnPurpleItemWorld(w.x, y, w.z, { ghost, fadeIn:false }); } catch(_){ } }
           shadowItems.push({ gx, gy, y, kind:1, payload:'' });
         } else {
           const payload = (typeof op.payload === 'string') ? op.payload : '';
           let ghost = false; try { if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true; } catch(_){ }
-          try { if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost, fadeIn:false }); } catch(_){ }
+          if (!suppress){ try { if (typeof window.spawnItemWorld === 'function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost, fadeIn:false }); } catch(_){ } }
           shadowItems.push({ gx, gy, y, kind:0, payload });
         }
       } else if (op.op === 'remove'){
@@ -670,6 +682,23 @@ window.mpSendItemOps = function(ops){
       if (clean.length >= 256) break;
     }
     if (!clean.length) return false;
+    // Record suppression keys for local adds so we don't double-spawn when echoed back
+    try {
+      for (const r of clean){
+        if (r.op==='add'){
+          if (!window.__mp_localAddSuppress) window.__mp_localAddSuppress = new Set();
+          const key = r.kind+':'+r.gx+','+r.gy+','+(typeof r.y==='number'?r.y:0.75)+(r.payload?':'+r.payload:'');
+          window.__mp_localAddSuppress.add(key);
+          // Prune if grows large
+          if (window.__mp_localAddSuppress.size > 1024){
+            try {
+              // remove a few oldest arbitrarily (Set iteration order insertion-based)
+              let c=0; for (const k of window.__mp_localAddSuppress){ window.__mp_localAddSuppress.delete(k); if (++c>128) break; }
+            } catch(_){ }
+          }
+        }
+      }
+    } catch(_){ }
     mpWS.send(JSON.stringify({ type:'item_edit', ops: clean }));
     try { console.log('[MP][items] sent ops', clean); } catch(_){ }
     return true;

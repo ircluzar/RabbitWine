@@ -13,11 +13,18 @@ const items = [];
 const purpleItems = [];
 
 // Ghost (picked-up) presentation constants
-const GHOST_ALPHA = 0.05;              // target alpha for ghost items (reduced from 0.4)
+const GHOST_ALPHA = 0.25;              // target alpha for ghost items (editor shows full color regardless)
 const GHOST_FADE_DURATION = 0.8;       // seconds for fade-in
 const GHOST_RESPAWN_DELAY = 3.0;       // seconds after pickup to reappear as ghost
 // Default visual float height for items without explicit Y
 const ITEM_DEFAULT_FLOAT_Y = 0.75;
+
+// Editor mode detection: in editor we always show items as uncollected for visibility
+function isEditorMode(){
+  try { if (window.IS_MZ_EDITOR === true) return true; } catch(_){ }
+  try { if (typeof location !== 'undefined' && /\/editor\//i.test(location.pathname)) return true; } catch(_){ }
+  return false;
+}
 
 function gridToWorld(gx, gy){
   return {
@@ -43,10 +50,14 @@ function initItemsFromBuilder(list){
 function spawnItemWorld(x, y, z, payload, opts){
   let ghost = false, fadeIn = false;
   try {
-    if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost;
-    else if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true;
-    else if (window.gameSave && !payload && gameSave.isItemCollected && gameSave.isItemCollected(x, z)) ghost = true; // legacy fallback
-    if (opts && opts.fadeIn) fadeIn = true;
+    if (!isEditorMode()){
+      if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost;
+      else if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true;
+      else if (window.gameSave && !payload && gameSave.isItemCollected && gameSave.isItemCollected(x, z)) ghost = true; // legacy fallback
+      if (opts && opts.fadeIn) fadeIn = true;
+    } else {
+      ghost = false; fadeIn = false;
+    }
   } catch(_){ }
   let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
   const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
@@ -58,8 +69,12 @@ function spawnItemWorld(x, y, z, payload, opts){
 function spawnPurpleItemWorld(x, y, z, opts){
   let ghost = false, fadeIn = false;
   try {
-    if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost; else if (window.gameSave && gameSave.isPurpleCollected && gameSave.isPurpleCollected(null, x, y, z)) ghost = true;
-    if (opts && opts.fadeIn) fadeIn = true;
+    if (!isEditorMode()){
+      if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost; else if (window.gameSave && gameSave.isPurpleCollected && gameSave.isPurpleCollected(null, x, y, z)) ghost = true;
+      if (opts && opts.fadeIn) fadeIn = true;
+    } else {
+      ghost = false; fadeIn = false;
+    }
   } catch(_){ }
   let ax = Math.random()*2-1, ay = Math.random()*2-1, az = Math.random()*2-1;
   const al = Math.hypot(ax,ay,az) || 1; ax/=al; ay/=al; az/=al;
@@ -197,12 +212,22 @@ function updatePurpleItems(dt){
 
 function drawItems(mvp){
   const tNow = state.nowSec || (performance.now()/1000);
-  const activeY = items.filter(it => !it.gone && !it.ghost);
-  const ghostYStable = items.filter(it => !it.gone && it.ghost && !(it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
-  const ghostYFading = items.filter(it => !it.gone && it.ghost && (it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
-  const activeP = purpleItems.filter(it => !it.gone && !it.ghost);
-  const ghostPStable = purpleItems.filter(it => !it.gone && it.ghost && !(it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
-  const ghostPFading = purpleItems.filter(it => !it.gone && it.ghost && (it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+  let activeY, ghostYStable, ghostYFading, activeP, ghostPStable, ghostPFading;
+  if (isEditorMode()){
+    // In editor: force all items to appear as active (full color), ignore ghost visuals
+    for (const it of items){ if (it && !it.gone){ it.ghost = false; it.fadeInStart = -1; } }
+    for (const it of purpleItems){ if (it && !it.gone){ it.ghost = false; it.fadeInStart = -1; } }
+    activeY = items.filter(it => !it.gone);
+    activeP = purpleItems.filter(it => !it.gone);
+    ghostYStable = ghostYFading = ghostPStable = ghostPFading = [];
+  } else {
+    activeY = items.filter(it => !it.gone && !it.ghost);
+    ghostYStable = items.filter(it => !it.gone && it.ghost && !(it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+    ghostYFading = items.filter(it => !it.gone && it.ghost && ( it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+    activeP = purpleItems.filter(it => !it.gone && !it.ghost);
+    ghostPStable = purpleItems.filter(it => !it.gone && it.ghost && !(it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+    ghostPFading = purpleItems.filter(it => !it.gone && it.ghost && ( it.fadeInStart>=0 && (tNow - it.fadeInStart) < GHOST_FADE_DURATION));
+  }
   if (!activeY.length && !ghostYStable.length && !ghostYFading.length && !activeP.length && !ghostPStable.length && !ghostPFading.length) return;
 
   gl.useProgram(trailCubeProgram);
@@ -296,8 +321,64 @@ if (typeof window !== 'undefined'){
   window.updateItems = updateItems;
   window.updatePurpleItems = updatePurpleItems;
   window.drawItems = drawItems;
+  // Helper to force all ghosts back to normal (used by editor)
+  window.editorRevealAllItems = function(){
+    for (const it of items){ if (it && !it.gone){ it.ghost = false; it.fadeInStart = -1; } }
+    for (const it of purpleItems){ if (it && !it.gone){ it.ghost = false; it.fadeInStart = -1; } }
+  };
   if (Array.isArray(window._pendingItems)){
     initItemsFromBuilder(window._pendingItems);
     delete window._pendingItems;
   }
+  // If already in editor mode when this script loads, un-ghost immediately
+  try { if (isEditorMode()) setTimeout(()=>{ if (typeof window.editorRevealAllItems==='function') window.editorRevealAllItems(); },0); } catch(_){ }
+  // Editor: right-click to delete nearest item (yellow or purple)
+  try {
+    if (isEditorMode()){
+      window.addEventListener('contextmenu', function(e){
+        try {
+          if (!isEditorMode()) return;
+          const mx = e.clientX, my = e.clientY;
+          if (typeof window.pickWorldRay === 'function'){
+            const hit = window.pickWorldRay(mx, my); // expect {x,z}
+            if (hit && typeof hit.x==='number' && typeof hit.z==='number'){
+              let best=null, bestD=1e9, bestArr=null;
+              function consider(arr){ for (const it of arr){ if (!it||it.gone) continue; const dx=it.x-hit.x, dz=it.z-hit.z; const d=dx*dx+dz*dz; if (d<bestD){ best=it; bestD=d; bestArr=arr; } } }
+              consider(items); consider(purpleItems);
+              if (best && bestArr){ best.gone=true; const idx=bestArr.indexOf(best); if (idx>=0) bestArr.splice(idx,1); try { console.debug('[EDITOR] removed item', best); } catch(_){ } }
+              // Also attempt to remove a block at that grid cell (topmost span or single layer) regardless of selection
+              try {
+                const gx = Math.floor(hit.x + MAP_W*0.5);
+                const gy = Math.floor(hit.z + MAP_H*0.5);
+                if (gx>=0 && gy>=0 && gx<MAP_W && gy<MAP_H){
+                  // Determine the highest occupied y (scan spans/columns)
+                  let topY = -1;
+                  const key = `${gx},${gy}`;
+                  let spans = null;
+                  try { spans = (window.columnSpans && window.columnSpans.get(key)) || null; } catch(_){ }
+                  if (Array.isArray(spans) && spans.length){
+                    for (const s of spans){ if (!s) continue; const b=s.b|0, h=s.h|0; if (h>0){ const t=b+h-1; if (t>topY) topY=t; } }
+                  } else {
+                    // Fallback to wall/height maps
+                    try {
+                      if (window.columnHeights && window.columnHeights.has(key)){
+                        const h = window.columnHeights.get(key)|0; if (h>0){ let b=0; if (window.columnBases && window.columnBases.has(key)) b = window.columnBases.get(key)|0; topY = b + h - 1; }
+                      } else if (typeof mapIdx==='function' && typeof map!=='undefined' && typeof TILE!=='undefined'){
+                        const tile = map[mapIdx(gx,gy)]; if (tile===TILE.WALL || tile===TILE.BAD) topY = 0;
+                      }
+                    } catch(_){ }
+                  }
+                  if (topY >= 0){
+                    // Send removal op (server authoritative). Client local removal will occur via echo.
+                    if (typeof window.mpSendMapOps === 'function') mpSendMapOps([{ op:'remove', key:`${gx},${gy},${topY}` }]);
+                  }
+                }
+              } catch(_){ }
+            }
+          }
+          e.preventDefault();
+        } catch(_){ }
+      });
+    }
+  } catch(_){ }
 }

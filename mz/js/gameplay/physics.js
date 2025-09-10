@@ -584,6 +584,8 @@ function runBallMode(dt){
   let newY = p.y + p.vy * dt;
   const gH = groundHeightAt(p.x, p.z);
   const wasAir = !p.grounded;
+  // Track if we hit a ceiling this frame to avoid overriding the downward spike in wall bounce
+  let hitCeilingThisFrame = false;
   if (p.vy <= 0.0 && newY <= gH){
     newY = gH;
     // Ground bounce
@@ -617,6 +619,21 @@ function runBallMode(dt){
       exitBallMode();
       p.y = newY;
       return;
+    }
+  }
+  // Ceiling collision: if moving upward into a span above, clamp to its bottom and spike downward
+  if (p.vy > 0.0){
+    const cH = ceilingHeightAt(p.x, p.z, p.y);
+    if (isFinite(cH)){
+      const eps = 1e-4;
+      if (newY >= cH - eps){
+        newY = cH - eps;
+        // Apply same downward spike used for BAD ceiling hits in normal mode
+        const CEIL_SPIKE_DOWN = 4.0;
+        p.vy = -CEIL_SPIKE_DOWN;
+        p.grounded = false;
+        hitCeilingThisFrame = true;
+      }
     }
   }
   p.y = newY;
@@ -664,8 +681,8 @@ function runBallMode(dt){
   nxTry = p.x + stepX; nzTry = p.z;
   if (!isWallAtXZ(nxTry, nzTry)) { p.x = nxTry; } else { p._ballVX = -p._ballVX * 0.45; bounced = true; nx = -Math.sign(stepX); }
   if (bounced){
-    // Smaller upward nudge on wall bounce
-    p.vy = Math.max(p.vy, 1.0);
+    // Smaller upward nudge on wall bounce; but don't cancel a ceiling spike this frame
+    if (!hitCeilingThisFrame) p.vy = Math.max(p.vy, 1.0);
     // Cap horizontal speed after wall bounce
     const hv = Math.hypot(p._ballVX, p._ballVZ);
     const cap = 3.5;
