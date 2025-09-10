@@ -30,7 +30,9 @@ function groundHeightAt(x, z){
   spanList = spanList.filter(s => s && (((s.t|0)||0) !== 2));
   // Always also synthesize from columnHeights/bases so default map blocks are respected even with server spans present
   try {
-    if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+  // Do not synthesize a full column for fence tiles; only inner rails should affect collisions/ground
+  const _cvGH = map[mapIdx(gx,gz)];
+  if (_cvGH !== TILE.FENCE && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
       let b = 0; let h = columnHeights.get(key) || 0;
       try {
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
@@ -72,7 +74,7 @@ function groundHeightAt(x, z){
     return 0.0;
   }
   // Fallbacks when no spans and no column height applicable below player
-  if (columnHeights.has(key)){
+  if (map[mapIdx(gx,gz)] !== TILE.FENCE && columnHeights.has(key)){
     const h = columnHeights.get(key) || 0.0;
     const b = getBaseFor(key);
     const py = state.player ? state.player.y : 0.0;
@@ -151,7 +153,8 @@ function ceilingHeightAt(x, z, py){
   spanList = spanList.filter(s => s && (((s.t|0)||0) !== 2));
   // Always also synthesize from column data so default map blocks are respected
   try {
-    if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+  const _cvCH = map[mapIdx(gx,gz)];
+  if (_cvCH !== TILE.FENCE && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
       let b = 0; let h = columnHeights.get(key) || 0;
       try {
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
@@ -281,7 +284,7 @@ function moveAndCollide(dt){
     const cellMinZ = gz - MAP_H*0.5;
     const lx = wx - cellMinX;
     const lz = wz - cellMinZ;
-  const RAIL_HW = 0.11; // half-width of rail collision band around center
+  const RAIL_HW = 0.11; // half-width of rail collision band around center and edge
   const RAIL_MARGIN = 0.01; // extra push-out margin beyond band
   const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
     const setResolveForRail = (orient /* 'E'|'W'|'N'|'S' */)=>{
@@ -304,9 +307,10 @@ function moveAndCollide(dt){
   /** @type {Array<{b:number,h:number,t?:number}>} */
   let spanList = [];
   if (Array.isArray(spans) && spans.length) spanList = spans.slice();
-    // Always merge in default-map columns
+    // Always merge in default-map columns (but skip FENCE tiles; they use inner voxels)
     try {
-      if (columnHeights.has(key)){
+      const _cvLW = map[mapIdx(gx,gz)];
+      if (_cvLW !== TILE.FENCE && columnHeights.has(key)){
         let b = 0; let h = columnHeights.get(key) || 0;
         try {
           if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
@@ -360,22 +364,22 @@ function moveAndCollide(dt){
             return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv);
           };
           const connect = (cellTile===TILE.FENCE && b===0) ? connGround : connElev;
-          // Test four rail rectangles (E,W,N,S)
-          // East: z near center, x in [0.5,1)
-          if (connect(1,0) && inBand(lz,0.5,0.10) && lx >= 0.5 - 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='E'; setResolveForRail('E'); return true; }
-          // West: z near center, x in [0,0.5]
-          if (connect(-1,0) && inBand(lz,0.5,0.10) && lx <= 0.5 + 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='W'; setResolveForRail('W'); return true; }
-          // North: x near center, z in [0,0.5]
-          if (connect(0,-1) && inBand(lx,0.5,0.10) && lz <= 0.5 + 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='N'; setResolveForRail('N'); return true; }
-          // South: x near center, z in [0.5,1)
-          if (connect(0,1) && inBand(lx,0.5,0.10) && lz >= 0.5 - 1e-4){ lastHitFenceRail = true; lastHitFenceRailDir='S'; setResolveForRail('S'); return true; }
+          // Test four rail rectangles (E,W,N,S) using narrow edge bands
+          // East edge: z near center AND x near 1.0
+          if (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='E'; setResolveForRail('E'); return true; }
+          // West edge: z near center AND x near 0.0
+          if (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='W'; setResolveForRail('W'); return true; }
+          // North edge: x near center AND z near 0.0
+          if (connect(0,-1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,0.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='N'; setResolveForRail('N'); return true; }
+          // South edge: x near center AND z near 1.0
+          if (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='S'; setResolveForRail('S'); return true; }
           // If no rail footprint intersects, do not block
         }
       }
       return false;
     }
-    // Column with optional raised base
-    if (columnHeights.has(key)){
+  // Column with optional raised base (skip for FENCE tiles)
+  if (map[mapIdx(gx,gz)] !== TILE.FENCE && columnHeights.has(key)){
       const h = columnHeights.get(key) || 0.0;
       // Use same safe base lookup as groundHeightAt
       let b = 0.0;
@@ -408,8 +412,14 @@ function moveAndCollide(dt){
         const neighbor = map[mapIdx(nx,ny)];
         return (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
       };
-      if (inBand(lz,0.5,0.10) && (connect(1,0) && lx >= 0.5 - 1e-4 || connect(-1,0) && lx <= 0.5 + 1e-4)) { lastHitFenceRail=true; lastHitFenceRailDir = (lx>=0.5? 'E':'W'); setResolveForRail(lastHitFenceRailDir); return true; }
-      if (inBand(lx,0.5,0.10) && (connect(0,1) && lz >= 0.5 - 1e-4 || connect(0,-1) && lz <= 0.5 + 1e-4)) { lastHitFenceRail=true; lastHitFenceRailDir = (lz>=0.5? 'S':'N'); setResolveForRail(lastHitFenceRailDir); return true; }
+      if ( (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) ||
+           (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) ) {
+        lastHitFenceRail = true; lastHitFenceRailDir = (lx > 0.5 ? 'E':'W'); setResolveForRail(lastHitFenceRailDir); return true;
+      }
+      if ( (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) ||
+           (connect(0,-1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,0.0,RAIL_HW)) ) {
+        lastHitFenceRail = true; lastHitFenceRailDir = (lz > 0.5 ? 'S':'N'); setResolveForRail(lastHitFenceRailDir); return true;
+      }
     }
     return false;
   }
@@ -897,9 +907,10 @@ function runBallMode(dt){
             : null;
     } catch(_){ spans = null; }
     let spanList = Array.isArray(spans) && spans.length ? spans.slice() : [];
-    // Merge in default-map columns
+    // Merge in default-map columns (skip FENCE tiles)
     try {
-      if (columnHeights.has(key)){
+      const _cvBM = map[mapIdx(gx,gz)];
+      if (_cvBM !== TILE.FENCE && columnHeights.has(key)){
         let b = 0; let h = columnHeights.get(key) || 0;
         try {
           if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
@@ -938,9 +949,11 @@ function runBallMode(dt){
           }
           return false;
         };
-        const connect = (dx,dy)=>{ const nx=gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false; return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv); };
-        if (inBand(lz,0.5,0.10) && ((connect(1,0) && lx >= 0.5 - 1e-4) || (connect(-1,0) && lx <= 0.5 + 1e-4))) return true;
-        if (inBand(lx,0.5,0.10) && ((connect(0,1) && lz >= 0.5 - 1e-4) || (connect(0,-1) && lz <= 0.5 + 1e-4))) return true;
+     const connect = (dx,dy)=>{ const nx=gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false; return hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv); };
+     if ( (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) ||
+       (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) ) return true;
+     if ( (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) ||
+       (connect(0,-1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,0.0,RAIL_HW)) ) return true;
       }
     }
     // Fallback: no spans. Apply voxel rails for ground fence map tile
@@ -951,8 +964,10 @@ function runBallMode(dt){
         const neighbor = map[mapIdx(nx,ny)];
         return (neighbor===TILE.FENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
       };
-      if (inBand(lz,0.5,0.10) && ((connect(1,0) && lx >= 0.5 - 1e-4) || (connect(-1,0) && lx <= 0.5 + 1e-4))) return true;
-      if (inBand(lx,0.5,0.10) && ((connect(0,1) && lz >= 0.5 - 1e-4) || (connect(0,-1) && lz <= 0.5 + 1e-4))) return true;
+   if ( (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) ||
+     (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) ) return true;
+   if ( (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) ||
+     (connect(0,-1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,0.0,RAIL_HW)) ) return true;
     }
     return false;
   }
