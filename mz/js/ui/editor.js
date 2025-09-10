@@ -82,7 +82,12 @@
   }
   function __setSpans(gx, gy, spans){ try { window.setSpansAt(gx, gy, spans); } catch(_){} }
   function __normalize(spans){
-  const a = spans.filter(s=>s && (s.h|0)>0).map(s=>({ b:s.b|0, h:s.h|0, t: (s.t|0)===1 ? 1:0 }));
+  const a = spans.filter(s=>s && (s.h|0)>0).map(s=>{
+    const tt = (s.t|0)||0;
+    const out = { b:s.b|0, h:s.h|0 };
+    if (tt===1 || tt===2) out.t = tt; // preserve BAD (1) and FENCE (2) markers
+    return out;
+  });
     a.sort((p,q)=>p.b-q.b);
     // merge adjacent same-base? not necessary for single blocks, but compact overlaps
     const out=[];
@@ -158,13 +163,29 @@
     // HALF tile placement (slot 5): set ground tile only, no voxel span
     try {
       if ((state.editor.blockSlot|0) === 5){
-        if (y !== 0) return false; // ground-only
+        // HALF placement: at y==0, set ground tile; at y>0, add a 0.5-high span
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-          const idx = mapIdx(gx, gy);
-          if (map[idx] !== TILE.HALF){
-            map[idx] = TILE.HALF;
+          if (y === 0){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] !== TILE.HALF){
+              map[idx] = TILE.HALF;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.HALF }]); } catch(_){ }
+              return true;
+            }
+            return false;
+          } else {
+            // Elevated half-step as fractional slab: b=y, h=0.5, t=0
+            let spans = __getSpans(gx,gy);
+            // Prevent overlapping duplicate at same base range (y..y+0.5)
+            for (const s of spans){ if (!s) continue; const sb=(s.b|0), sh=Number(s.h)||0; const top = sb + sh; if (y >= sb && y < top) return false; }
+            spans.push({ b: y, h: 0.5 });
+            // Normalize preserving fractional heights and t flags
+            spans = spans.filter(s=>s && (Number(s.h)||0) > 0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:{}) ) }));
+            spans.sort((p,q)=>p.b-q.b);
+            __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.HALF }]); } catch(_){ }
+            // Network: send as add voxel at integer base (approx). Fractional not supported by ops; skip network for elevated HALF.
             return true;
           }
         }
@@ -173,13 +194,29 @@
     } catch(_){ }
     try {
       if ((state.editor.blockSlot|0) === 6){
-        if (y !== 0) return false; // fences are ground tiles
+        // FENCE placement: allow at any height. At y==0, set ground tile; at y>0, add a fence span (t=2).
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-          const idx = mapIdx(gx, gy);
-          if (map[idx] !== TILE.FENCE){
-            map[idx] = TILE.FENCE;
+          if (y === 0){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] !== TILE.FENCE){
+              map[idx] = TILE.FENCE;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.FENCE }]); } catch(_){ }
+              return true;
+            }
+            return false;
+          } else {
+            // Elevated (or floating) fence: encode as a span with type t=2 (fence marker).
+            let spans = __getSpans(gx,gy);
+            // Prevent duplicate fence at this level
+            for (const s of spans){ if (s && ((s.t|0)===2) && y >= (s.b|0) && y < ((s.b|0)+(Number(s.h)||0))) return false; }
+            spans.push({ b: y, h: 1, t: 2 });
+            // Preserve t:2 during normalize
+            spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:{}) ) })).sort((p,q)=>p.b-q.b);
+            __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.FENCE }]); } catch(_){ }
+            // Network hint: send map op with t:2 to indicate fence span
+            // Map ops schema doesn't carry t:2; keeping client-local for now.
             return true;
           }
         }
@@ -226,13 +263,40 @@
     } catch(_){ }
     try {
       if ((state.editor.blockSlot|0) === 6){
-        if (y !== 0) return false;
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-          const idx = mapIdx(gx, gy);
-          if (map[idx] === TILE.FENCE){
-            map[idx] = TILE.OPEN;
+          if (y === 0){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] === TILE.FENCE){
+              map[idx] = TILE.OPEN;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+              return true;
+            }
+            return false;
+          } else {
+            // Remove only fence spans (t=2) at this level
+            let spans = __getSpans(gx,gy);
+            let changed=false; const out=[];
+            for (const s of spans){
+              if (!s){ continue; }
+              const b=s.b|0, h=s.h|0, t=(s.t|0)||0; const top=b+h-1;
+              if (t!==2 || y < b || y > top){ out.push(s); continue; }
+              changed=true;
+              // split or shrink preserving t=2
+              if (h===1){ /* drop span entirely */ }
+              else if (y===b){ out.push({ b:b+1, h:h-1, t:2 }); }
+              else if (y===top){ out.push({ b:b, h:h-1, t:2 }); }
+              else {
+                const h1 = y - b; const h2 = top - y;
+                if (h1>0) out.push({ b:b, h:h1, t:2 });
+                if (h2>0) out.push({ b:y+1, h:h2, t:2 });
+              }
+            }
+            if (!changed) return false;
+            out.sort((p,q)=>p.b-q.b);
+            __setSpans(gx,gy,out);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 2 }]); } } catch(_){ }
             return true;
           }
         }

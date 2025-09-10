@@ -26,6 +26,8 @@ function groundHeightAt(x, z){
   } catch(_){ spans = null; }
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
+  // Remove fence spans (t==2) from ground computation; they are non-solid visuals
+  spanList = spanList.filter(s => s && (((s.t|0)||0) !== 2));
   // Always also synthesize from columnHeights/bases so default map blocks are respected even with server spans present
   try {
     if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
@@ -82,6 +84,49 @@ function groundHeightAt(x, z){
 }
 
 /**
+ * Find the nearest landing top above a given Y at (x,z), up to a max rise.
+ * Considers explicit spans (excluding fences) and map tiles (WALL/HALF/BAD as solid).
+ * Returns null if no suitable landing within rise.
+ * @param {number} x
+ * @param {number} z
+ * @param {number} py - current player Y
+ * @param {number} maxRise - maximum allowed rise
+ * @returns {number|null}
+ */
+function landingHeightAt(x, z, py, maxRise){
+  const gx = Math.floor(x + MAP_W*0.5);
+  const gz = Math.floor(z + MAP_H*0.5);
+  if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return null;
+  const key = `${gx},${gz}`;
+  /** @type {Array<{b:number,h:number,t?:number}>} */
+  let candidates = [];
+  // From explicit spans (skip fences t==2)
+  try {
+    let spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+              : null;
+    if (Array.isArray(spans)){
+      for (const s of spans){
+        if (!s) continue; const b=(s.b||0), h=(typeof s.h==='number'?s.h:0); const t=((s.t|0)||0);
+        if (h<=0 || t===2) continue;
+        const top = b + h;
+        if (top > py + 1e-6 && (top - py) <= (maxRise + 1e-6)) candidates.push(top);
+      }
+    }
+  } catch(_){ }
+  // From map tile at ground level
+  try {
+    const cv = map[mapIdx(gx,gz)];
+    if (cv === TILE.WALL || cv === TILE.BAD){ const top=1.0; if (top > py + 1e-6 && (top - py) <= (maxRise + 1e-6)) candidates.push(top); }
+    else if (cv === TILE.HALF){ const top=0.5; if (top > py + 1e-6 && (top - py) <= (maxRise + 1e-6)) candidates.push(top); }
+  } catch(_){ }
+  if (!candidates.length) return null;
+  // Choose the smallest top above py (closest ledge)
+  candidates.sort((a,b)=>a-b);
+  return candidates[0];
+}
+
+/**
  * Calculate the nearest ceiling (bottom of a span) above the player's current Y
  * Returns +Infinity if no ceiling above at this (x,z).
  * @param {number} x - World X coordinate
@@ -102,6 +147,8 @@ function ceilingHeightAt(x, z, py){
   } catch(_){ spans = null; }
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
+  // Remove fence spans (t==2) from ceiling computation; they are non-solid visuals
+  spanList = spanList.filter(s => s && (((s.t|0)||0) !== 2));
   // Always also synthesize from column data so default map blocks are respected
   try {
     if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
@@ -236,9 +283,9 @@ function moveAndCollide(dt){
             : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
             : null;
     } catch(_){ spans = null; }
-    /** @type {Array<{b:number,h:number}>} */
-    let spanList = [];
-    if (Array.isArray(spans) && spans.length) spanList = spans.slice();
+  /** @type {Array<{b:number,h:number,t?:number}>} */
+  let spanList = [];
+  if (Array.isArray(spans) && spans.length) spanList = spans.slice().filter(s => s && (((s.t|0)||0) !== 2));
     // Always merge in default-map columns
     try {
       if (columnHeights.has(key)){
@@ -285,7 +332,7 @@ function moveAndCollide(dt){
       const top = b + h;
       const py = state.player.y;
     // If below the base or above the top, not colliding laterally.
-    if (py < b) return false;
+  if (py < b) return false;
     if (py > top - 0.02) return false;
   lastHitSolidSpan = true; return true;
     }
@@ -335,11 +382,9 @@ function moveAndCollide(dt){
       // Attempt step-up onto small ledges (half-step or <=0.5 rise)
       let stepped = false;
       if (!outZ){
-        const gSrc = groundHeightAt(p.x, p.z);
-        const gDst = groundHeightAt(p.x, newZ);
         const stepMax = 0.5 + 1e-3;
-        const rise = gDst - p.y;
-        if (rise > 1e-6 && rise <= stepMax){
+        const gDst = landingHeightAt(p.x, newZ, p.y, stepMax);
+        if (gDst !== null){
           // Ensure destination is not hazardous at the standing Y
           const keyG = `${gxCur},${gzNew}`;
           const pyStand = gDst - 0.02;
@@ -414,11 +459,9 @@ function moveAndCollide(dt){
       // Attempt step-up onto small ledges (half-step or <=0.5 rise)
       let stepped = false;
       if (!outX){
-        const gSrc = groundHeightAt(p.x, p.z);
-        const gDst = groundHeightAt(newX, p.z);
         const stepMax = 0.5 + 1e-3;
-        const rise = gDst - p.y;
-        if (rise > 1e-6 && rise <= stepMax){
+        const gDst = landingHeightAt(newX, p.z, p.y, stepMax);
+        if (gDst !== null){
           const keyG = `${gxNew},${gzCur}`;
           const pyStand = gDst - 0.02;
           const hazardous = isHazardAtCellY(gxNew, gzCur, pyStand) || (map[mapIdx(gxNew,gzCur)] === TILE.BAD);

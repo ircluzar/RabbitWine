@@ -40,7 +40,7 @@ function applyHeightData(heightData, replace=true){
       // Normalize: only integer, positive heights
       const norm = spans
         .filter(s => s && typeof s.b === 'number' && typeof s.h === 'number')
-        .map(s => ({ b: (s.b|0), h: Math.max(0, s.h|0), t: ((s.t|0)||0) }))
+        .map(s => ({ b: (s.b|0), h: Math.max(0, Number(s.h) || 0), t: ((s.t|0)||0) }))
         .filter(s => s.h > 0);
       if (norm.length){ columnSpans.set(key, norm); }
       // Derive topmost span for legacy maps
@@ -119,7 +119,10 @@ if (typeof window !== 'undefined'){
     const key = `${gx},${gy}`;
     if (Array.isArray(spans)) {
       columnSpans.set(key, spans
-        .map(s=>({ b:(s.b|0), h:(s.h|0), ...( (s.t|0)===1 ? { t:1 } : {}) }))
+        .map(s=>{
+          const tVal = ((s.t|0)||0);
+          return { b:(s.b|0), h: Math.max(0, Number(s.h) || 0), t: (tVal===1 ? 1 : (tVal===2 ? 2 : 0)) };
+        })
         .filter(s=>s.h>0));
     }
     // Derive topmost for legacy maps

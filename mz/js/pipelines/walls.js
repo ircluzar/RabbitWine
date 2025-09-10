@@ -381,6 +381,125 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     gl.uniform1f(wall_u_height, 1.0);
     gl.uniform1f(wall_u_yBase, 0.0);
   }
+  // Floating/elevated fences from spans (t==2) at arbitrary heights (no collision, visuals only)
+  {
+    // Collect per-level sets of cells that contain a fence span at that exact level
+    const hasSpanData = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.entries === 'function' && columnSpans.size > 0;
+    if (hasSpanData){
+      /** @type {Map<number, Set<string>>} */
+      const byLevel = new Map();
+      for (const [key, spans] of columnSpans.entries()){
+        if (!Array.isArray(spans)) continue;
+        const [gxStr, gyStr] = key.split(',');
+        const gx = parseInt(gxStr, 10)|0, gy = parseInt(gyStr, 10)|0;
+        if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
+        for (const s of spans){
+          if (!s) continue; const h=(s.h|0); const b=(s.b|0); const t=((s.t|0)||0);
+          if (h<=0 || t!==2) continue; // only fence marker spans
+          for (let lv=b; lv<b+h; lv++){
+            if (lv === 0) continue; // ground-level fence handled by map-based pass above
+            let set = byLevel.get(lv); if (!set){ set = new Set(); byLevel.set(lv, set); }
+            set.add(`${gx},${gy}`);
+          }
+        }
+      }
+      if (byLevel.size){
+        // Helper: check if a cell has a fence at given level (t==2 covering that y)
+        const hasFenceAtLevel = (x,y,lv)=>{
+          const k = `${x},${y}`;
+          const sp = columnSpans.get(k);
+          if (!Array.isArray(sp)) return false;
+          for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (t===2 && h>0 && lv>=b && lv<b+h) return true; }
+          return false;
+        };
+        // Helper: check if a cell has any solid span covering level (for visual connectivity into columns)
+        const hasSolidAtLevel = (x,y,lv)=>{
+          const k = `${x},${y}`;
+          const sp = columnSpans.get(k);
+          if (Array.isArray(sp)){
+            for (const s of sp){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (h>0 && t!==2 && lv>=b && lv<b+h) return true; }
+          }
+          // Fallback: ground-only map tiles if lv==0 (already skipped above), keep false by default
+          return false;
+        };
+        // Shared color/style for fences
+        let baseCol2 = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+        const bright2 = [Math.min(1, baseCol2[0]*1.35+0.05), Math.min(1, baseCol2[1]*1.35+0.05), Math.min(1, baseCol2[2]*1.35+0.05)];
+        gl.uniform3fv(wall_u_color, new Float32Array(bright2));
+        gl.uniform1f(wall_u_alpha, 0.95);
+        gl.uniform1i(wall_u_glitterMode, 0);
+        gl.uniform3f(wall_u_voxCount, 5.0, 5.0, 5.0);
+        gl.uniform1f(wall_u_height, 1.5);
+        // For determinism, draw levels in ascending order
+        const levels = Array.from(byLevel.keys()).sort((a,b)=>a-b);
+        for (const lv of levels){
+          const set = byLevel.get(lv); if (!set || set.size===0) continue;
+          // Pack instances for this level
+          const pts = Array.from(set);
+          const inst = new Float32Array(pts.length*2);
+          for (let i=0;i<pts.length;i++){ const [sx,sy]=pts[i].split(',').map(n=>parseInt(n,10)); inst[i*2+0]=sx; inst[i*2+1]=sy; }
+          gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+          gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+          // Offset all rails by base level
+          gl.uniform1f(wall_u_yBase, lv * 1.0);
+          const count = pts.length;
+          const dirs = [ [0,-1], [1,0], [0,1], [-1,0] ];
+          for (let d=0; d<dirs.length; d++){
+            const dx = dirs[d][0], dy = dirs[d][1];
+            const railInstances = new Float32Array(inst.length);
+            let have = 0;
+            for (let i=0;i<count;i++){
+              const gx = inst[i*2+0]|0; const gy = inst[i*2+1]|0;
+              const nx = gx + dx, ny = gy + dy;
+              if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
+              // Connect to fence at same level, or to any solid span at same level
+              if (hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv)){
+                railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++;
+              }
+            }
+            if (!have) continue;
+            const arr = railInstances.subarray(0, have*2);
+            gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+            gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+            for (const vy of [1,2]){
+              // Depth pre-pass
+              gl.disable(gl.BLEND);
+              gl.colorMask(false, false, false, false);
+              gl.depthMask(true);
+              gl.depthFunc(gl.LESS);
+              if (dx === 1 && dy === 0){ // East
+                for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              } else if (dx === -1 && dy === 0){ // West
+                for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              } else if (dx === 0 && dy === -1){ // North
+                for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              } else if (dx === 0 && dy === 1){ // South
+                for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              }
+              // Color pass
+              gl.colorMask(true, true, true, true);
+              gl.enable(gl.BLEND);
+              gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+              gl.depthMask(false);
+              gl.depthFunc(gl.LEQUAL);
+              if (dx === 1 && dy === 0){
+                for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              } else if (dx === -1 && dy === 0){
+                for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              } else if (dx === 0 && dy === -1){
+                for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              } else if (dx === 0 && dy === 1){
+                for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+              }
+            }
+          }
+        }
+        // Restore defaults for subsequent draws
+        gl.uniform1f(wall_u_height, 1.0);
+        gl.uniform1f(wall_u_yBase, 0.0);
+      }
+    }
+  }
   // Third: BAD walls
   if (wallsBad.length){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
@@ -501,29 +620,50 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   if (!hasSpans && (!extraColumns || extraColumns.length === 0)) return;
 
   // Group pillars/columns by their integer height AND base so we can render stacked from bottom
-  /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>}>>} */
+  /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>,t?:number}>>} */
   const groups = new Map();
+  // Fractional-height groups (e.g., half-step slabs): key `${hFrac}@${b}@${t}`
+  /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>,t?:number}>>} */
+  const fracGroups = new Map();
   if (hasSpans){
     for (const [key, spans] of columnSpans.entries()){
       if (!Array.isArray(spans)) continue;
       const [gx,gy] = key.split(',').map(n=>parseInt(n,10));
       if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
       for (const s of spans){
-        if (!s) continue; const h=(s.h|0); const b=(s.b|0); const t=(s.t|0)||0; if (h<=0) continue;
-        const gkey = `${h}@${b}@${t}`;
-        let g = groups.get(gkey); if (!g){ g = { h, b, pts: [] }; groups.set(gkey, g); }
-        g.pts.push([gx, gy]);
+        if (!s) continue; const hF = Number(s.h)||0; const b=(s.b|0); const t=(s.t|0)||0; if (hF<=0) continue; if (t===2) continue; // skip fence spans
+        const full = Math.floor(hF);
+        const frac = hF - full;
+        if (full > 0){
+          const gkey = `${full}@${b}@${t}`;
+          let g = groups.get(gkey); if (!g){ g = { h: full, b, pts: [], t }; groups.set(gkey, g); }
+          g.pts.push([gx, gy]);
+        }
+        if (frac > 0){
+          const fkey = `${frac.toFixed(3)}@${b+full}@${t}`;
+          let fg = fracGroups.get(fkey); if (!fg){ fg = { h: frac, b: b+full, pts: [], t }; fracGroups.set(fkey, fg); }
+          fg.pts.push([gx, gy]);
+        }
       }
     }
   } else {
     for (const c of extraColumns){
-      const h = (c && typeof c.h === 'number') ? (c.h|0) : 0; // visible height
+      const hF = (c && typeof c.h === 'number') ? Number(c.h) : 0; // visible height
       const b = (c && typeof c.b === 'number') ? (c.b|0) : 0; // base offset from ground
-      if (h <= 0) continue;
-      const key = `${h}@${b}`;
-      let g = groups.get(key);
-      if (!g){ g = { h, b, pts: [] }; groups.set(key, g); }
-      g.pts.push([c.x, c.y]);
+      if (hF <= 0) continue;
+      const full = Math.floor(hF);
+      const frac = hF - full;
+      if (full > 0){
+        const key = `${full}@${b}`;
+        let g = groups.get(key);
+        if (!g){ g = { h: full, b, pts: [] }; groups.set(key, g); }
+        g.pts.push([c.x, c.y]);
+      }
+      if (frac > 0){
+        const fkey = `${frac.toFixed(3)}@${b+full}@0`;
+        let fg = fracGroups.get(fkey); if (!fg){ fg = { h: frac, b: b+full, pts: [] }; fracGroups.set(fkey, fg); }
+        fg.pts.push([c.x, c.y]);
+      }
     }
   }
   if (groups.size === 0) return;
@@ -580,7 +720,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
           isBad = spans.some(s => s && ((s.b|0)===bKey) && ((s.h|0)===hKey) && (((s.t|0)||0)===tKey) && tKey===1);
         }
       }
-      if (!isBad){
+  if (!isBad){
         // Fallback: ground-level map BAD with no spans
         isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false;
       }
@@ -657,6 +797,91 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.uniform1f(wall_u_alpha, 0.65);
   gl.uniform1i(wall_u_glitterMode, 0);
   gl.uniform3f(wall_u_voxCount, 1,1,1);
+  }
+
+  // Render fractional-height slabs
+  if (fracGroups.size){
+    // Ensure correct program/state
+    gl.bindVertexArray(wallVAO);
+    gl.useProgram(wallProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+    gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+    gl.uniform1f(wall_u_scale, 1.0);
+    gl.uniform1f(wall_u_now, state.nowSec || (performance.now()/1000));
+    gl.uniform1i(wall_u_useFade, (viewKind === 'bottom') ? 1 : 0);
+    gl.uniform1f(wall_u_playerY, state.player ? (state.player.y || 0.0) : 0.0);
+    gl.uniform1f(wall_u_fadeBand, 5.0);
+    gl.uniform1f(wall_u_minAlpha, 0.15);
+    gl.uniform3f(wall_u_voxCount, 1,1,1);
+    const keysF = Array.from(fracGroups.keys()).sort((ka,kb)=>{
+      const [ha,ba] = ka.split('@'); const [hb,bb] = kb.split('@');
+      const fa = parseFloat(ha)||0; const fb = parseFloat(hb)||0; const baI = parseInt(ba,10)||0; const bbI = parseInt(bb,10)||0;
+      if (baI!==bbI) return baI-bbI; if (fa!==fb) return fa-fb; return 0;
+    });
+    for (const k of keysF){
+      const g = fracGroups.get(k); if (!g || !g.pts || !g.pts.length) continue;
+      // Split into BAD vs normal using t from grouping when spans present
+      const normPts = []; const badPts = [];
+      for (let i=0;i<g.pts.length;i++){
+        const gx = g.pts[i][0], gy = g.pts[i][1];
+        let isBad = false;
+        // Look up span to confirm hazard if possible
+        if ((typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function'){
+          const sk = `${gx},${gy}`; const sp = columnSpans.get(sk);
+          if (Array.isArray(sp)){
+            isBad = sp.some(s=> s && ((s.t|0)===1) && Math.abs((s.b|0) - (g.b|0))<=0 && Math.abs((Number(s.h)||0) - g.h) < 1e-3);
+          }
+        }
+        if (!isBad){ isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false; }
+        (isBad ? badPts : normPts).push([gx,gy]);
+      }
+      const drawFrac = (pts, color, alpha, glitter)=>{
+        if (!pts || !pts.length) return;
+        const offs = new Float32Array(pts.length * 2);
+        for (let i=0;i<pts.length;i++){ offs[i*2+0]=pts[i][0]; offs[i*2+1]=pts[i][1]; }
+        gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+        gl.bufferData(gl.ARRAY_BUFFER, offs, gl.DYNAMIC_DRAW);
+        gl.uniform3fv(wall_u_color, new Float32Array(color));
+        gl.uniform1f(wall_u_alpha, alpha);
+        gl.uniform1i(wall_u_glitterMode, glitter ? 1 : 0);
+        gl.uniform1f(wall_u_height, g.h);
+        // Depth pre-pass
+        gl.disable(gl.BLEND);
+        gl.colorMask(false,false,false,false);
+        gl.depthMask(true);
+        gl.depthFunc(gl.LEQUAL);
+        gl.uniform1f(wall_u_yBase, (g.b * 1.0) + EPS);
+        gl.uniform3f(wall_u_voxOff, 0,0,0);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
+        // Color pass
+        gl.colorMask(true,true,true,true);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        gl.depthFunc(gl.LEQUAL);
+        gl.uniform1f(wall_u_yBase, (g.b * 1.0) + EPS);
+        gl.uniform3f(wall_u_voxOff, 0,0,0);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
+        // Outline
+        const yCenter = g.b + g.h*0.5;
+        const offs2 = new Float32Array(pts.length * 2);
+        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
+        const outCol = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
+        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, outCol);
+        // Restore program/VAO after outlines
+        gl.bindVertexArray(wallVAO);
+        gl.useProgram(wallProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      };
+      const wallColF = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+      drawFrac(normPts, wallColF, 0.65, false);
+      drawFrac(badPts, [0.85, 0.10, 0.12], 0.85, true);
+    }
+    // Reset height
+    gl.uniform1f(wall_u_height, 1.0);
   }
 
   // Restore defaults
