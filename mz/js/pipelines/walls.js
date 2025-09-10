@@ -1,27 +1,26 @@
 /**
  * Wall and column rendering pipeline with voxel-based geometry.
- * Handles instanced rendering of walls, tall columns, and their wireframe outlines with advanced voxel subdivision.
- * Exports: WALL_VS, WALL_FS shaders, wallProgram, wallVAO, drawWalls(), drawTallColumns() functions.
- * Dependencies: createProgram() from gl-core.js, gl context, map data. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ * Handles instanced rendering of walls, tall columns, fences, and their wireframe outlines with voxel subdivision.
+ * Exports: WALL_VS, WALL_FS shaders, wallProgram, wallVAO, drawWalls(), drawTallColumns().
  */
 
-// Walls pipeline (extracted from scene.js) + outline helpers and tall columns
+// Shaders
 const WALL_VS = `#version 300 es
 layout(location=0) in vec3 a_pos;
 layout(location=1) in vec2 a_off;
 uniform mat4 u_mvp;
-uniform vec2 u_originXZ;
+uniform vec2 u_origin;
 uniform float u_scale;
 uniform float u_height;
-uniform vec3 u_voxCount; // voxel counts per axis (x,y,z)
-uniform vec3 u_voxOff;   // current voxel offset (x,y,z) in [0..count-1]
-uniform float u_yBase;   // additional vertical base offset (stacking)
+uniform vec3 u_voxCount;
+uniform vec3 u_voxOff;
+uniform float u_yBase;
 out float v_worldY;
 void main(){
   float lx = (a_pos.x + u_voxOff.x) / u_voxCount.x;
   float ly = (a_pos.y + u_voxOff.y) / u_voxCount.y;
   float lz = (a_pos.z + u_voxOff.z) / u_voxCount.z;
-  vec2 xz = (vec2(lx, lz) + a_off + u_originXZ) * u_scale;
+  vec2 xz = (vec2(lx, lz) + a_off + u_origin) * u_scale;
   float y = ly * u_height + u_yBase;
   v_worldY = y;
   gl_Position = u_mvp * vec4(xz.x, y, xz.y, 1.0);
@@ -30,101 +29,91 @@ const WALL_FS = `#version 300 es
 precision mediump float;
 uniform vec3 u_color;
 uniform float u_alpha;
-uniform int u_useHeightFade; // 1 = enable fade
-uniform float u_playerY;     // player vertical position
-uniform float u_fadeBand;    // band size (e.g., 5.0 blocks)
-uniform float u_minAlpha;    // minimum alpha multiplier
-uniform int u_glitterMode;   // 1 = glitter (for BAD)
-uniform float u_now;         // time
+uniform int u_useFade;
+uniform float u_playerY;
+uniform float u_fadeBand;
+uniform float u_minAlpha;
+uniform int u_glitterMode;
+uniform float u_now;
 in float v_worldY;
 out vec4 outColor;
 void main(){
   float aMul = 1.0;
-  if (u_useHeightFade == 1) {
+  if (u_useFade == 1) {
     float d = abs(v_worldY - u_playerY);
-    // Linear fade: 0..fadeBand maps to 1..minAlpha, clamp below
     float t = clamp(d / max(0.0001, u_fadeBand), 0.0, 1.0);
     aMul = mix(1.0, max(0.0, u_minAlpha), t);
   }
   vec4 col = vec4(u_color, u_alpha * aMul);
   if (u_glitterMode == 1) {
     float n = fract(sin(v_worldY * 47.0 + u_now * 83.0) * 43758.5453);
-    float sparkle = step(0.985, n);
-    col.rgb += sparkle * 0.40;
-    col.a = min(1.0, col.a + sparkle * 0.25);
+    col.rgb += vec3(n) * 0.15;
+    col.a = min(1.0, col.a + n * 0.10);
   }
   outColor = col;
 }`;
-const wallProgram = createProgram(WALL_VS, WALL_FS);
-const wall_u_mvp = gl.getUniformLocation(wallProgram, 'u_mvp');
-const wall_u_origin = gl.getUniformLocation(wallProgram, 'u_originXZ');
-const wall_u_scale = gl.getUniformLocation(wallProgram, 'u_scale');
-const wall_u_height = gl.getUniformLocation(wallProgram, 'u_height');
-const wall_u_color = gl.getUniformLocation(wallProgram, 'u_color');
-const wall_u_alpha = gl.getUniformLocation(wallProgram, 'u_alpha');
-const wall_u_voxCount = gl.getUniformLocation(wallProgram, 'u_voxCount');
-const wall_u_voxOff = gl.getUniformLocation(wallProgram, 'u_voxOff');
-const wall_u_yBase = gl.getUniformLocation(wallProgram, 'u_yBase');
-const wall_u_useFade = gl.getUniformLocation(wallProgram, 'u_useHeightFade');
-const wall_u_playerY = gl.getUniformLocation(wallProgram, 'u_playerY');
-const wall_u_fadeBand = gl.getUniformLocation(wallProgram, 'u_fadeBand');
-const wall_u_minAlpha = gl.getUniformLocation(wallProgram, 'u_minAlpha');
-const wall_u_glitterMode = gl.getUniformLocation(wallProgram, 'u_glitterMode');
-const wall_u_now = gl.getUniformLocation(wallProgram, 'u_now');
 
-const wallVAO = gl.createVertexArray();
-// Separate base and jitter position buffers so bottom view can render steady geometry
-const wallVBO_PosBase = gl.createBuffer();
-const wallVBO_PosJitter = gl.createBuffer();
-const wallVBO_Inst = gl.createBuffer();
-// Base and current geometry for a unit cube (36 vertices)
+// Program and uniforms
+const wallProgram = createProgram(WALL_VS, WALL_FS);
+const wall_u_mvp       = gl.getUniformLocation(wallProgram, 'u_mvp');
+const wall_u_origin    = gl.getUniformLocation(wallProgram, 'u_origin');
+const wall_u_scale     = gl.getUniformLocation(wallProgram, 'u_scale');
+const wall_u_height    = gl.getUniformLocation(wallProgram, 'u_height');
+const wall_u_voxCount  = gl.getUniformLocation(wallProgram, 'u_voxCount');
+const wall_u_voxOff    = gl.getUniformLocation(wallProgram, 'u_voxOff');
+const wall_u_yBase     = gl.getUniformLocation(wallProgram, 'u_yBase');
+const wall_u_useFade   = gl.getUniformLocation(wallProgram, 'u_useFade');
+const wall_u_playerY   = gl.getUniformLocation(wallProgram, 'u_playerY');
+const wall_u_fadeBand  = gl.getUniformLocation(wallProgram, 'u_fadeBand');
+const wall_u_minAlpha  = gl.getUniformLocation(wallProgram, 'u_minAlpha');
+const wall_u_color     = gl.getUniformLocation(wallProgram, 'u_color');
+const wall_u_alpha     = gl.getUniformLocation(wallProgram, 'u_alpha');
+const wall_u_glitterMode = gl.getUniformLocation(wallProgram, 'u_glitterMode');
+const wall_u_now       = gl.getUniformLocation(wallProgram, 'u_now');
+
+// Geometry: unit cube
 const wallBasePosData = new Float32Array([
-  // Unit cube 0..1
-  // Front
   0,0,1,  1,0,1,  1,1,1,
   0,0,1,  1,1,1,  0,1,1,
-  // Back
   1,0,0,  0,0,0,  0,1,0,
   1,0,0,  0,1,0,  1,1,0,
-  // Left
   0,0,0,  0,0,1,  0,1,1,
   0,0,0,  0,1,1,  0,1,0,
-  // Right
   1,0,1,  1,0,0,  1,1,0,
   1,0,1,  1,1,0,  1,1,1,
-  // Top
   0,1,1,  1,1,1,  1,1,0,
   0,1,1,  1,1,0,  0,1,0,
-  // Bottom
   0,0,0,  1,0,0,  1,0,1,
   0,0,0,  1,0,1,  0,0,1,
 ]);
 let wallCurrPosData = new Float32Array(wallBasePosData);
 
+// VAO/VBO setup
+const wallVAO = gl.createVertexArray();
 gl.bindVertexArray(wallVAO);
-// Initialize base positions (static) and jitter positions (dynamic)
+const wallVBO_PosBase = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosBase);
 gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.STATIC_DRAW);
-gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
-gl.bufferData(gl.ARRAY_BUFFER, wallCurrPosData, gl.DYNAMIC_DRAW);
 gl.enableVertexAttribArray(0);
-// Default pointer; will be repointed per view before drawing
 gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+const wallVBO_PosJitter = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
+gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.DYNAMIC_DRAW);
+const wallVBO_Inst = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
-gl.bufferData(gl.ARRAY_BUFFER, instWall, gl.DYNAMIC_DRAW);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(0), gl.DYNAMIC_DRAW);
 gl.enableVertexAttribArray(1);
 gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
 gl.vertexAttribDivisor(1, 1);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-// Persistent, bounded vertex jitter around base polygon points (applies to all wall cubes)
+// Top-view jitter
 let wallJitterLastTickSec = 0.0;
 const wallJitterPeriod = 0.016;
-const wallVertexProb = 0.10;   // 10% of unique corners per tick
-const wallVertexStep = 0.01;   // step size
-const wallVertexMax = 0.03;    // max abs offset from base per axis
-// Build unique corner groups for cube (0/1 coords)
+const wallVertexProb = 0.10;
+const wallVertexStep = 0.01;
+const wallVertexMax = 0.03;
 const wallCornerGroups = new Map();
 for (let i=0;i<wallBasePosData.length;i+=3){
   const x=wallBasePosData[i+0], y=wallBasePosData[i+1], z=wallBasePosData[i+2];
@@ -175,6 +164,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   let wallsNormal = new Float32Array(0);
   let wallsBad = new Float32Array(0);
   let wallsHalf = new Float32Array(0);
+  let wallsFence = new Float32Array(0);
   if (data.length) {
     // Prefer spans when available regardless of feature flag
     const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function' && columnSpans.size > 0;
@@ -183,6 +173,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const filteredNormal = [];
   const filteredBad = [];
   const filteredHalf = [];
+  const filteredFence = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
@@ -208,16 +199,19 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         }
       }
       if (!hideGroundWall){
-        if (isBadTile) filteredBad.push(x,y);
+        const cell = (typeof map !== 'undefined' && typeof mapIdx==='function' && typeof TILE!=='undefined') ? map[mapIdx(x,y)] : 0;
+        if (cell === TILE.FENCE) filteredFence.push(x,y);
+        else if (isBadTile) filteredBad.push(x,y);
         else if (isHalfTile) filteredHalf.push(x,y);
         else filteredNormal.push(x,y);
       }
     }
-    wallsNormal = new Float32Array(filteredNormal);
-    wallsBad = new Float32Array(filteredBad);
-    wallsHalf = new Float32Array(filteredHalf);
+  wallsNormal = new Float32Array(filteredNormal);
+  wallsBad = new Float32Array(filteredBad);
+  wallsHalf = new Float32Array(filteredHalf);
+  wallsFence = new Float32Array(filteredFence);
   }
-  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length;
+  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length;
   if (!totalCount) return;
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
@@ -314,6 +308,79 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     // Reset height uniform back to 1.0 for subsequent draws
     gl.uniform1f(wall_u_height, 1.0);
   }
+  // Fences (post + rails) with brightened level color and adjacency-based rails
+  if (wallsFence.length){
+    // Instance buffer holds (x,y) grid coords
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+    gl.bufferData(gl.ARRAY_BUFFER, wallsFence, gl.DYNAMIC_DRAW);
+    // Color
+    let baseCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+    const bright = [Math.min(1, baseCol[0]*1.35+0.05), Math.min(1, baseCol[1]*1.35+0.05), Math.min(1, baseCol[2]*1.35+0.05)];
+    gl.uniform3fv(wall_u_color, new Float32Array(bright));
+    gl.uniform1f(wall_u_alpha, 0.95);
+    gl.uniform1i(wall_u_glitterMode, 0);
+    // Use a 5x5x5 voxel grid inside each tile to compose small cubes
+    gl.uniform3f(wall_u_voxCount, 5.0, 5.0, 5.0);
+  // Rails only (no posts). Set overall fence height scale for rail layers
+  gl.uniform1f(wall_u_height, 1.5);
+  gl.uniform1f(wall_u_yBase, 0.0);
+    // Rails per direction (N,E,S,W) at two heights
+    const count = wallsFence.length/2;
+    const dirs = [ [0,-1], [1,0], [0,1], [-1,0] ];
+    for (let d=0; d<dirs.length; d++){
+      const dx = dirs[d][0], dy = dirs[d][1];
+      const railInstances = new Float32Array(wallsFence.length);
+      let have = 0;
+      for (let i=0;i<count;i++){
+        const gx = wallsFence[i*2+0]|0;
+        const gy = wallsFence[i*2+1]|0;
+        const nx = gx + dx, ny = gy + dy;
+        if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
+        const neighbor = map[mapIdx(nx,ny)];
+        const connect = (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF);
+        if (connect){ railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++; }
+      }
+      if (!have) continue;
+      const arr = railInstances.subarray(0, have*2);
+      gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+      gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+  // Two rail heights (approx layers 1 and 2 -> around 0.6 and 0.9..1.2 of total 1.5)
+  for (const vy of [1,2]){
+        // Depth pre-pass
+        gl.disable(gl.BLEND);
+        gl.colorMask(false, false, false, false);
+        gl.depthMask(true);
+        gl.depthFunc(gl.LESS);
+        if (dx === 1 && dy === 0){ // East: from center (2) to edge (4)
+          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        } else if (dx === -1 && dy === 0){ // West: from center (2) to edge (0)
+          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        } else if (dx === 0 && dy === -1){ // North: from center (2) to edge (0)
+          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        } else if (dx === 0 && dy === 1){ // South: from center (2) to edge (4)
+          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        }
+        // Color pass
+        gl.colorMask(true, true, true, true);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        gl.depthFunc(gl.LEQUAL);
+        if (dx === 1 && dy === 0){
+          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        } else if (dx === -1 && dy === 0){
+          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        } else if (dx === 0 && dy === -1){
+          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        } else if (dx === 0 && dy === 1){
+          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, have); }
+        }
+      }
+    }
+    // Restore defaults for subsequent draws
+    gl.uniform1f(wall_u_height, 1.0);
+    gl.uniform1f(wall_u_yBase, 0.0);
+  }
   // Third: BAD walls
   if (wallsBad.length){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
@@ -347,6 +414,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       }
     }
   }
+  // Reset voxel count to default for other passes
+  gl.uniform3f(wall_u_voxCount, 2.0, 2.0, 2.0);
   gl.depthMask(true);
   gl.disable(gl.BLEND);
   gl.depthFunc(gl.LESS);
@@ -363,6 +432,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     drawOutlinesForTileArray(mvp, wallsHalf, 0.25, 1.0, wallOutline);
   }
   if (wallsBad.length) drawOutlinesForTileArray(mvp, wallsBad, 0.5, 1.02, [1.0,0.2,0.2]);
+  // Fences: no cube outlines; rails-only visuals should not show block outlines
 }
 
 function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale, color){

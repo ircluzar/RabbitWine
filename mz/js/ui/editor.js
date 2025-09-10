@@ -171,6 +171,21 @@
         return false;
       }
     } catch(_){ }
+    try {
+      if ((state.editor.blockSlot|0) === 6){
+        if (y !== 0) return false; // fences are ground tiles
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          const idx = mapIdx(gx, gy);
+          if (map[idx] !== TILE.FENCE){
+            map[idx] = TILE.FENCE;
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.FENCE }]); } catch(_){ }
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
     let spans = __getSpans(gx,gy);
     // check if block exists at y
     for (const s of spans){ if (y >= (s.b|0) && y < (s.b|0)+(s.h|0)) return false; }
@@ -200,6 +215,21 @@
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
           const idx = mapIdx(gx, gy);
           if (map[idx] === TILE.HALF){
+            map[idx] = TILE.OPEN;
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
+    try {
+      if ((state.editor.blockSlot|0) === 6){
+        if (y !== 0) return false;
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          const idx = mapIdx(gx, gy);
+          if (map[idx] === TILE.FENCE){
             map[idx] = TILE.OPEN;
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
             try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
@@ -806,6 +836,14 @@
     3: { name: 'ITEM', color: '#f5d938' },
   4: { name: 'P-ITEM', color: '#b04bff' },
   5: { name: 'HALF', get color(){ return getBaseBlockColor(); } },
+  6: { name: 'FENCE', get color(){
+      try {
+        const c = (window.getLevelWallColorRGB && window.getLevelWallColorRGB()) || [0.06,0.45,0.48];
+        const b = [Math.min(1, c[0]*1.35+0.05), Math.min(1, c[1]*1.35+0.05), Math.min(1, c[2]*1.35+0.05)];
+        const hex = '#'+b.map(v=>('0'+Math.round(v*255).toString(16)).slice(-2)).join('');
+        return hex;
+      } catch(_){ return '#9bdfe9'; }
+    } },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;

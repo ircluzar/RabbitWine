@@ -41,8 +41,10 @@ function groundHeightAt(x, z){
   const cellValGH = map[mapIdx(gx,gz)];
   const isGroundWall = (cellValGH === TILE.WALL);
   const isGroundHalf = (cellValGH === TILE.HALF);
+  const isGroundFence = (cellValGH === TILE.FENCE);
   if (isGroundWall){ spanList.push({ b: 0, h: 1 }); }
   else if (isGroundHalf){ spanList.push({ b: 0, h: 0.5 }); }
+  else if (isGroundFence){ /* fences are thin; do not affect ground height */ }
   if (spanList.length){
     const py = state.player ? state.player.y : 0.0;
     let best = 0.0;
@@ -114,8 +116,9 @@ function ceilingHeightAt(x, z, py){
   // Include ground wall/half tile as span if present (WALL/HALF). BAD uses spans.
   {
     const cv = map[mapIdx(gx,gz)];
-    if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
-    else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
+  if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+  else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
+  else if (cv === TILE.FENCE){ /* handled in lateral collision as thin rods */ }
   }
   if (!spanList.length) return Infinity;
   let best = Infinity;
@@ -204,9 +207,24 @@ function moveAndCollide(dt){
   }
   const stepX = dirX * p.speed * dt;
   const stepZ = dirZ * p.speed * dt;
+  // Track collision source for wall-jump logic
+  let lastHitFenceRail = false; // set by isWallAt() on its last evaluation
+  let lastHitSolidSpan = false; // set when solid block/span caused return
+  let lastHitFenceRailDir = null; // 'N'|'S'|'E'|'W' when rail hit
+  let collidedFenceRail = false; // aggregated when a move is finally blocked
+  let collidedSolidSpan = false; // aggregated when a move is finally blocked
+  // Resolution targets to pop out of thin rail voxels toward center
+  let lastResolveX = null; // world X to snap to if X is blocked by a rail
+  let lastResolveZ = null; // world Z to snap to if Z is blocked by a rail
   let newX = p.x + stepX;
   let newZ = p.z + stepZ;
   function isWallAt(wx, wz){
+    // reset per-call flag
+    lastHitFenceRail = false;
+  lastHitSolidSpan = false;
+  lastHitFenceRailDir = null;
+  lastResolveX = null;
+  lastResolveZ = null;
     const gx = Math.floor(wx + MAP_W*0.5);
     const gz = Math.floor(wz + MAP_H*0.5);
     if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true;
@@ -239,13 +257,13 @@ function moveAndCollide(dt){
       else if (cell === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
       else if (cell === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
     }
-    if (Array.isArray(spanList) && spanList.length){
+  if (Array.isArray(spanList) && spanList.length){
       const py = state.player.y;
       for (const s of spanList){
         if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
         const top = b + h;
         // Only collide laterally when player Y lies strictly within the span slab
-        if (py >= b && py <= top - 0.02) return true;
+    if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; return true; }
       }
       return false;
     }
@@ -269,12 +287,16 @@ function moveAndCollide(dt){
     // If below the base or above the top, not colliding laterally.
     if (py < b) return false;
     if (py > top - 0.02) return false;
-      return true;
+  lastHitSolidSpan = true; return true;
     }
   // No spans/columns: fallback to ground wall tile only (WALL, HALF and ground-level BAD)
   const cv2 = map[mapIdx(gx,gz)];
-  if (cv2 === TILE.WALL || cv2 === TILE.BAD){ return state.player.y <= 1.0 - 0.02; }
-  if (cv2 === TILE.HALF){ return state.player.y <= 0.5 - 0.02; }
+  if (cv2 === TILE.WALL || cv2 === TILE.BAD){ if (state.player.y <= 1.0 - 0.02) { lastHitSolidSpan = true; return true; } else { return false; } }
+  if (cv2 === TILE.HALF){ if (state.player.y <= 0.5 - 0.02) { lastHitSolidSpan = true; return true; } else { return false; } }
+  if (cv2 === TILE.FENCE){
+    // Fence collision temporarily disabled for aesthetic work; fences are non-collidable for now.
+    return false;
+  }
     return false;
   }
   let hitWall = false;
@@ -309,6 +331,7 @@ function moveAndCollide(dt){
     if (!isWallAt(p.x, newZ)) {
       p.z = newZ;
     } else {
+  const zRailHit = lastHitFenceRail; const zSolidHit = lastHitSolidSpan; const zRailDir = lastHitFenceRailDir;
       // Attempt step-up onto small ledges (half-step or <=0.5 rise)
       let stepped = false;
       if (!outZ){
@@ -334,7 +357,26 @@ function moveAndCollide(dt){
           }
         }
       }
-      if (!stepped){ newZ = p.z; hitWall = true; }
+      if (!stepped){
+        newZ = p.z; hitWall = true; collidedFenceRail = collidedFenceRail || zRailHit; collidedSolidSpan = collidedSolidSpan || zSolidHit;
+        // Try a tiny nudge along the rail tangent to reduce sticking if the block was a rail
+        if (zRailHit && zRailDir){
+          const nudge = 0.02;
+          if (zRailDir==='N' || zRailDir==='S'){
+            const sign = Math.sign(((p.x + MAP_W*0.5) - Math.floor(p.x + MAP_W*0.5) - 0.5) || 1);
+            const tryX = p.x + sign * nudge;
+            if (!isWallAt(tryX, p.z)) p.x = tryX;
+          } else if (zRailDir==='E' || zRailDir==='W'){
+            const sign = Math.sign(((p.z + MAP_H*0.5) - Math.floor(p.z + MAP_H*0.5) - 0.5) || 1);
+            const tryZ = p.z + sign * nudge;
+            if (!isWallAt(p.x, tryZ)) p.z = tryZ;
+          }
+          // If we have a safe resolution target along Z, snap to it
+          if (lastResolveZ !== null && !isWallAt(p.x, lastResolveZ)) {
+            p.z = lastResolveZ;
+          }
+        }
+      }
       // Only trigger damage/ball mode if we attempted to go outside the grid
       if (outZ){
         // normal points inward (opposite attempted step)
@@ -368,6 +410,7 @@ function moveAndCollide(dt){
     if (!isWallAt(newX, p.z)) {
       p.x = newX;
     } else {
+  const xRailHit = lastHitFenceRail; const xSolidHit = lastHitSolidSpan; const xRailDir = lastHitFenceRailDir;
       // Attempt step-up onto small ledges (half-step or <=0.5 rise)
       let stepped = false;
       if (!outX){
@@ -390,7 +433,25 @@ function moveAndCollide(dt){
           }
         }
       }
-      if (!stepped){ newX = p.x; hitWall = true; }
+      if (!stepped){
+        newX = p.x; hitWall = true; collidedFenceRail = collidedFenceRail || xRailHit; collidedSolidSpan = collidedSolidSpan || xSolidHit;
+        if (xRailHit && xRailDir){
+          const nudge = 0.02;
+          if (xRailDir==='N' || xRailDir==='S'){
+            const sign = Math.sign(((p.x + MAP_W*0.5) - Math.floor(p.x + MAP_W*0.5) - 0.5) || 1);
+            const tryX = p.x + sign * nudge;
+            if (!isWallAt(tryX, p.z)) p.x = tryX;
+          } else if (xRailDir==='E' || xRailDir==='W'){
+            const sign = Math.sign(((p.z + MAP_H*0.5) - Math.floor(p.z + MAP_H*0.5) - 0.5) || 1);
+            const tryZ = p.z + sign * nudge;
+            if (!isWallAt(p.x, tryZ)) p.z = tryZ;
+          }
+          // If we have a safe resolution target along X, snap to it
+          if (lastResolveX !== null && !isWallAt(lastResolveX, p.z)) {
+            p.x = lastResolveX;
+          }
+        }
+      }
       // Only trigger damage/ball mode if we attempted to go outside the grid
       if (outX){
         const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
@@ -416,6 +477,11 @@ function moveAndCollide(dt){
 
   // If dash hit a wall this frame, cancel any movement and jump immediately
   if (hitWall && wasDashing){
+    // If collided with a fence rail (and not a solid span), disallow wall-jump response
+    if (collidedFenceRail && !collidedSolidSpan){
+      p.isDashing = false;
+      const base2 = 3.0; const max2 = base2 * seamSpeedFactor(); if (p.speed > max2) p.speed = max2; return;
+    }
     if (!state.player.canWallJump) {
       // If walljump disabled, just cancel dash and stop against wall
       state.player.isDashing = false;
@@ -445,6 +511,8 @@ function moveAndCollide(dt){
   }
 
   if (p.canWallJump && !p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
+    // Prevent wall-jump only if the blocking contact was a fence rail, and not a solid span
+    if (collidedFenceRail && !collidedSolidSpan) { return; }
     p.angle += Math.PI;
     p.vy = 8.5;
     p.grounded = false;
