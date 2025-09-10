@@ -171,23 +171,26 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // Filter out ground-level wall tiles that are represented as tall columns.
   // Important: do NOT hide a ground wall if only elevated spans (base>0) exist there.
   let data = instWall;
-  // Split instances into normal vs BAD, and hide ground cube if spans include base=0
+  // Split instances into normal vs BAD vs HALF, and hide ground cube if spans include base=0
   let wallsNormal = new Float32Array(0);
   let wallsBad = new Float32Array(0);
+  let wallsHalf = new Float32Array(0);
   if (data.length) {
     // Prefer spans when available regardless of feature flag
     const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function' && columnSpans.size > 0;
     const hasHeights = (typeof columnHeights !== 'undefined') && columnHeights && typeof columnHeights.has === 'function' && columnHeights.size > 0;
     const hasBases = (typeof columnBases !== 'undefined') && columnBases && typeof columnBases.get === 'function' && columnBases.size >= 0; // may be 0 size
-    const filteredNormal = [];
-    const filteredBad = [];
+  const filteredNormal = [];
+  const filteredBad = [];
+  const filteredHalf = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
       let hideGroundWall = false;
       // Determine if the ground cube itself should be flagged BAD: either map says BAD for ground level
       // or spans report a hazardous span at base 0.
-      let isBadTile = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(x,y)] === TILE.BAD) : false;
+  let isBadTile = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(x,y)] === TILE.BAD) : false;
+  const isHalfTile = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(x,y)] === TILE.HALF) : false;
       if (hasSpans){
         const spans = columnSpans.get(key);
         if (Array.isArray(spans)){
@@ -205,14 +208,16 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         }
       }
       if (!hideGroundWall){
-        const isBad = isBadTile;
-        if (isBad) filteredBad.push(x,y); else filteredNormal.push(x,y);
+        if (isBadTile) filteredBad.push(x,y);
+        else if (isHalfTile) filteredHalf.push(x,y);
+        else filteredNormal.push(x,y);
       }
     }
     wallsNormal = new Float32Array(filteredNormal);
     wallsBad = new Float32Array(filteredBad);
+    wallsHalf = new Float32Array(filteredHalf);
   }
-  const totalCount = wallsNormal.length + wallsBad.length;
+  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length;
   if (!totalCount) return;
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
@@ -269,7 +274,47 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   }
   }
-  // Second: BAD walls
+  // Second: half-step walls (half height)
+  if (wallsHalf.length){
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+    gl.bufferData(gl.ARRAY_BUFFER, wallsHalf, gl.DYNAMIC_DRAW);
+    const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+    gl.uniform3fv(wall_u_color, new Float32Array(wallCol));
+    gl.uniform1f(wall_u_alpha, 0.65);
+    gl.uniform1i(wall_u_glitterMode, 0);
+    gl.uniform1f(wall_u_height, 0.5);
+    gl.uniform1f(wall_u_yBase, 0.0);
+    // Depth pre-pass
+    gl.disable(gl.BLEND);
+    gl.colorMask(false, false, false, false);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsHalf.length/2);
+        }
+      }
+    }
+    // Blended color pass
+    gl.colorMask(true, true, true, true);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsHalf.length/2);
+        }
+      }
+    }
+    // Reset height uniform back to 1.0 for subsequent draws
+    gl.uniform1f(wall_u_height, 1.0);
+  }
+  // Third: BAD walls
   if (wallsBad.length){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsBad, gl.DYNAMIC_DRAW);
@@ -311,6 +356,11 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   if (wallsNormal.length){
     const wallOutline = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
     drawOutlinesForTileArray(mvp, wallsNormal, 0.5, 1.0, wallOutline);
+  }
+  if (wallsHalf.length){
+    const wallOutline = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
+    // For half-step, center is 0.25 high
+    drawOutlinesForTileArray(mvp, wallsHalf, 0.25, 1.0, wallOutline);
   }
   if (wallsBad.length) drawOutlinesForTileArray(mvp, wallsBad, 0.5, 1.02, [1.0,0.2,0.2]);
 }

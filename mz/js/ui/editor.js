@@ -155,6 +155,22 @@
   function addBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
     const gx=vs.gx, gy=vs.gy, y=vs.base|0; const key=`${gx},${gy}`;
+    // HALF tile placement (slot 5): set ground tile only, no voxel span
+    try {
+      if ((state.editor.blockSlot|0) === 5){
+        if (y !== 0) return false; // ground-only
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          const idx = mapIdx(gx, gy);
+          if (map[idx] !== TILE.HALF){
+            map[idx] = TILE.HALF;
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.HALF }]); } catch(_){ }
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
     let spans = __getSpans(gx,gy);
     // check if block exists at y
     for (const s of spans){ if (y >= (s.b|0) && y < (s.b|0)+(s.h|0)) return false; }
@@ -177,6 +193,22 @@
   function removeBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
     const gx=vs.gx, gy=vs.gy, y=vs.base|0;
+    // HALF tile removal when slot 5 is active: clear ground tile to OPEN
+    try {
+      if ((state.editor.blockSlot|0) === 5){
+        if (y !== 0) return false;
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          const idx = mapIdx(gx, gy);
+          if (map[idx] === TILE.HALF){
+            map[idx] = TILE.OPEN;
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
     let spans = __getSpans(gx,gy);
     let changed=false; const out=[];
     for (const s of spans){
@@ -772,7 +804,8 @@
     1: { name: 'BASE', get color(){ return getBaseBlockColor(); } },
     2: { name: 'BAD', color: '#d92b2f' },
     3: { name: 'ITEM', color: '#f5d938' },
-    4: { name: 'P-ITEM', color: '#b04bff' },
+  4: { name: 'P-ITEM', color: '#b04bff' },
+  5: { name: 'HALF', get color(){ return getBaseBlockColor(); } },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;

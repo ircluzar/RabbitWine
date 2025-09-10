@@ -37,10 +37,12 @@ function groundHeightAt(x, z){
       if (h > 0) spanList.push({ b: b|0, h: h|0 });
     }
   } catch(_){ }
-  // Always include ground wall as span if map tile is WALL (BAD handled via spans)
+  // Always include ground wall/half as span if map tile is WALL/HALF (BAD handled via spans)
   const cellValGH = map[mapIdx(gx,gz)];
   const isGroundWall = (cellValGH === TILE.WALL);
+  const isGroundHalf = (cellValGH === TILE.HALF);
   if (isGroundWall){ spanList.push({ b: 0, h: 1 }); }
+  else if (isGroundHalf){ spanList.push({ b: 0, h: 0.5 }); }
   if (spanList.length){
     const py = state.player ? state.player.y : 0.0;
     let best = 0.0;
@@ -72,7 +74,9 @@ function groundHeightAt(x, z){
     const py = state.player ? state.player.y : 0.0;
     if (py >= b + h - 1e-6) return b + h;
   }
-  return isGroundWall ? 1.0 : 0.0;
+  if (isGroundWall) return 1.0;
+  if (isGroundHalf) return 0.5;
+  return 0.0;
 }
 
 /**
@@ -107,10 +111,11 @@ function ceilingHeightAt(x, z, py){
       if (h > 0) spanList.push({ b: b|0, h: h|0 });
     }
   } catch(_){ }
-  // Include ground wall tile as span if present (WALL only). BAD uses spans.
+  // Include ground wall/half tile as span if present (WALL/HALF). BAD uses spans.
   {
     const cv = map[mapIdx(gx,gz)];
     if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+    else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
   }
   if (!spanList.length) return Infinity;
   let best = Infinity;
@@ -227,10 +232,11 @@ function moveAndCollide(dt){
         if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
     } catch(_){ }
-    // Always include ground-level WALL/BAD tile as solid span so lateral collision matches ground height logic
+    // Always include ground-level WALL/HALF/BAD tile as solid span so lateral collision matches ground height logic
     {
       const cell = map[mapIdx(gx,gz)];
       if (cell === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+      else if (cell === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
       else if (cell === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
     }
     if (Array.isArray(spanList) && spanList.length){
@@ -265,9 +271,10 @@ function moveAndCollide(dt){
     if (py > top - 0.02) return false;
       return true;
     }
-  // No spans/columns: fallback to ground wall tile only (WALL and ground-level BAD)
+  // No spans/columns: fallback to ground wall tile only (WALL, HALF and ground-level BAD)
   const cv2 = map[mapIdx(gx,gz)];
   if (cv2 === TILE.WALL || cv2 === TILE.BAD){ return state.player.y <= 1.0 - 0.02; }
+  if (cv2 === TILE.HALF){ return state.player.y <= 0.5 - 0.02; }
     return false;
   }
   let hitWall = false;
@@ -302,7 +309,32 @@ function moveAndCollide(dt){
     if (!isWallAt(p.x, newZ)) {
       p.z = newZ;
     } else {
-      newZ = p.z; hitWall = true;
+      // Attempt step-up onto small ledges (half-step or <=0.5 rise)
+      let stepped = false;
+      if (!outZ){
+        const gSrc = groundHeightAt(p.x, p.z);
+        const gDst = groundHeightAt(p.x, newZ);
+        const stepMax = 0.5 + 1e-3;
+        const rise = gDst - p.y;
+        if (rise > 1e-6 && rise <= stepMax){
+          // Ensure destination is not hazardous at the standing Y
+          const keyG = `${gxCur},${gzNew}`;
+          const pyStand = gDst - 0.02;
+          const hazardous = isHazardAtCellY(gxCur, gzNew, pyStand) || (map[mapIdx(gxCur,gzNew)] === TILE.BAD);
+          // Ensure no ceiling immediately at stand height
+          const cH = ceilingHeightAt(p.x, newZ, gDst - 0.05);
+          const blockedAbove = isFinite(cH) && (cH <= gDst + 0.02);
+          if (!hazardous && !blockedAbove){
+            // Check lateral clearance at new Y by temporarily adjusting Y
+            const oldY = p.y; p.y = gDst;
+            const blockedAtNewY = isWallAt(p.x, newZ);
+            if (!blockedAtNewY){ p.z = newZ; p.vy = 0.0; p.grounded = true; stepped = true; }
+            p.y = stepped ? p.y : oldY;
+            if (stepped){ p.y = gDst; }
+          }
+        }
+      }
+      if (!stepped){ newZ = p.z; hitWall = true; }
       // Only trigger damage/ball mode if we attempted to go outside the grid
       if (outZ){
         // normal points inward (opposite attempted step)
@@ -336,7 +368,29 @@ function moveAndCollide(dt){
     if (!isWallAt(newX, p.z)) {
       p.x = newX;
     } else {
-      newX = p.x; hitWall = true;
+      // Attempt step-up onto small ledges (half-step or <=0.5 rise)
+      let stepped = false;
+      if (!outX){
+        const gSrc = groundHeightAt(p.x, p.z);
+        const gDst = groundHeightAt(newX, p.z);
+        const stepMax = 0.5 + 1e-3;
+        const rise = gDst - p.y;
+        if (rise > 1e-6 && rise <= stepMax){
+          const keyG = `${gxNew},${gzCur}`;
+          const pyStand = gDst - 0.02;
+          const hazardous = isHazardAtCellY(gxNew, gzCur, pyStand) || (map[mapIdx(gxNew,gzCur)] === TILE.BAD);
+          const cH = ceilingHeightAt(newX, p.z, gDst - 0.05);
+          const blockedAbove = isFinite(cH) && (cH <= gDst + 0.02);
+          if (!hazardous && !blockedAbove){
+            const oldY = p.y; p.y = gDst;
+            const blockedAtNewY = isWallAt(newX, p.z);
+            if (!blockedAtNewY){ p.x = newX; p.vy = 0.0; p.grounded = true; stepped = true; }
+            p.y = stepped ? p.y : oldY;
+            if (stepped){ p.y = gDst; }
+          }
+        }
+      }
+      if (!stepped){ newX = p.x; hitWall = true; }
       // Only trigger damage/ball mode if we attempted to go outside the grid
       if (outX){
         const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
@@ -671,6 +725,7 @@ function runBallMode(dt){
     {
       const cv = map[mapIdx(gx,gz)];
       if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+  else if (cv === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
       else if (cv === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
     }
     if (spanList.length){

@@ -56,6 +56,8 @@ const ghosts = new Map();
 
 // Map diff client-side: maintain adds/removes relative to base v0
 const mpMap = { version: 0, adds: new Set(), removes: new Set() };
+// Ground tile overrides (e.g., HALF) replicated by server
+const mpTiles = { version: 0, set: new Map() }; // key: "gx,gy" -> value (tile id)
 window.mpGetMapVersion = ()=> mpMap.version;
 function mpApplyFullMap(version, ops){
   mpMap.adds.clear(); mpMap.removes.clear();
@@ -84,6 +86,44 @@ function mpApplyOps(version, ops){
   mpMap.version = version|0;
   try { console.log('[MP] map_ops applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
   try { __mp_rebuildWorldFromDiff(); } catch(_){ }
+}
+
+// Apply full tile overrides list
+function mpApplyFullTiles(version, tiles){
+  try { mpTiles.set.clear(); } catch(_){ mpTiles.set = new Map(); }
+  if (Array.isArray(tiles)){
+    for (const t of tiles){
+      if (!t || typeof t.k !== 'string') continue;
+      const v = (typeof t.v === 'number') ? t.v|0 : null;
+      if (v === null) continue;
+      mpTiles.set.set(t.k, v);
+    }
+  }
+  mpTiles.version = version|0;
+  // Apply into runtime map and rebuild
+  try {
+    if (typeof window.mapIdx === 'function' && typeof window.map !== 'undefined'){
+      for (const [k,v] of mpTiles.set.entries()){
+        const [gx,gy] = k.split(',').map(n=>parseInt(n,10));
+        if (!Number.isFinite(gx)||!Number.isFinite(gy)) continue;
+        try { window.map[window.mapIdx(gx,gy)] = v; } catch(_){ }
+      }
+      if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
+    }
+  } catch(_){ }
+}
+
+function mpApplyTileOps(version, ops){
+  for (const op of (ops||[])){
+    if (!op || typeof op.k !== 'string') continue;
+    const v = (typeof op.v === 'number') ? op.v|0 : null;
+    if (v === null) continue;
+    mpTiles.set.set(op.k, v);
+    // Patch runtime
+    try { const parts = op.k.split(','); const gx=parts[0]|0, gy=parts[1]|0; if (typeof window.mapIdx==='function' && window.map){ window.map[window.mapIdx(gx,gy)] = v; } } catch(_){ }
+  }
+  mpTiles.version = version|0;
+  try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
 }
 
 // Rebuild columnSpans from current diff each time (simple; can be optimized later)
@@ -366,6 +406,13 @@ function mpEnsureWS(nowMs){
         return;
       }
       mpApplyOps(nextV, msg.ops||[]);
+    } else if (t === 'tiles_full'){
+      mpApplyFullTiles(msg.version||0, msg.tiles||[]);
+    } else if (t === 'tile_ops'){
+      const nextV = msg.version|0;
+      if (nextV <= mpTiles.version){ return; }
+      if (nextV !== mpTiles.version + 1){ try { mpWS.send(JSON.stringify({ type:'tiles_sync', have: mpTiles.version })); } catch(_){ } return; }
+      mpApplyTileOps(nextV, msg.ops||[]);
     }
   };
   const startCooldown = (ev)=>{
@@ -704,6 +751,24 @@ window.mpSendItemOps = function(ops){
     return true;
   } catch(_){ return false; }
 };
+
+// Send tile edit ops: array of {op:'set', gx,gy,v}
+window.mpSendTileOps = function(ops){
+  try {
+    if (!mpWS || mpWS.readyState !== WebSocket.OPEN) return false;
+    if (!Array.isArray(ops) || !ops.length) return false;
+    const clean=[];
+    for (const o of ops){
+      if (!o || o.op!=='set') continue;
+      const gx = o.gx|0, gy = o.gy|0; const v = o.v|0;
+      const k = gx+','+gy; clean.push({ op:'set', k, v });
+      if (clean.length >= 256) break;
+    }
+    if (!clean.length) return false;
+    mpWS.send(JSON.stringify({ type:'tile_edit', ops: clean }));
+    return true;
+  } catch(_){ return false; }
+}
 
 // Manual force sync (in case initial items_full missed, or for debugging)
 window.mpForceItemsSync = function(){

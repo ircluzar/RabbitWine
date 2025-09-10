@@ -128,6 +128,17 @@ level_diffs: Dict[str, MapDiff] = {}
 # per-connection known version (single level at a time per connection)
 ws_map_version: Dict[WebSocketServerProtocol, int] = {}
 
+# ---- Ground tile overrides (e.g., HALF) persistence -----------------------
+@dataclass
+class TileDiff:
+    version: int
+    # map of "gx,gy" -> tile value (int)
+    set: Dict[str, int]
+
+# level_id -> TileDiff
+level_tiles: Dict[str, TileDiff] = {}
+ws_tiles_version: Dict[WebSocketServerProtocol, int] = {}
+
 MAX_OPS_PER_BATCH = 512
 KEY_MAX_LEN = 64
 
@@ -158,6 +169,16 @@ def db_init(path: str):
             kind INTEGER NOT NULL,
             payload TEXT,
             PRIMARY KEY(level,gx,gy,kind,payload)
+        )
+        """
+    )
+    _db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS map_tiles(
+            level TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            tiles TEXT NOT NULL,
+            updated INTEGER NOT NULL
         )
         """
     )
@@ -192,6 +213,22 @@ def db_load_all():
         print(f"[DB] Loaded items for {len(level_items)} levels")
     except Exception as e:
         print(f"[DB] Failed to load items: {e}")
+    # Load tiles
+    try:
+        cur3 = _db_conn.execute("SELECT level,version,tiles FROM map_tiles")
+        for level, version, tiles_json in cur3.fetchall():
+            d = json.loads(tiles_json) if tiles_json else []
+            mapping: Dict[str,int] = {}
+            if isinstance(d, list):
+                for rec in d:
+                    if isinstance(rec, dict):
+                        k = rec.get('k'); v = rec.get('v')
+                        if isinstance(k, str) and isinstance(v, int):
+                            mapping[k] = v
+            level_tiles[level] = TileDiff(version=int(version or 1), set=mapping)
+        print(f"[DB] Loaded tiles for {len(level_tiles)} levels")
+    except Exception as e:
+        print(f"[DB] Failed to load tiles: {e}")
 
 def db_persist_level(level: str, diff: MapDiff):
     if not _db_conn: return
@@ -206,6 +243,18 @@ def db_persist_level(level: str, diff: MapDiff):
         _db_conn.commit()
     except Exception as e:
         print(f"[DB] Persist error for level '{level}': {e}")
+
+def db_persist_tiles(level: str, tiles: TileDiff):
+    if not _db_conn: return
+    try:
+        enc = [{ 'k': k, 'v': int(v) } for k,v in tiles.set.items()]
+        _db_conn.execute(
+            "REPLACE INTO map_tiles(level, version, tiles, updated) VALUES (?,?,?,?)",
+            (level, tiles.version, json.dumps(enc), now_ms())
+        )
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] Persist tiles error for level '{level}': {e}")
 
 def db_upsert_item(level: str, item: MapItem):
     if not _db_conn: return
@@ -235,6 +284,13 @@ def get_mapdiff(level: str) -> MapDiff:
         md = MapDiff(version=1, adds={}, removes=set())
         level_diffs[level] = md
     return md
+
+def get_tilediff(level: str) -> TileDiff:
+    td = level_tiles.get(level)
+    if not td:
+        td = TileDiff(version=1, set={})
+        level_tiles[level] = td
+    return td
 
 def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Apply edit ops; supports hazard flag via 't':1 on add ops.
@@ -329,6 +385,41 @@ async def broadcast_map_ops(level: str, ops: List[Dict[str, Any]], version: int)
         ws_to_id.pop(ws, None)
         ws_meta.pop(ws, None)
         ws_map_version.pop(ws, None)
+
+async def broadcast_tile_ops(level: str, ops: List[Dict[str, Any]], version: int) -> None:
+    if not ops:
+        return
+    payload = json.dumps({ "type":"tile_ops", "version": version, "ops": ops }, separators=(",",":"))
+    dead: Set[WebSocketServerProtocol] = set()
+    awaitables = []
+    for ws in list(connections):
+        meta = ws_meta.get(ws)
+        if not meta:
+            continue
+        _channel, _level = meta
+        if _level != level:
+            continue
+        awaitables.append(ws.send(payload))
+    results = await asyncio.gather(*awaitables, return_exceptions=True)
+    idx = 0
+    for ws in list(connections):
+        meta = ws_meta.get(ws)
+        if not meta:
+            continue
+        if meta[1] != level:
+            continue
+        if idx >= len(results):
+            break
+        res = results[idx]; idx += 1
+        if isinstance(res, Exception):
+            dead.add(ws)
+        else:
+            ws_tiles_version[ws] = version
+    for ws in dead:
+        connections.discard(ws)
+        ws_to_id.pop(ws, None)
+        ws_meta.pop(ws, None)
+        ws_tiles_version.pop(ws, None)
 
 async def broadcast_item_ops(level: str, ops: List[Dict[str, Any]]) -> None:
     if not ops:
@@ -472,6 +563,9 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 # Track map version for this connection (per level)
                 md = get_mapdiff(level)
                 ws_map_version[ws] = md.version
+                # Track tiles version too
+                td = get_tilediff(level)
+                ws_tiles_version[ws] = td.version
                 # Send initial snapshot (others only) filtered by channel & level
                 ts = now_ms()
                 await sweep(ts)
@@ -497,6 +591,13 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         "ops": full_ops,
                         "baseVersion": 0
                     }, separators=(",", ":")))
+                    # Send full tiles
+                    try:
+                        td = get_tilediff(level)
+                        tiles_list = [{ 'k': k, 'v': v } for (k,v) in td.set.items()]
+                        await ws.send(json.dumps({ "type":"tiles_full", "version": td.version, "tiles": tiles_list }, separators=(",",":")))
+                    except Exception as e:
+                        print(f"[WS] failed send tiles_full: {e}")
                     # Send full items for this level
                     try:
                         items_list = [
@@ -695,6 +796,26 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     pass
                 continue
 
+            elif typ == "tiles_sync":
+                have = data.get("have")
+                try:
+                    have = int(have)
+                except Exception:
+                    have = -1
+                try:
+                    meta = ws_meta.get(ws)
+                    if not meta:
+                        continue
+                    _channel, lvl = meta
+                    td = get_tilediff(lvl)
+                    if have != td.version:
+                        tiles_list = [{ 'k': k, 'v': v } for (k,v) in td.set.items()]
+                        await ws.send(json.dumps({ "type":"tiles_full", "version": td.version, "tiles": tiles_list }, separators=(",",":")))
+                        ws_tiles_version[ws] = td.version
+                except Exception:
+                    pass
+                continue
+
             elif typ == "list_levels":
                 # Respond with list of known level IDs & versions
                 try:
@@ -702,6 +823,46 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     await ws.send(json.dumps({"type":"levels","levels":listing}, separators=(",",":")))
                 except Exception:
                     pass
+                continue
+
+            elif typ == "tile_edit":
+                # { type:'tile_edit', ops:[{op:'set', k:'gx,gy', v:int}] }
+                ops_in = data.get("ops")
+                if isinstance(ops_in, list):
+                    meta = ws_meta.get(ws)
+                    if not meta:
+                        continue
+                    _channel, lvl = meta
+                    valid_ops: List[Dict[str, Any]] = []
+                    async with lock:
+                        td = get_tilediff(lvl)
+                        last: Dict[str, int] = {}
+                        for e in ops_in[:MAX_OPS_PER_BATCH]:
+                            if not isinstance(e, dict):
+                                continue
+                            if e.get('op') != 'set':
+                                continue
+                            k = e.get('k')
+                            v = e.get('v')
+                            if not isinstance(k, str) or not isinstance(v, int) or len(k)==0 or len(k)>KEY_MAX_LEN:
+                                continue
+                            last[k] = int(v)
+                        if last:
+                            for k, v in last.items():
+                                prev = td.set.get(k)
+                                if prev != v:
+                                    td.set[k] = v
+                                    valid_ops.append({ 'op':'set', 'k': k, 'v': v })
+                            if valid_ops:
+                                td.version += 1
+                                db_persist_tiles(lvl, td)
+                    if valid_ops:
+                        try:
+                            for op in valid_ops:
+                                print(f"[TILE] level={lvl} set {op.get('k')} -> {op.get('v')} v{get_tilediff(lvl).version}")
+                        except Exception:
+                            pass
+                        await broadcast_tile_ops(lvl, valid_ops, get_tilediff(lvl).version)
                 continue
 
             # Optional: handle client ping messages

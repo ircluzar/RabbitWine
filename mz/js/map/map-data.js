@@ -7,7 +7,8 @@
 
 // Tilemap representation (moved from scene.js)
 // BAD: hazardous tile that damages on contact
-const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4 };
+// HALF: half-height base block (0.5 tall) used for step-ups
+const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
 
