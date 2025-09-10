@@ -26,19 +26,17 @@ function groundHeightAt(x, z){
   } catch(_){ spans = null; }
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // If no explicit spans, synthesize from columnHeights/bases
-  if (!spanList.length){
-    try {
-      if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
-        let b = 0; let h = columnHeights.get(key) || 0;
-        try {
-          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
-          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
-        } catch(_){ }
-        if (h > 0) spanList.push({ b: b|0, h: h|0 });
-      }
-    } catch(_){ }
-  }
+  // Always also synthesize from columnHeights/bases so default map blocks are respected even with server spans present
+  try {
+    if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+      let b = 0; let h = columnHeights.get(key) || 0;
+      try {
+        if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+        else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+      } catch(_){ }
+      if (h > 0) spanList.push({ b: b|0, h: h|0 });
+    }
+  } catch(_){ }
   // Always include ground wall as span if map tile is WALL (BAD handled via spans)
   const cellValGH = map[mapIdx(gx,gz)];
   const isGroundWall = (cellValGH === TILE.WALL);
@@ -98,21 +96,21 @@ function ceilingHeightAt(x, z, py){
   } catch(_){ spans = null; }
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  if (!spanList.length){
-    // Synthesize from column data
-    try {
-      if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
-        let b = 0; let h = columnHeights.get(key) || 0;
-        try {
-          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
-          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
-        } catch(_){ }
-        if (h > 0) spanList.push({ b: b|0, h: h|0 });
-      }
-    } catch(_){ }
+  // Always also synthesize from column data so default map blocks are respected
+  try {
+    if (typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+      let b = 0; let h = columnHeights.get(key) || 0;
+      try {
+        if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
+        else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
+      } catch(_){ }
+      if (h > 0) spanList.push({ b: b|0, h: h|0 });
+    }
+  } catch(_){ }
   // Include ground wall tile as span if present (WALL only). BAD uses spans.
-  const cv = map[mapIdx(gx,gz)];
-  if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+  {
+    const cv = map[mapIdx(gx,gz)];
+    if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
   }
   if (!spanList.length) return Infinity;
   let best = Infinity;
@@ -216,10 +214,10 @@ function moveAndCollide(dt){
             : null;
     } catch(_){ spans = null; }
     /** @type {Array<{b:number,h:number}>} */
-    let spanList = Array.isArray(spans) ? spans : [];
-    if (!Array.isArray(spanList) || spanList.length === 0){
-      spanList = [];
-      // synthesize from columnHeights/bases if present
+    let spanList = [];
+    if (Array.isArray(spans) && spans.length) spanList = spans.slice();
+    // Always merge in default-map columns
+    try {
       if (columnHeights.has(key)){
         let b = 0; let h = columnHeights.get(key) || 0;
         try {
@@ -228,9 +226,12 @@ function moveAndCollide(dt){
         } catch(_){ }
         if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
-  // and include ground wall if map says WALL; for BAD, rely on spans unless none exist
-  const cell = map[mapIdx(gx,gz)];
-  if (cell === TILE.WALL || (cell === TILE.BAD && (!columnHeights.has(key)))){ spanList.push({ b: 0, h: 1 }); }
+    } catch(_){ }
+    // Always include ground-level WALL/BAD tile as solid span so lateral collision matches ground height logic
+    {
+      const cell = map[mapIdx(gx,gz)];
+      if (cell === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+      else if (cell === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
     }
     if (Array.isArray(spanList) && spanList.length){
       const py = state.player.y;
@@ -654,8 +655,9 @@ function runBallMode(dt){
             : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
             : null;
     } catch(_){ spans = null; }
-    let spanList = Array.isArray(spans) ? spans : [];
-    if (!spanList.length){
+    let spanList = Array.isArray(spans) && spans.length ? spans.slice() : [];
+    // Merge in default-map columns
+    try {
       if (columnHeights.has(key)){
         let b = 0; let h = columnHeights.get(key) || 0;
         try {
@@ -664,7 +666,12 @@ function runBallMode(dt){
         } catch(_){ }
         if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
-      if (map[mapIdx(gx,gz)] === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+    } catch(_){ }
+    // Include ground wall/bad to match lateral collision with ground height logic
+    {
+      const cv = map[mapIdx(gx,gz)];
+      if (cv === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
+      else if (cv === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
     }
     if (spanList.length){
       const py = p.y;
