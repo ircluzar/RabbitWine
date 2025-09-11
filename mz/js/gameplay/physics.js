@@ -590,21 +590,33 @@ function moveAndCollide(dt){
                 }
               } catch(_){ }
             }
-            if (portalHit){
+      if (portalHit){
               const keyB = `${gxCell},${gzCell}`;
               let dest = null;
               try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(keyB) || null; } catch(_){ }
-              if (typeof dest === 'string' && dest){
-                // Exit on opposite side using current movement direction
-                let exDirX = Math.sin(p.angle), exDirZ = -Math.cos(p.angle);
-                if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ exDirX = p._dashDirX; exDirZ = p._dashDirZ; }
-                const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
-                const cx = gxCell - MAP_W*0.5 + 0.5;
-                const cz = gzCell - MAP_H*0.5 + 0.5;
-                const EXIT_DIST = 0.52;
-                const outX = cx + exDirX * EXIT_DIST;
-                const outZ2 = cz + exDirZ * EXIT_DIST;
+      if (typeof dest === 'string' && dest){
+  // Exit positioning: if this portal is on a world border, spawn at the opposite wall cell in the other map.
+  // Keep player's facing; only use the wall inward normal if player's incoming dir points outward.
+  let exDirX = (p.isDashing && typeof p._dashDirX==='number') ? p._dashDirX : Math.sin(p.angle);
+  let exDirZ = (p.isDashing && typeof p._dashDirZ==='number') ? p._dashDirZ : -Math.cos(p.angle);
+    let exGx = gxCell, exGz = gzCell;
+  let nX = 0, nZ = 0; // inward normal
+  if (gxCell === 0){ nX = -1; nZ = 0; exGx = (MAP_W|0) - 1; }
+  else if (gxCell === (MAP_W|0)-1){ nX = 1; nZ = 0; exGx = 0; }
+  else if (gzCell === 0){ nX = 0; nZ = -1; exGz = (MAP_H|0) - 1; }
+  else if (gzCell === (MAP_H|0)-1){ nX = 0; nZ = 1; exGz = 0; }
+  // If this was a border portal, ensure we move inward. Use player's dir unless it faces outward or is near-tangent.
+  if (nX!==0 || nZ!==0){ const d = exDirX*nX + exDirZ*nZ; if (d <= 0.05){ exDirX = nX; exDirZ = nZ; } }
+        const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
+        const cx = exGx - MAP_W*0.5 + 0.5;
+        const cz = exGz - MAP_H*0.5 + 0.5;
+        const EXIT_DIST = 0.52;
+        const outX = cx + exDirX * EXIT_DIST;
+        const outZ2 = cz + exDirZ * EXIT_DIST;
+                const prevAngle = p.angle;
                 try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+                // Restore facing to preserve direction across sample map rebuilds (e.g., ROOT)
+                p.angle = prevAngle;
                 p.x = outX; p.z = outZ2;
                 try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
                 p._portalCooldownUntil = nowSec + 0.6;
@@ -739,20 +751,30 @@ function moveAndCollide(dt){
                 }
               } catch(_){ }
             }
-            if (portalHit){
+      if (portalHit){
               const keyB = `${gxCell},${gzCell}`;
               let dest = null;
               try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(keyB) || null; } catch(_){ }
-              if (typeof dest === 'string' && dest){
-                let exDirX = Math.sin(p.angle), exDirZ = -Math.cos(p.angle);
-                if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ exDirX = p._dashDirX; exDirZ = p._dashDirZ; }
-                const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
-                const cx = gxCell - MAP_W*0.5 + 0.5;
-                const cz = gzCell - MAP_H*0.5 + 0.5;
-                const EXIT_DIST = 0.52;
-                const outX2 = cx + exDirX * EXIT_DIST;
-                const outZ3 = cz + exDirZ * EXIT_DIST;
+      if (typeof dest === 'string' && dest){
+  // Keep player's facing; only use inward normal at border if player facing is outward or tangent
+  let exDirX = (p.isDashing && typeof p._dashDirX==='number') ? p._dashDirX : Math.sin(p.angle);
+  let exDirZ = (p.isDashing && typeof p._dashDirZ==='number') ? p._dashDirZ : -Math.cos(p.angle);
+  let exGx = gxCell, exGz = gzCell;
+  let nX = 0, nZ = 0;
+  if (gxCell === 0){ nX = -1; nZ = 0; exGx = (MAP_W|0) - 1; }
+  else if (gxCell === (MAP_W|0)-1){ nX = 1; nZ = 0; exGx = 0; }
+  else if (gzCell === 0){ nX = 0; nZ = -1; exGz = (MAP_H|0) - 1; }
+  else if (gzCell === (MAP_H|0)-1){ nX = 0; nZ = 1; exGz = 0; }
+  if (nX!==0 || nZ!==0){ const d = exDirX*nX + exDirZ*nZ; if (d <= 0.05){ exDirX = nX; exDirZ = nZ; } }
+        const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
+        const cx = exGx - MAP_W*0.5 + 0.5;
+        const cz = exGz - MAP_H*0.5 + 0.5;
+        const EXIT_DIST = 0.52;
+        const outX2 = cx + exDirX * EXIT_DIST;
+        const outZ3 = cz + exDirZ * EXIT_DIST;
+                const prevAngle2 = p.angle;
                 try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+                p.angle = prevAngle2;
                 p.x = outX2; p.z = outZ3;
                 try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
                 p._portalCooldownUntil = nowSec + 0.6;
@@ -943,7 +965,9 @@ function moveAndCollide(dt){
               const outX = cx + dirX * EXIT_DIST;
               const outZ = cz + dirZ * EXIT_DIST;
               // Switch level first (clears world and requests server data)
+              const prevAngle3 = p.angle;
               try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+              p.angle = prevAngle3;
               // Teleport player to the computed exit position; preserve angle/speed/velocity
               p.x = outX; p.z = outZ;
               // Maintain current vertical state; ensure not below ground

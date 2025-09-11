@@ -38,6 +38,9 @@ VERBOSE_UPDATES = False
 ALLOWED_STATES = {"good", "ball"}
 LEVEL_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 DEFAULT_DB_FILE = "rw_maps.db"
+MAP_W_DEFAULT = 24
+MAP_H_DEFAULT = 24
+TILE_LEVELCHANGE = 8  # client uses TILE.LEVELCHANGE == 8
 
 @dataclass
 class Player:
@@ -521,6 +524,60 @@ async def broadcast_item_ops(level: str, ops: List[Dict[str, Any]]) -> None:
                 pass
 
 
+def _parse_key_xy(k: str) -> Optional[Tuple[int,int]]:
+    try:
+        parts = k.split(',')
+        if len(parts) != 2:
+            return None
+        gx = int(parts[0]); gy = int(parts[1])
+        return (gx, gy)
+    except Exception:
+        return None
+
+def _is_border_cell(gx: int, gy: int, W: int, H: int) -> bool:
+    return gx == 0 or gy == 0 or gx == (W - 1) or gy == (H - 1)
+
+def _opposite_wall_cell(gx: int, gy: int, W: int, H: int) -> Optional[Tuple[int,int]]:
+    """Return (dx,dy) mirrored to the opposite border given a border cell (gx,gy)."""
+    if gx == 0:
+        return (W - 1, max(0, min(H - 1, gy)))
+    if gx == W - 1:
+        return (0, max(0, min(H - 1, gy)))
+    if gy == 0:
+        return (max(0, min(W - 1, gx)), H - 1)
+    if gy == H - 1:
+        return (max(0, min(W - 1, gx)), 0)
+    return None
+
+def _find_portal_span_height(level: str, gx: int, gy: int) -> Optional[int]:
+    """Inspect current MapDiff for a portal marker (t==5) at this cell and return its integer base Y if found."""
+    try:
+        md = level_diffs.get(level)
+        if not md or not md.adds:
+            return None
+        prefix = f"{gx},{gy},"
+        y_found: Optional[int] = None
+        for key, tflag in md.adds.items():
+            if tflag != 5:
+                continue
+            if not key.startswith(prefix):
+                continue
+            # key format gx,gy,y -> parse y
+            parts = key.split(',')
+            if len(parts) != 3:
+                continue
+            try:
+                y = int(parts[2])
+            except Exception:
+                continue
+            # If multiple, choose the highest (most visible) span
+            if y_found is None or y > y_found:
+                y_found = y
+        return y_found
+    except Exception:
+        return None
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -746,6 +803,45 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     async with lock:
                         net_ops = apply_edit_ops_to_level(lvl, ops_in)
                         new_ver = get_mapdiff(lvl).version
+                        # Cross-mirror elevated portal spans (t:5) at border cells when a portal mapping exists for this cell
+                        cross_map_ops2: List[Tuple[str, List[Dict[str, Any]], int]] = []
+                        if net_ops:
+                            for op in net_ops:
+                                try:
+                                    if not isinstance(op, dict):
+                                        continue
+                                    k = op.get('key'); o = op.get('op')
+                                    if not k or o not in ('add','remove'):
+                                        continue
+                                    parts = k.split(',')
+                                    if len(parts) != 3:
+                                        continue
+                                    gx = int(parts[0]); gy = int(parts[1]); y = int(parts[2])
+                                    W = MAP_W_DEFAULT; H = MAP_H_DEFAULT
+                                    if not _is_border_cell(gx, gy, W, H):
+                                        continue
+                                    # Require existing portal metadata for this source cell
+                                    srcKey = f"{gx},{gy}"
+                                    dest = (level_portals.get(lvl) or {}).get(srcKey)
+                                    if not isinstance(dest, str) or not dest:
+                                        continue
+                                    opp = _opposite_wall_cell(gx, gy, W, H)
+                                    if not opp:
+                                        continue
+                                    dx, dy = opp
+                                    dest_key = f"{dx},{dy},{y}"
+                                    if o == 'add':
+                                        # Mirror only portal marker adds (t:5)
+                                        if (op.get('t')|0) != 5:
+                                            continue
+                                        mops = apply_edit_ops_to_level(dest, [{ 'op':'add', 'key': dest_key, 't': 5 }])
+                                    else:
+                                        # Mirror removal at same y from dest cell
+                                        mops = apply_edit_ops_to_level(dest, [{ 'op':'remove', 'key': dest_key }])
+                                    if mops:
+                                        cross_map_ops2.append((dest, mops, get_mapdiff(dest).version))
+                                except Exception:
+                                    continue
                     if net_ops:
                         # Log each block add/remove (map diff)
                         try:
@@ -758,6 +854,23 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         except Exception:
                             pass
                         await broadcast_map_ops(lvl, net_ops, new_ver)
+                        # Broadcast any mirrored portal span ops to destination level clients
+                        if cross_map_ops2:
+                            try:
+                                by_level: Dict[str, Tuple[int, List[Dict[str, Any]]]] = {}
+                                for lev, ops2, ver2 in cross_map_ops2:
+                                    rec = by_level.get(lev)
+                                    if not rec:
+                                        by_level[lev] = (ver2, list(ops2))
+                                    else:
+                                        by_level[lev] = (ver2, rec[1] + list(ops2))
+                                for lev, (ver2, ops2) in by_level.items():
+                                    await broadcast_map_ops(lev, ops2, ver2)
+                                    try: print(f"[PORTAL] mirrored span ops in level='{lev}' count={len(ops2)} v{ver2}")
+                                    except Exception: pass
+                            except Exception as e:
+                                try: print(f"[PORTAL] mirror broadcast fail: {e}")
+                                except Exception: pass
                 continue
 
             elif typ == "item_edit":
@@ -883,6 +996,10 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         continue
                     _channel, lvl = meta
                     valid_ops: List[Dict[str, Any]] = []
+                    # ops to also broadcast into destination levels (for auto return portals)
+                    cross_portal_ops: List[Tuple[str, Dict[str, Any]]] = []  # list of (level, op) for portal metadata
+                    cross_tile_sets: List[Tuple[str, Dict[str, Any]]] = []   # list of (level, tile_op) for ground tiles
+                    cross_map_ops: List[Tuple[str, List[Dict[str, Any]], int]] = []  # list of (level, ops, version) for map diff (t:5 spans)
                     async with lock:
                         store = level_portals.setdefault(lvl, {})
                         for e in ops_in[:MAX_OPS_PER_BATCH]:
@@ -901,6 +1018,42 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                                     store[k] = dest
                                     valid_ops.append({ 'op':'set', 'k': k, 'dest': dest })
                                     db_portal_set(lvl, k, dest)
+                                    # If portal placed at border, auto-create a return portal at the opposite wall in the dest level
+                                    xy = _parse_key_xy(k)
+                                    if xy:
+                                        gx, gy = xy
+                                        W = MAP_W_DEFAULT; H = MAP_H_DEFAULT
+                                        if _is_border_cell(gx, gy, W, H):
+                                            opp = _opposite_wall_cell(gx, gy, W, H)
+                                            if opp:
+                                                dx, dy = opp
+                                                dk = f"{dx},{dy}"
+                                                # Wire return portal to point back to current level
+                                                dstore = level_portals.setdefault(dest, {})
+                                                if dstore.get(dk) != lvl:
+                                                    dstore[dk] = lvl
+                                                    db_portal_set(dest, dk, lvl)
+                                                    cross_portal_ops.append((dest, { 'op':'set', 'k': dk, 'dest': lvl }))
+                                                # Mirror portal form: if source has an elevated portal span (t:5) at gx,gy, replicate same Y at destination;
+                                                # otherwise ensure ground portal tile in destination.
+                                                src_y = _find_portal_span_height(lvl, gx, gy)
+                                                if src_y is not None:
+                                                    # create/add a portal span marker at (dx,dy,src_y) with t:5
+                                                    add_key = f"{dx},{dy},{src_y}"
+                                                    # Apply via map diff API so versioning/broadcast works consistently
+                                                    net_ops = apply_edit_ops_to_level(dest, [{ 'op':'add', 'key': add_key, 't': 5 }])
+                                                    if net_ops:
+                                                        new_ver = get_mapdiff(dest).version
+                                                        cross_map_ops.append((dest, net_ops, new_ver))
+                                                else:
+                                                    # Ensure a ground portal tile exists at destination cell
+                                                    td = get_tilediff(dest)
+                                                    curv = td.set.get(dk)
+                                                    if curv != TILE_LEVELCHANGE:
+                                                        td.set[dk] = TILE_LEVELCHANGE
+                                                        td.version += 1
+                                                        db_persist_tiles(dest, td)
+                                                        cross_tile_sets.append((dest, { 'op':'set', 'k': dk, 'v': TILE_LEVELCHANGE }))
                             else:
                                 if k in store:
                                     store.pop(k, None)
@@ -914,6 +1067,62 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                             await asyncio.gather(*[w.send(payload) for w in targets], return_exceptions=True)
                         except Exception as e:
                             try: print(f"[PORTAL] broadcast fail: {e}")
+                            except Exception: pass
+                    # Cross-level broadcasts for auto-created return portal and tile and any mirrored portal spans
+                    if cross_portal_ops:
+                        try:
+                            # group by level
+                            per_level: Dict[str,List[Dict[str,Any]]] = {}
+                            for entry in cross_portal_ops:
+                                # cross_portal_ops entries may be (lev, op) for metadata or (lev,) sentinel for map diff already applied
+                                lev = entry[0]
+                                op = (entry[1] if len(entry) > 1 else None)
+                                if op:
+                                    per_level.setdefault(lev, []).append(op)
+                            for lev, ops in per_level.items():
+                                payload = json.dumps({ 'type': 'portal_ops', 'ops': ops }, separators=(",",":"))
+                                targets = [w for w in list(connections) if (ws_meta.get(w) or (None, None))[1] == lev]
+                                await asyncio.gather(*[w.send(payload) for w in targets], return_exceptions=True)
+                                try: print(f"[PORTAL] auto return portal created in level='{lev}' ops={len(ops)}")
+                                except Exception: pass
+                        except Exception as e:
+                            try: print(f"[PORTAL] cross-level broadcast fail: {e}")
+                            except Exception: pass
+                    # Broadcast any map_ops produced by mirroring portal spans (t:5)
+                    if cross_map_ops:
+                        try:
+                            # group by level; versions already computed per dest
+                            per_level_map: Dict[str, Tuple[int, List[Dict[str, Any]]]] = {}
+                            for lev, ops, ver in cross_map_ops:
+                                rec = per_level_map.get(lev)
+                                if not rec:
+                                    per_level_map[lev] = (ver, list(ops))
+                                else:
+                                    per_level_map[lev] = (ver, rec[1] + list(ops))
+                            for lev, (ver, ops) in per_level_map.items():
+                                await broadcast_map_ops(lev, ops, ver)
+                                try: print(f"[PORTAL] mirrored elevated portal span in level='{lev}' count={len(ops)} v{ver}")
+                                except Exception: pass
+                        except Exception as e:
+                            try: print(f"[PORTAL] cross-level map broadcast fail: {e}")
+                            except Exception: pass
+                    if cross_tile_sets:
+                        try:
+                            # group by level and bump version already done above; just broadcast ops
+                            per_level_tiles: Dict[str, Tuple[int, List[Dict[str, Any]]]] = {}
+                            for lev, op in cross_tile_sets:
+                                tdv = get_tilediff(lev).version
+                                rec = per_level_tiles.get(lev)
+                                if not rec:
+                                    per_level_tiles[lev] = (tdv, [op])
+                                else:
+                                    per_level_tiles[lev] = (tdv, rec[1] + [op])
+                            for lev, (ver, ops) in per_level_tiles.items():
+                                await broadcast_tile_ops(lev, ops, ver)
+                                try: print(f"[PORTAL] auto set LEVELCHANGE tile in level='{lev}' count={len(ops)} v{ver}")
+                                except Exception: pass
+                        except Exception as e:
+                            try: print(f"[PORTAL] cross-level tile broadcast fail: {e}")
                             except Exception: pass
                 continue
 
