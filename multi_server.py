@@ -917,6 +917,77 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                             except Exception: pass
                 continue
 
+            elif typ == "level_change":
+                # Client is switching levels; update meta and send full state for the requested level
+                # { type:'level_change', level: 'LEVEL_NAME' }
+                try:
+                    new_level = data.get("level") or "ROOT"
+                    if not isinstance(new_level, str) or len(new_level) == 0 or len(new_level) > 64 or not LEVEL_NAME_RE.match(new_level):
+                        new_level = "ROOT"
+                    # Preserve current channel; default if unknown
+                    cur_meta = ws_meta.get(ws)
+                    cur_channel = (cur_meta[0] if cur_meta and isinstance(cur_meta, tuple) else "DEFAULT")
+                    ws_meta[ws] = (cur_channel, new_level)
+                    # Update known map/tiles version trackers for this connection
+                    md = get_mapdiff(new_level)
+                    ws_map_version[ws] = md.version
+                    td = get_tilediff(new_level)
+                    ws_tiles_version[ws] = td.version
+                    # Send full map/tiles/portals/items for the new level
+                    try:
+                        if md.adds or md.removes:
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5) else {})} for k, t in sorted(md.adds.items())] +
+                                        [{"op": "remove", "key": k} for k in sorted(md.removes)])
+                        else:
+                            full_ops = []
+                        await ws.send(json.dumps({
+                            "type": "map_full",
+                            "version": md.version,
+                            "ops": full_ops,
+                            "baseVersion": 0
+                        }, separators=(",", ":")))
+                    except Exception as e:
+                        try: print(f"[WS] failed send map_full on level_change: {e}")
+                        except Exception: pass
+                    try:
+                        tiles_list = [{ 'k': k, 'v': v } for (k,v) in td.set.items()]
+                        await ws.send(json.dumps({ "type":"tiles_full", "version": td.version, "tiles": tiles_list }, separators=(",",":")))
+                    except Exception as e:
+                        try: print(f"[WS] failed send tiles_full on level_change: {e}")
+                        except Exception: pass
+                    try:
+                        plist = [{ 'k': k, 'dest': dest } for (k, dest) in (level_portals.get(new_level) or {}).items()]
+                        await ws.send(json.dumps({ 'type': 'portal_full', 'portals': plist }, separators=(",",":")))
+                    except Exception as e:
+                        try: print(f"[WS] failed send portal_full on level_change: {e}")
+                        except Exception: pass
+                    try:
+                        items_list = [
+                            {"gx": it.gx, "gy": it.gy, "y": it.y, "kind": it.kind, **({"payload": it.payload} if (it.kind==0 and it.payload) else {})}
+                            for it in level_items.get(new_level, [])
+                        ]
+                        await ws.send(json.dumps({"type":"items_full","items": items_list}, separators=(",",":")))
+                    except Exception as e:
+                        try: print(f"[WS] failed send items_full on level_change: {e}")
+                        except Exception: pass
+                    # Optionally, send a fresh snapshot of other players in this channel+level
+                    try:
+                        ts = now_ms()
+                        await sweep(ts)
+                        async with lock:
+                            out = [
+                                p.to_snapshot_entry(ts)
+                                for oid, p in players.items()
+                                if p.channel == cur_channel and p.level == new_level and ws_to_id.get(ws) != oid
+                            ]
+                        await ws.send(json.dumps({"type": "snapshot", "now": ts, "ttlMs": TTL_MS, "players": out}, separators=(",", ":")))
+                    except Exception:
+                        pass
+                except Exception as e:
+                    try: print(f"[WS] level_change handling error: {e}")
+                    except Exception: pass
+                continue
+
             elif typ == "tiles_sync":
                 have = data.get("have")
                 try:
