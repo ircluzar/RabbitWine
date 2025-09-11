@@ -23,6 +23,18 @@ const map = new Uint8Array(MAP_W * MAP_H);
  */
 function mapIdx(x,y){ return y*MAP_W + x; }
 
+// Expose authoritative bindings on window so runtime systems (multiplayer/tile ops/level clear)
+// operate on the same map/size/index that physics & collision use.
+try {
+  if (typeof window !== 'undefined'){
+    window.TILE = TILE;
+    window.MAP_W = MAP_W;
+    window.MAP_H = MAP_H;
+    window.map = map;
+    window.mapIdx = mapIdx;
+  }
+} catch(_){}
+
 /**
  * Generate a sample map with border walls and interior rooms.
  * Creates a structured dungeon-like layout with:

@@ -195,8 +195,8 @@ function drawGridOverlay(mvp, camEye, isThirdPerson) {
 
 // Draw vertical red boundary grid along the play area's outer edges
 function drawBoundaryGrid(mvp, camEye, isThirdPerson){
-  // Height of the boundary grid in world units (tiles): dynamic to top of level
-  const HEIGHT = computeLevelHeight();
+  // Fixed height in world units (tiles): always 64 blocks high regardless of level contents
+  const HEIGHT = 64;
   ensureBoundaryBuffers(HEIGHT);
   if (!boundaryVAO || boundaryVertexCount <= 0) return;
   gl.useProgram(gridProgram);

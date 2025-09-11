@@ -945,6 +945,9 @@ window.mpSwitchLevel = function(levelName){
       if (typeof window.columnSpans !== 'undefined' && window.columnSpans && window.columnSpans.clear) window.columnSpans.clear();
       if (typeof window.columnHeights !== 'undefined' && window.columnHeights && window.columnHeights.clear) window.columnHeights.clear();
       if (typeof window.columnBases !== 'undefined' && window.columnBases && window.columnBases.clear) window.columnBases.clear();
+  // Also clear legacy/debug caches to avoid lingering visuals
+  try { if (Array.isArray(window.extraColumns)) window.extraColumns.length = 0; } catch(_){}
+  try { if (Array.isArray(window.removeVolumes)) window.removeVolumes.length = 0; } catch(_){}
       if (typeof window.map !== 'undefined' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number' && typeof window.mapIdx==='function'){
         for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ try { window.map[window.mapIdx(x,y)] = (window.TILE && window.TILE.OPEN)||0; } catch(_){ } }
       }
