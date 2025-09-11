@@ -108,7 +108,8 @@ lock = asyncio.Lock()
 @dataclass
 class MapDiff:
     version: int
-    # adds maps block key -> type flag (0 normal, 1 BAD/hazard, 2 FENCE, 3 BADFENCE)
+    # adds maps block key -> type flag
+    # 0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail), 4 = HALF-SLAB marker, 5 = PORTAL marker (visual, non-solid)
     adds: Dict[str, int]
     removes: Set[str]
 
@@ -138,6 +139,10 @@ class TileDiff:
 # level_id -> TileDiff
 level_tiles: Dict[str, TileDiff] = {}
 ws_tiles_version: Dict[WebSocketServerProtocol, int] = {}
+
+# ---- Portal metadata (destinations) persistence ---------------------------
+# level_id -> { 'gx,gy': 'DEST_LEVEL' }
+level_portals: Dict[str, Dict[str, str]] = {}
 
 MAX_OPS_PER_BATCH = 512
 KEY_MAX_LEN = 64
@@ -182,6 +187,16 @@ def db_init(path: str):
         )
         """
     )
+    _db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS map_portals(
+            level TEXT NOT NULL,
+            k TEXT NOT NULL,
+            dest TEXT NOT NULL,
+            PRIMARY KEY(level, k)
+        )
+        """
+    )
     _db_conn.commit()
 
 def db_load_all():
@@ -204,6 +219,8 @@ def db_load_all():
                     adds[ent[:-2]] = 3
                 elif ent.endswith('#4'):
                     adds[ent[:-2]] = 4
+                elif ent.endswith('#5'):
+                    adds[ent[:-2]] = 5
                 else:
                     adds[ent] = 0
             removes = set(json.loads(removes_json)) if removes_json else set()
@@ -235,14 +252,24 @@ def db_load_all():
         print(f"[DB] Loaded tiles for {len(level_tiles)} levels")
     except Exception as e:
         print(f"[DB] Failed to load tiles: {e}")
+    # Load portals
+    try:
+        cur4 = _db_conn.execute("SELECT level,k,dest FROM map_portals")
+        for level, k, dest in cur4.fetchall():
+            if not isinstance(level, str) or not isinstance(k, str) or not isinstance(dest, str):
+                continue
+            level_portals.setdefault(level, {})[k] = dest
+        print(f"[DB] Loaded portals for {len(level_portals)} levels")
+    except Exception as e:
+        print(f"[DB] Failed to load portals: {e}")
 
 def db_persist_level(level: str, diff: MapDiff):
     if not _db_conn: return
     try:
         enc_adds = []
         for k, tt in diff.adds.items():
-            # Persist as 'key' or 'key#N' (N in {1,2,3}) for backward compatibility
-            if tt in (1, 2, 3, 4):
+            # Persist as 'key' or 'key#N' (N in {1,2,3,4,5}) for backward compatibility
+            if tt in (1, 2, 3, 4, 5):
                 enc_adds.append(f"{k}#{tt}")
             else:
                 enc_adds.append(k)
@@ -265,6 +292,30 @@ def db_persist_tiles(level: str, tiles: TileDiff):
         _db_conn.commit()
     except Exception as e:
         print(f"[DB] Persist tiles error for level '{level}': {e}")
+
+def db_portal_set(level: str, k: str, dest: str):
+    if not _db_conn:
+        return
+    try:
+        _db_conn.execute(
+            "REPLACE INTO map_portals(level,k,dest) VALUES (?,?,?)",
+            (level, k, dest)
+        )
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] portal set fail: {e}")
+
+def db_portal_remove(level: str, k: str):
+    if not _db_conn:
+        return
+    try:
+        _db_conn.execute(
+            "DELETE FROM map_portals WHERE level=? AND k=?",
+            (level, k)
+        )
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] portal remove fail: {e}")
 
 def db_upsert_item(level: str, item: MapItem):
     if not _db_conn: return
@@ -306,7 +357,8 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
     """Apply edit ops; supports type flag via 't' on add ops.
 
     t semantics:
-        0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail)
+        0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail),
+        4 = HALF-SLAB marker, 5 = PORTAL marker (visual trigger span)
 
     Returns net ops (with 't' where applicable) to broadcast.
     """
@@ -327,12 +379,12 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
             continue
         if op == 'add':
             tval_raw = entry.get('t')
-            # Normalize t to one of {0,1,2,3}
+            # Normalize t to one of {0,1,2,3,4,5}
             try:
                 tval = int(tval_raw)
             except Exception:
                 tval = 0
-            if tval not in (1,2,3,4):
+            if tval not in (1,2,3,4,5):
                 tval = 0
             last[key] = ('add', tval)
         else:
@@ -347,11 +399,11 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
                 if key in md.removes:
                     md.removes.discard(key)
                 md.adds[key] = tt
-                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4) else {}) })
+                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5) else {}) })
             else:
                 if prev != tt:
                     md.adds[key] = tt
-                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4) else {}) })
+                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5) else {}) })
         else:  # remove
             changed = False
             if key in md.adds:
@@ -601,7 +653,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 try:
                     md = get_mapdiff(level)
                     if md.adds or md.removes:
-                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4) else {})} for k, t in sorted(md.adds.items())] +
+                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5) else {})} for k, t in sorted(md.adds.items())] +
                                     [{"op": "remove", "key": k} for k in sorted(md.removes)])
                     else:
                         full_ops = []
@@ -618,6 +670,12 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         await ws.send(json.dumps({ "type":"tiles_full", "version": td.version, "tiles": tiles_list }, separators=(",",":")))
                     except Exception as e:
                         print(f"[WS] failed send tiles_full: {e}")
+                    # Send full portal metadata for this level
+                    try:
+                        plist = [{ 'k': k, 'dest': dest } for (k, dest) in (level_portals.get(level) or {}).items()]
+                        await ws.send(json.dumps({ 'type': 'portal_full', 'portals': plist }, separators=(",",":")))
+                    except Exception as e:
+                        print(f"[WS] failed send portal_full: {e}")
                     # Send full items for this level
                     try:
                         items_list = [
@@ -801,7 +859,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     md = get_mapdiff(lvl)
                     if have != md.version:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4) else {})} for k, t in sorted(md.adds.items())] +
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5) else {})} for k, t in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []
@@ -814,6 +872,49 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                         ws_map_version[ws] = md.version
                 except Exception:
                     pass
+                continue
+
+            elif typ == "portal_edit":
+                # { type:'portal_edit', ops:[ { op:'set'|'remove', k:'gx,gy', dest? } ] }
+                ops_in = data.get('ops')
+                if isinstance(ops_in, list):
+                    meta = ws_meta.get(ws)
+                    if not meta:
+                        continue
+                    _channel, lvl = meta
+                    valid_ops: List[Dict[str, Any]] = []
+                    async with lock:
+                        store = level_portals.setdefault(lvl, {})
+                        for e in ops_in[:MAX_OPS_PER_BATCH]:
+                            if not isinstance(e, dict):
+                                continue
+                            op = e.get('op')
+                            k = e.get('k')
+                            if op not in ('set','remove') or not isinstance(k, str) or len(k)==0 or len(k)>KEY_MAX_LEN:
+                                continue
+                            if op == 'set':
+                                dest = e.get('dest')
+                                if not isinstance(dest, str) or len(dest)==0 or len(dest) > 64:
+                                    continue
+                                prev = store.get(k)
+                                if prev != dest:
+                                    store[k] = dest
+                                    valid_ops.append({ 'op':'set', 'k': k, 'dest': dest })
+                                    db_portal_set(lvl, k, dest)
+                            else:
+                                if k in store:
+                                    store.pop(k, None)
+                                    valid_ops.append({ 'op':'remove', 'k': k })
+                                    db_portal_remove(lvl, k)
+                    if valid_ops:
+                        # Fan-out to all clients in level
+                        try:
+                            payload = json.dumps({ 'type': 'portal_ops', 'ops': valid_ops }, separators=(",",":"))
+                            targets = [w for w in list(connections) if (ws_meta.get(w) or (None, None))[1] == lvl]
+                            await asyncio.gather(*[w.send(payload) for w in targets], return_exceptions=True)
+                        except Exception as e:
+                            try: print(f"[PORTAL] broadcast fail: {e}")
+                            except Exception: pass
                 continue
 
             elif typ == "tiles_sync":
