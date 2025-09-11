@@ -365,6 +365,9 @@ function moveAndCollide(dt){
   let lastResolveZ = null; // world Z to snap to if Z is blocked by a rail
   let newX = p.x + stepX;
   let newZ = p.z + stepZ;
+  // Limit rail snapping per axis to at most once per frame
+  let snappedXThisFrame = false;
+  let snappedZThisFrame = false;
   function isWallAt(wx, wz){
     // reset per-call flag
     lastHitFenceRail = false;
@@ -382,7 +385,7 @@ function moveAndCollide(dt){
     const lx = wx - cellMinX;
     const lz = wz - cellMinZ;
   const RAIL_HW = 0.11; // half-width of rail collision band around center and edge
-  const RAIL_MARGIN = 0.01; // extra push-out margin beyond band
+  const RAIL_MARGIN = 0.004; // toned down push-out margin to reduce aggressive snaps
   const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
     const setResolveForRail = (orient /* 'E'|'W'|'N'|'S' */)=>{
       const eps = 0.002;
@@ -565,6 +568,8 @@ function moveAndCollide(dt){
       p.z = newZ;
     } else {
   const zRailHit = lastHitFenceRail; const zSolidHit = lastHitSolidSpan; const zRailDir = lastHitFenceRailDir;
+  // Preserve resolution target before any further collision checks overwrite it
+  const zResolveTarget = lastResolveZ;
       // Attempt step-up onto small ledges (half-step or <=0.5 rise)
       let stepped = false;
       if (!outZ){
@@ -602,9 +607,14 @@ function moveAndCollide(dt){
             const tryZ = p.z + sign * nudge;
             if (!isWallAt(p.x, tryZ)) p.z = tryZ;
           }
-          // If we have a safe resolution target along Z, snap to it
-          if (lastResolveZ !== null && !isWallAt(p.x, lastResolveZ)) {
-            p.z = lastResolveZ;
+          // If we have a safe resolution target along Z, snap to it conservatively
+          const SNAP_MIN_PEN = 0.006; // require meaningful penetration before snapping
+          if (!snappedZThisFrame && zResolveTarget !== null) {
+            const dz = Math.abs(p.z - zResolveTarget);
+            if (dz > SNAP_MIN_PEN && !isWallAt(p.x, zResolveTarget)) {
+              p.z = zResolveTarget;
+              snappedZThisFrame = true;
+            }
           }
         }
       }
@@ -661,6 +671,8 @@ function moveAndCollide(dt){
       p.x = newX;
     } else {
   const xRailHit = lastHitFenceRail; const xSolidHit = lastHitSolidSpan; const xRailDir = lastHitFenceRailDir;
+  // Preserve resolution target before further checks
+  const xResolveTarget = lastResolveX;
       // Attempt step-up onto small ledges (half-step or <=0.5 rise)
       let stepped = false;
       if (!outX){
@@ -694,9 +706,14 @@ function moveAndCollide(dt){
             const tryZ = p.z + sign * nudge;
             if (!isWallAt(p.x, tryZ)) p.z = tryZ;
           }
-          // If we have a safe resolution target along X, snap to it
-          if (lastResolveX !== null && !isWallAt(lastResolveX, p.z)) {
-            p.x = lastResolveX;
+          // If we have a safe resolution target along X, snap to it conservatively
+          const SNAP_MIN_PEN = 0.006;
+          if (!snappedXThisFrame && xResolveTarget !== null) {
+            const dx = Math.abs(p.x - xResolveTarget);
+            if (dx > SNAP_MIN_PEN && !isWallAt(xResolveTarget, p.z)) {
+              p.x = xResolveTarget;
+              snappedXThisFrame = true;
+            }
           }
         }
       }
