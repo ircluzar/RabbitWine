@@ -167,3 +167,6 @@ try {
   const lvl = (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string') ? window.MP_LEVEL : 'ROOT';
   if (lvl === 'ROOT') buildSampleMap();
 } catch(_){ buildSampleMap(); }
+
+// Expose builder for runtime level switches (e.g., when returning to ROOT)
+try { if (typeof window !== 'undefined') window.buildSampleMap = buildSampleMap; } catch(_){ }

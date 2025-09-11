@@ -933,6 +933,8 @@ window.mpSwitchLevel = function(levelName){
   __mp_levelLoading = true;
   __mp_freezePlayer();
   if (__mp_levelUnfreezeTimer){ try { clearTimeout(__mp_levelUnfreezeTimer); } catch(_){ } __mp_levelUnfreezeTimer = null; }
+  // For ROOT, prepare to rebuild the sample map as the base before applying server diffs
+  const isRoot = (MP_LEVEL === 'ROOT');
     // Reset client-side map and tile diffs so no old level data is re-applied
     try {
       if (mpMap && mpMap.adds && mpMap.removes){ mpMap.adds.clear(); mpMap.removes.clear(); mpMap.version = 0; }
@@ -940,26 +942,38 @@ window.mpSwitchLevel = function(levelName){
     } catch(_){ }
     // Update palette group based on leading number
     try { if (typeof window.parseLevelGroupId === 'function' && typeof window.setLevel === 'function'){ const gid = window.parseLevelGroupId(name); window.setLevel(gid); } } catch(_){ }
-    // Clear world to blank base: empty spans, clear tiles to OPEN
+    // Clear world: for ROOT rebuild the sample map; for others, clear to blank base
     try {
+      // Always clear portals across level switch
+      if (window.portalDestinations instanceof Map) window.portalDestinations.clear();
+      // Clear caches common to both paths
       if (typeof window.columnSpans !== 'undefined' && window.columnSpans && window.columnSpans.clear) window.columnSpans.clear();
       if (typeof window.columnHeights !== 'undefined' && window.columnHeights && window.columnHeights.clear) window.columnHeights.clear();
       if (typeof window.columnBases !== 'undefined' && window.columnBases && window.columnBases.clear) window.columnBases.clear();
-  // Also clear legacy/debug caches to avoid lingering visuals
-  try { if (Array.isArray(window.extraColumns)) window.extraColumns.length = 0; } catch(_){}
-  try { if (Array.isArray(window.removeVolumes)) window.removeVolumes.length = 0; } catch(_){}
-      if (typeof window.map !== 'undefined' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number' && typeof window.mapIdx==='function'){
-        for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ try { window.map[window.mapIdx(x,y)] = (window.TILE && window.TILE.OPEN)||0; } catch(_){ } }
-      }
+      try { if (Array.isArray(window.extraColumns)) window.extraColumns.length = 0; } catch(_){ }
+      try { if (Array.isArray(window.removeVolumes)) window.removeVolumes.length = 0; } catch(_){ }
       // Clear any pending builder outputs from sample map module
       try { delete window._pendingMapHeights; } catch(_){ }
       try { delete window._pendingItems; } catch(_){ }
-      if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
-      if (typeof window.removeItemsAtWorld === 'function'){
-        // Best-effort clear items: call with a blanket area by iterating grid cells
-        for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ const w={ x:(x+0.5)-window.MAP_W*0.5, z:(y+0.5)-window.MAP_H*0.5 }; try { window.removeItemsAtWorld(w.x, w.z); } catch(_){ } }
+      // Clear existing runtime items before rebuilding or blanking
+      if (typeof window.removeItemsAtWorld === 'function' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number'){
+        for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ const w={ x:(x+0.5)-window.MAP_W*0.5, z:(y+0.5)-window.MAP_H*0.5 }; try { window.removeItemsAtWorld(w.x, w.z); } catch(_){ }
+        }
       }
-      if (window.portalDestinations instanceof Map) window.portalDestinations.clear();
+      if (isRoot){
+        // Restore sample base terrain first
+        if (typeof window.map !== 'undefined' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number' && typeof window.mapIdx==='function'){
+          for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ try { window.map[window.mapIdx(x,y)] = (window.TILE && window.TILE.OPEN)||0; } catch(_){ } }
+        }
+        if (typeof window.buildSampleMap === 'function') window.buildSampleMap();
+        if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
+      } else {
+        // Blank base for non-root levels; wait for server diffs
+        if (typeof window.map !== 'undefined' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number' && typeof window.mapIdx==='function'){
+          for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ try { window.map[window.mapIdx(x,y)] = (window.TILE && window.TILE.OPEN)||0; } catch(_){ } }
+        }
+        if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
+      }
     } catch(_){ }
     // Request syncs from server for this level
     try { if (mpWS && mpWS.readyState === WebSocket.OPEN){ mpWS.send(JSON.stringify({ type:'level_change', level: MP_LEVEL })); } } catch(_){ }
