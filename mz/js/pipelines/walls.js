@@ -166,6 +166,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   let wallsHalf = new Float32Array(0);
   let wallsFence = new Float32Array(0);
   let wallsBadFence = new Float32Array(0);
+  let wallsLevelChange = new Float32Array(0);
   if (data.length) {
     // Prefer spans when available regardless of feature flag
     const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function' && columnSpans.size > 0;
@@ -176,9 +177,14 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const filteredHalf = [];
   const filteredFence = [];
   const filteredBadFence = [];
+  const filteredLevelChange = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
+      // Read cell value early to allow special cases
+      const cell = (typeof map !== 'undefined' && typeof mapIdx==='function' && typeof TILE!=='undefined') ? map[mapIdx(x,y)] : 0;
+      // Always render LEVELCHANGE tiles, even if base-0 spans would normally hide the ground cube
+      if (cell === TILE.LEVELCHANGE){ filteredLevelChange.push(x,y); continue; }
       let hideGroundWall = false;
       // Determine if the ground cube itself should be flagged BAD: either map says BAD for ground level
       // or spans report a hazardous span at base 0.
@@ -201,9 +207,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         }
       }
       if (!hideGroundWall){
-        const cell = (typeof map !== 'undefined' && typeof mapIdx==='function' && typeof TILE!=='undefined') ? map[mapIdx(x,y)] : 0;
-    if (cell === TILE.FENCE) filteredFence.push(x,y);
-    else if (cell === TILE.BADFENCE) filteredBadFence.push(x,y);
+        if (cell === TILE.FENCE) filteredFence.push(x,y);
+        else if (cell === TILE.BADFENCE) filteredBadFence.push(x,y);
         else if (isBadTile) filteredBad.push(x,y);
         else if (isHalfTile) filteredHalf.push(x,y);
         else filteredNormal.push(x,y);
@@ -214,8 +219,9 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   wallsHalf = new Float32Array(filteredHalf);
   wallsFence = new Float32Array(filteredFence);
   wallsBadFence = new Float32Array(filteredBadFence);
+  wallsLevelChange = new Float32Array(filteredLevelChange);
   }
-  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length + wallsBadFence.length;
+  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length + wallsBadFence.length + wallsLevelChange.length;
   if (!totalCount) return;
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
@@ -237,40 +243,81 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
-  // First: normal walls
+  // First: normal walls depth pre-pass (if any)
   if (wallsNormal.length){
     gl.bufferData(gl.ARRAY_BUFFER, wallsNormal, gl.DYNAMIC_DRAW);
-  const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
-  gl.uniform3fv(wall_u_color, new Float32Array(wallCol));
+    const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+    gl.uniform3fv(wall_u_color, new Float32Array(wallCol));
     gl.uniform1f(wall_u_alpha, 0.65);
     gl.uniform1i(wall_u_glitterMode, 0);
-  // Depth pre-pass
-  gl.disable(gl.BLEND);
-  gl.colorMask(false, false, false, false);
-  gl.depthMask(true);
-  gl.depthFunc(gl.LESS);
-  for (let vz=0; vz<voxZ; vz++){
-    for (let vy=0; vy<voxY; vy++){
-      for (let vx=0; vx<voxX; vx++){
-        gl.uniform3f(wall_u_voxOff, vx, vy, vz);
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsNormal.length/2);
+    // Depth pre-pass
+    gl.disable(gl.BLEND);
+    gl.colorMask(false, false, false, false);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsNormal.length/2);
+        }
       }
     }
   }
-  // Blended color pass (no depth writes)
-  gl.colorMask(true, true, true, true);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.depthMask(false);
-  gl.depthFunc(gl.LEQUAL);
-  for (let vz=0; vz<voxZ; vz++){
-    for (let vy=0; vy<voxY; vy++){
-      for (let vx=0; vx<voxX; vx++){
-        gl.uniform3f(wall_u_voxOff, vx, vy, vz);
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsNormal.length/2);
+  // Second: LEVELCHANGE tiles (always draw, even if no normal walls)
+  if (wallsLevelChange.length){
+    gl.bufferData(gl.ARRAY_BUFFER, wallsLevelChange, gl.DYNAMIC_DRAW);
+    gl.uniform3fv(wall_u_color, new Float32Array([1.0, 0.55, 0.05]));
+    gl.uniform1f(wall_u_alpha, 0.45);
+    gl.uniform1i(wall_u_glitterMode, 1);
+    // Depth pre-pass for portals
+    gl.disable(gl.BLEND);
+    gl.colorMask(false, false, false, false);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsLevelChange.length/2);
+        }
+      }
+    }
+    // Blended color pass for portals
+    gl.colorMask(true, true, true, true);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LESS);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsLevelChange.length/2);
+        }
       }
     }
   }
+  // Third: normal walls blended color pass (if any). Rebind buffer and reset uniforms to avoid color bleed from portals.
+  if (wallsNormal.length){
+    gl.colorMask(true, true, true, true);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
+    gl.bufferData(gl.ARRAY_BUFFER, wallsNormal, gl.DYNAMIC_DRAW);
+    const wallCol2n = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+    gl.uniform3fv(wall_u_color, new Float32Array(wallCol2n));
+    gl.uniform1f(wall_u_alpha, 0.65);
+    gl.uniform1i(wall_u_glitterMode, 0);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsNormal.length/2);
+        }
+      }
+    }
   }
   // Second: half-step walls (half height)
   if (wallsHalf.length){
@@ -865,6 +912,61 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   for (const key of keys){
     const g = groups.get(key);
     if (!g || !g.pts || g.pts.length === 0) continue;
+    // Special rendering for portal spans (t==5): orange, semi-transparent, glitter
+    if ((g.t|0) === 5){
+      const pts = g.pts;
+      const offs = new Float32Array(pts.length * 2);
+      for (let i=0;i<pts.length;i++){ offs[i*2+0]=pts[i][0]; offs[i*2+1]=pts[i][1]; }
+      gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+      gl.bufferData(gl.ARRAY_BUFFER, offs, gl.DYNAMIC_DRAW);
+      gl.uniform3fv(wall_u_color, new Float32Array([1.0, 0.55, 0.05]));
+      gl.uniform1f(wall_u_alpha, 0.45);
+      gl.uniform1i(wall_u_glitterMode, 1);
+      // Depth pre-pass
+      gl.disable(gl.BLEND);
+      gl.colorMask(false,false,false,false);
+      gl.depthMask(true);
+      gl.depthFunc(gl.LEQUAL);
+      for (let level=0; level<g.h; level++){
+        gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
+        gl.uniform3f(wall_u_voxOff, 0,0,0);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
+      }
+      // Color pass
+      gl.colorMask(true,true,true,true);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      gl.depthFunc(gl.LEQUAL);
+      for (let level=0; level<g.h; level++){
+        gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
+        gl.uniform3f(wall_u_voxOff, 0,0,0);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
+      }
+      // Outlines for each level
+      for (let level=0; level<g.h; level++){
+        const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
+        const offs2 = new Float32Array(pts.length * 2);
+        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
+        const wallOutline2 = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
+        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, wallOutline2);
+      }
+      // Restore program/VAO after outlines
+      gl.bindVertexArray(wallVAO);
+      gl.useProgram(wallProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+      gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+      gl.uniform1f(wall_u_scale, 1.0);
+      gl.uniform1f(wall_u_height, 1.0);
+      const wallCol3p = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+      gl.uniform3fv(wall_u_color, new Float32Array(wallCol3p));
+      gl.uniform1f(wall_u_alpha, 0.65);
+      gl.uniform1i(wall_u_glitterMode, 0);
+      gl.uniform3f(wall_u_voxCount, 1,1,1);
+      continue;
+    }
     // Split pillars by BAD vs normal: prefer span hazard flag; fallback to map for ground-only
     const pillars = g.pts;
     const normPts = [];

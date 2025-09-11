@@ -10,7 +10,8 @@
 // HALF: half-height base block (0.5 tall) used for step-ups
 // FENCE: connectable fence post + rails (visual + collision), brightened level color
 // BADFENCE: like FENCE but hazardous on contact with inner rails and rendered red
-const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6, BADFENCE: 7 };
+// LEVELCHANGE: non-solid trigger block that switches to another level when entered
+const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6, BADFENCE: 7, LEVELCHANGE: 8 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
 
@@ -149,4 +150,8 @@ function buildSampleMap(){
 
 
 }
-buildSampleMap();
+// Only auto-build the sample map when playing ROOT; otherwise leave blank and wait for server data
+try {
+  const lvl = (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string') ? window.MP_LEVEL : 'ROOT';
+  if (lvl === 'ROOT') buildSampleMap();
+} catch(_){ buildSampleMap(); }

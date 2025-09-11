@@ -28,8 +28,8 @@ function groundHeightAt(x, z){
   const spansAllFenceGH = Array.isArray(spans) && spans.length>0 && spans.every(s => s && (((s.t|0)||0) === 2 || ((s.t|0)||0) === 3));
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // Remove fence spans (t==2/t==3) from ground computation; they are non-solid visuals
-  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3)));
+  // Remove fence spans (t==2/t==3) and portal spans (t==5) from ground computation; they are non-solid visuals
+  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5)));
   // Rail-platform candidate from inner voxels (center cross) when within band
   let railGroundCandidate = -Infinity;
   try {
@@ -202,8 +202,8 @@ function ceilingHeightAt(x, z, py){
   const spansAllFenceCH = Array.isArray(spans) && spans.length>0 && spans.every(s => s && ((((s.t|0)||0) === 2) || (((s.t|0)||0) === 3)));
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // Remove fence spans (t==2/t==3) from ceiling computation; they are non-solid visuals
-  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3)));
+  // Remove fence spans (t==2/t==3) and portal spans (t==5) from ceiling computation; they are non-solid visuals
+  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5)));
   // Rail-platform ceilings (bottom faces) only if in inner center bands to avoid sudden clips
   let railCeilCandidate = Infinity;
   try {
@@ -429,10 +429,12 @@ function moveAndCollide(dt){
     }
   if (Array.isArray(spanList) && spanList.length){
       const py = state.player.y;
-      for (const s of spanList){
-        if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-        const top = b + h; const t = ((s.t|0)||0);
-        // Solid spans (non-fence) use strict vertical check (unchanged)
+  for (const s of spanList){
+    if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+    const top = b + h; const t = ((s.t|0)||0);
+    // Portal spans (t==5) are triggers, not solids; do not block laterally here
+    if (t === 5) { continue; }
+    // Solid spans (non-fence) use strict vertical check (unchanged)
   if (t !== 2 && t !== 3){ if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; return true; } else { continue; } }
   // Fence spans (t==2 or t==3): voxel-accurate rails with a small vertical tolerance
         {
@@ -567,6 +569,52 @@ function moveAndCollide(dt){
     if (!isWallAt(p.x, newZ)) {
       p.z = newZ;
     } else {
+      // Before treating as a collision, if the blocking cell contains a portal at this Y, trigger teleport
+      {
+        const nowSec = state.nowSec || (performance.now()/1000);
+        if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
+          const gxCell = gxCur;
+          const gzCell = gzNew;
+          if (!outZ && gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
+            let portalHit = false;
+            const cvBlock = map[mapIdx(gxCell,gzCell)];
+            if (cvBlock === TILE.LEVELCHANGE) portalHit = true;
+            if (!portalHit){
+              try {
+                const keyB = `${gxCell},${gzCell}`;
+                const spansB = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(keyB)
+                              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(keyB)
+                              : null;
+                if (Array.isArray(spansB)){
+                  for (const s of spansB){ if (!s) continue; const t=((s.t|0)||0); if (t!==5) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (p.y >= b && p.y <= top - 0.02){ portalHit = true; break; } }
+                }
+              } catch(_){ }
+            }
+            if (portalHit){
+              const keyB = `${gxCell},${gzCell}`;
+              let dest = null;
+              try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(keyB) || null; } catch(_){ }
+              if (typeof dest === 'string' && dest){
+                // Exit on opposite side using current movement direction
+                let exDirX = Math.sin(p.angle), exDirZ = -Math.cos(p.angle);
+                if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ exDirX = p._dashDirX; exDirZ = p._dashDirZ; }
+                const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
+                const cx = gxCell - MAP_W*0.5 + 0.5;
+                const cz = gzCell - MAP_H*0.5 + 0.5;
+                const EXIT_DIST = 0.52;
+                const outX = cx + exDirX * EXIT_DIST;
+                const outZ2 = cz + exDirZ * EXIT_DIST;
+                try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+                p.x = outX; p.z = outZ2;
+                try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
+                p._portalCooldownUntil = nowSec + 0.6;
+                try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
+                return;
+              }
+            }
+          }
+        }
+      }
   const zRailHit = lastHitFenceRail; const zSolidHit = lastHitSolidSpan; const zRailDir = lastHitFenceRailDir;
   // Preserve resolution target before any further collision checks overwrite it
   const zResolveTarget = lastResolveZ;
@@ -670,6 +718,51 @@ function moveAndCollide(dt){
     if (!isWallAt(newX, p.z)) {
       p.x = newX;
     } else {
+      // Before treating as a collision, if the blocking cell contains a portal at this Y, trigger teleport
+      {
+        const nowSec = state.nowSec || (performance.now()/1000);
+        if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
+          const gxCell = gxNew;
+          const gzCell = gzCur;
+          if (!outX && gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
+            let portalHit = false;
+            const cvBlock = map[mapIdx(gxCell,gzCell)];
+            if (cvBlock === TILE.LEVELCHANGE) portalHit = true;
+            if (!portalHit){
+              try {
+                const keyB = `${gxCell},${gzCell}`;
+                const spansB = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(keyB)
+                              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(keyB)
+                              : null;
+                if (Array.isArray(spansB)){
+                  for (const s of spansB){ if (!s) continue; const t=((s.t|0)||0); if (t!==5) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (p.y >= b && p.y <= top - 0.02){ portalHit = true; break; } }
+                }
+              } catch(_){ }
+            }
+            if (portalHit){
+              const keyB = `${gxCell},${gzCell}`;
+              let dest = null;
+              try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(keyB) || null; } catch(_){ }
+              if (typeof dest === 'string' && dest){
+                let exDirX = Math.sin(p.angle), exDirZ = -Math.cos(p.angle);
+                if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ exDirX = p._dashDirX; exDirZ = p._dashDirZ; }
+                const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
+                const cx = gxCell - MAP_W*0.5 + 0.5;
+                const cz = gzCell - MAP_H*0.5 + 0.5;
+                const EXIT_DIST = 0.52;
+                const outX2 = cx + exDirX * EXIT_DIST;
+                const outZ3 = cz + exDirZ * EXIT_DIST;
+                try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+                p.x = outX2; p.z = outZ3;
+                try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
+                p._portalCooldownUntil = nowSec + 0.6;
+                try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
+                return;
+              }
+            }
+          }
+        }
+      }
   const xRailHit = lastHitFenceRail; const xSolidHit = lastHitSolidSpan; const xRailDir = lastHitFenceRailDir;
   // Preserve resolution target before further checks
   const xResolveTarget = lastResolveX;
@@ -808,6 +901,63 @@ function moveAndCollide(dt){
     // keep moving post-bounce
     p.movementMode = 'accelerate';
   }
+
+  // --- LEVELCHANGE portal trigger ---
+  // If we are inside a LEVELCHANGE tile near ground level OR intersecting an elevated portal span (t:5), perform a level switch
+  try {
+    if (!p.isBallMode){
+      const gx = Math.floor(p.x + MAP_W*0.5);
+      const gz = Math.floor(p.z + MAP_H*0.5);
+      if (gx>=0 && gz>=0 && gx<MAP_W && gz<MAP_H){
+        const cv = map[mapIdx(gx,gz)];
+        // Ground-level portal tile triggers
+        let portalHit = (cv === TILE.LEVELCHANGE);
+        // Elevated portal trigger: any span with t==5 that overlaps current Y
+        if (!portalHit){
+          try {
+            const key = `${gx},${gz}`;
+            const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                        : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                        : null;
+            if (Array.isArray(spans)){
+              for (const s of spans){ if (!s) continue; const t=((s.t|0)||0); if (t!==5) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (p.y >= b && p.y <= top - 0.02){ portalHit = true; break; } }
+            }
+          } catch(_){ }
+        }
+        if (portalHit){
+          const nowSec = state.nowSec || (performance.now()/1000);
+          if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
+            const key = `${gx},${gz}`;
+            let dest = null;
+            try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(key) || null; } catch(_){ }
+            if (typeof dest === 'string' && dest){
+              // Compute exit position on the opposite side of this tile based on travel direction
+              // Use the current facing/velocity direction
+              let dirX = Math.sin(p.angle), dirZ = -Math.cos(p.angle);
+              if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ dirX = p._dashDirX; dirZ = p._dashDirZ; }
+              const L = Math.hypot(dirX, dirZ) || 1;
+              dirX /= L; dirZ /= L;
+              const cx = gx - MAP_W*0.5 + 0.5;
+              const cz = gz - MAP_H*0.5 + 0.5;
+              const EXIT_DIST = 0.52; // just past the tile center
+              const outX = cx + dirX * EXIT_DIST;
+              const outZ = cz + dirZ * EXIT_DIST;
+              // Switch level first (clears world and requests server data)
+              try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+              // Teleport player to the computed exit position; preserve angle/speed/velocity
+              p.x = outX; p.z = outZ;
+              // Maintain current vertical state; ensure not below ground
+              try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
+              // Cooldown to avoid immediate re-trigger loops
+              p._portalCooldownUntil = nowSec + 0.6;
+              // SFX hook
+              try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
+            }
+          }
+        }
+      }
+    }
+  } catch(_){ }
 }
 
 function applyVerticalPhysics(dt){
@@ -1127,6 +1277,8 @@ function runBallMode(dt){
       for (const s of spanList){
   if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
   const top=b+h; const t=((s.t|0)||0);
+    // Portal spans (t==5) are non-solid triggers; do not block in ball mode
+  if (t === 5) { continue; }
     // Solid spans (non-fence) keep strict vertical check
   if (t !== 2 && t !== 3){ if (py > b - 0.02 && py < top - 0.02) return true; else continue; }
   // Fence spans: allow small vertical tolerance

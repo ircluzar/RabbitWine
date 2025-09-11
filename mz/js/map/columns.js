@@ -121,8 +121,9 @@ if (typeof window !== 'undefined'){
       columnSpans.set(key, spans
         .map(s=>{
           const tVal = ((s.t|0)||0);
-          // Preserve BAD (1), FENCE (2), BADFENCE (3) markers; others map to 0 (solid)
-          return { b:(s.b|0), h: Math.max(0, Number(s.h) || 0), t: (tVal===1 ? 1 : (tVal===2 ? 2 : (tVal===3 ? 3 : 0))) };
+          // Preserve markers: 1=BAD, 2=FENCE, 3=BADFENCE, 4=HALF-SLAB marker (network), 5=PORTAL span (visual)
+          const keep = (tVal===1 || tVal===2 || tVal===3 || tVal===4 || tVal===5) ? tVal : 0;
+          return { b:(s.b|0), h: Math.max(0, Number(s.h) || 0), t: keep };
         })
         .filter(s=>s.h>0));
     }

@@ -14,7 +14,7 @@ const MP_UPDATE_MS = 100; // 10 Hz
 const GHOST_Y_OFFSET = 0.32; // raise wireframe so the bottom doesn't clip into the ground
 // Channel / Level segmentation defaults (channel can be changed at runtime via settings modal)
 let MP_CHANNEL = 'DEFAULT';
-const MP_LEVEL = 'ROOT';
+let MP_LEVEL = 'ROOT';
 
 // Attempt to restore previously chosen channel from localStorage
 try {
@@ -64,35 +64,53 @@ function mpApplyFullMap(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add') {
-      // Encode type flag by storing key#N in adds set where N in {1,2,3,4}
-      const tt = (op.t===1||op.t===2||op.t===3||op.t===4) ? op.t|0 : 0;
-      if (tt===1) mpMap.adds.add(op.key+'#1'); else if (tt===2) mpMap.adds.add(op.key+'#2'); else if (tt===3) mpMap.adds.add(op.key+'#3'); else if (tt===4) mpMap.adds.add(op.key+'#4'); else mpMap.adds.add(op.key);
+      // Encode type flag by storing key#N in adds set where N in {1,2,3,4,5}
+      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5) ? op.t|0 : 0;
+      if (tt===1) mpMap.adds.add(op.key+'#1'); else if (tt===2) mpMap.adds.add(op.key+'#2'); else if (tt===3) mpMap.adds.add(op.key+'#3'); else if (tt===4) mpMap.adds.add(op.key+'#4'); else if (tt===5) mpMap.adds.add(op.key+'#5'); else mpMap.adds.add(op.key);
     }
     else if (op.op === 'remove') mpMap.removes.add(op.key);
   }
   mpMap.version = version|0;
   try { console.log('[MP] map_full applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
   try { __mp_rebuildWorldFromDiff(); } catch(_){ }
+  // On first snapshot after switching levels, unfreeze movement
+  try {
+    if (__mp_levelLoading){
+      __mp_levelLoading = false;
+      if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer = null; }
+      __mp_unfreezePlayer();
+      console.log('[MP] level data received; unfreezing player');
+    }
+  } catch(_){ }
 }
 function mpApplyOps(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
-      const tt = (op.t===1||op.t===2||op.t===3||op.t===4) ? op.t|0 : 0;
-      const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : op.key;
+      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5) ? op.t|0 : 0;
+      const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : op.key;
       if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
     } else if (op.op === 'remove'){
-  if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key);
-  else if (mpMap.adds.has(op.key+'#1')) mpMap.adds.delete(op.key+'#1');
-  else if (mpMap.adds.has(op.key+'#2')) mpMap.adds.delete(op.key+'#2');
-  else if (mpMap.adds.has(op.key+'#3')) mpMap.adds.delete(op.key+'#3');
+      if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key);
+      else if (mpMap.adds.has(op.key+'#1')) mpMap.adds.delete(op.key+'#1');
+      else if (mpMap.adds.has(op.key+'#2')) mpMap.adds.delete(op.key+'#2');
+      else if (mpMap.adds.has(op.key+'#3')) mpMap.adds.delete(op.key+'#3');
       else if (mpMap.adds.has(op.key+'#4')) mpMap.adds.delete(op.key+'#4');
-  else mpMap.removes.add(op.key);
+      else if (mpMap.adds.has(op.key+'#5')) mpMap.adds.delete(op.key+'#5');
+      else mpMap.removes.add(op.key);
     }
   }
   mpMap.version = version|0;
   try { console.log('[MP] map_ops applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
   try { __mp_rebuildWorldFromDiff(); } catch(_){ }
+  try {
+    if (__mp_levelLoading){
+      __mp_levelLoading = false;
+      if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer = null; }
+      __mp_unfreezePlayer();
+      console.log('[MP] map ops applied; unfreezing player');
+    }
+  } catch(_){ }
 }
 
 // Apply full tile overrides list
@@ -118,6 +136,15 @@ function mpApplyFullTiles(version, tiles){
       if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
     }
   } catch(_){ }
+  // Unfreeze if we were waiting for level load and tiles arrived first
+  try {
+    if (__mp_levelLoading){
+      __mp_levelLoading = false;
+      if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer = null; }
+      __mp_unfreezePlayer();
+      console.log('[MP] tile snapshot applied; unfreezing player');
+    }
+  } catch(_){ }
 }
 
 function mpApplyTileOps(version, ops){
@@ -131,6 +158,14 @@ function mpApplyTileOps(version, ops){
   }
   mpTiles.version = version|0;
   try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
+  try {
+    if (__mp_levelLoading){
+      __mp_levelLoading = false;
+      if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer = null; }
+      __mp_unfreezePlayer();
+      console.log('[MP] tile ops applied; unfreezing player');
+    }
+  } catch(_){ }
 }
 
 // Rebuild columnSpans from current diff each time (simple; can be optimized later)
@@ -145,7 +180,8 @@ function __mp_rebuildWorldFromDiff(){
   const is2 = rawKey.endsWith('#2');
   const is3 = rawKey.endsWith('#3');
   const is4 = rawKey.endsWith('#4');
-  const tt = is1?1 : is2?2 : is3?3 : is4?4 : 0;
+  const is5 = rawKey.endsWith('#5');
+  const tt = is1?1 : is2?2 : is3?3 : is4?4 : is5?5 : 0;
   const key = (tt? rawKey.slice(0,-2) : rawKey);
     const parts = key.split(','); if (parts.length!==3) continue;
     const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
@@ -161,14 +197,14 @@ function __mp_rebuildWorldFromDiff(){
     arrObjs.sort((a,b)=>a.y-b.y);
     const spans = [];
     if (arrObjs.length){
-      // Separate unit voxels vs half-slabs (t=4)
-      const units = arrObjs.filter(o=> (o.t|0) !== 4);
+  // Separate unit voxels vs half-slabs (t=4). Portal spans (t=5) are visual markers; keep as units but non-solid.
+  const units = arrObjs.filter(o=> (o.t|0) !== 4);
       const slabs = arrObjs.filter(o=> (o.t|0) === 4);
       if (units.length){
-        let b = units[0].y|0; let prev = units[0].y|0; let typeAccum = units[0].t|0; // 1 overrides; else keep 2/3
+        let b = units[0].y|0; let prev = units[0].y|0; let typeAccum = units[0].t|0; // 1 overrides; else keep 2/3/5
         for (let i=1;i<units.length;i++){
           const yObj = units[i]; const y = yObj.y|0; const tcur = yObj.t|0;
-          if (y === prev + 1){ prev = y; if (tcur===1) typeAccum = 1; else if (typeAccum!==1 && (tcur===2||tcur===3)) typeAccum = tcur; continue; }
+          if (y === prev + 1){ prev = y; if (tcur===1) typeAccum = 1; else if (typeAccum!==1 && (tcur===2||tcur===3||tcur===5)) typeAccum = tcur; continue; }
           spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
           b = y; prev = y; typeAccum = tcur;
         }
@@ -183,8 +219,8 @@ function __mp_rebuildWorldFromDiff(){
     // Add new spans then normalize merge
     baseSpans = baseSpans.concat(spans);
     baseSpans.sort((p,q)=>p.b-q.b);
-  const merged=[]; for (const s of baseSpans){ const hh = (typeof s.h==='number')? s.h : ((s.h|0)); if (!merged.length){ merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:{})))) }); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h){ const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; if (s.t===1) t.t=1; if ((s.t===2||s.t===3||s.t===4) && t.t!==1) t.t=s.t; } else merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:{})))) }); }
-  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:{})))) })));
+  const merged=[]; for (const s of baseSpans){ const hh = (typeof s.h==='number')? s.h : ((s.h|0)); if (!merged.length){ merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))}); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h && ((s.t|0)===0 || (t.t|0)===0 || (s.t===t.t))){ const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; if (s.t===1) t.t=1; if ((s.t===2||s.t===3||s.t===4||s.t===5) && t.t!==1) t.t=s.t; } else { merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))}); } }
+  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))})));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){
@@ -230,6 +266,26 @@ let __mp_retryMs = MP_FAIL_BASE_MS; // exponential backoff that caps at MP_FAIL_
 let __mp_pingTimer = null;         // keep-alive/time-sync ping timer
 let __mp_sendWatchTimer = null;    // watchdog to ensure updates resume
 let __mp_lastSendReal = 0;         // last real-time send moment
+// Level loading freeze management
+let __mp_levelLoading = false;     // true while waiting for server data after level switch
+let __mp_levelUnfreezeTimer = null;// fallback unfreeze timer id
+
+function __mp_freezePlayer(){
+  try {
+    const s = __mp_getState();
+    if (!s || !s.player) return;
+    s.player.isFrozen = true;
+    s.player.movementMode = 'stationary';
+    s.player.speed = 0.0;
+  } catch(_){ }
+}
+function __mp_unfreezePlayer(){
+  try {
+    const s = __mp_getState();
+    if (!s || !s.player) return;
+    s.player.isFrozen = false;
+  } catch(_){ }
+}
 
 function mpComputeOffset(serverNow){
   try {
@@ -354,7 +410,7 @@ function mpEnsureWS(nowMs){
   __mp_cooldownActive = false; mpNextConnectAt = 0; __mp_retryMs = MP_FAIL_BASE_MS;
     try { console.log('[MP] WS connected'); } catch(_){}
     // Introduce ourselves so the server can send a snapshot
-    try { ws.send(JSON.stringify({ type:'hello', id: MP_ID, channel: MP_CHANNEL, level: MP_LEVEL })); } catch(_){ }
+  try { ws.send(JSON.stringify({ type:'hello', id: MP_ID, channel: MP_CHANNEL, level: MP_LEVEL })); } catch(_){ }
   // If we don't get a map_full within 2s, request sync explicitly
   try { setTimeout(()=>{ if (mpMap.version === 0 && mpWS && mpWS.readyState===WebSocket.OPEN){ try { mpWS.send(JSON.stringify({ type:'map_sync', have: mpMap.version })); } catch(_){} } }, 2000); } catch(_){ }
     // Reset rate limiter so we don't wait to resume updates
@@ -390,7 +446,29 @@ function mpEnsureWS(nowMs){
   ws.onmessage = (ev)=>{
     let msg = null; try { msg = JSON.parse(ev.data); } catch(_){ return; }
     const t = msg && msg.type;
-  if (t === 'items_full'){ try { console.log('[MP][items] recv items_full', (msg.items||[]).length); } catch(_){ } __mp_applyItemsFull(msg.items||[]); return; }
+    if (t === 'items_full'){ try { console.log('[MP][items] recv items_full', (msg.items||[]).length); } catch(_){ } __mp_applyItemsFull(msg.items||[]); return; }
+    if (t === 'portal_full'){
+      try { if (!(window.portalDestinations instanceof Map)) window.portalDestinations = new Map(); window.portalDestinations.clear(); } catch(_){ }
+      try {
+        if (Array.isArray(msg.portals)){
+          for (const p of msg.portals){ if (!p||typeof p.k!=='string'||typeof p.dest!=='string') continue; window.portalDestinations.set(p.k, p.dest); }
+          if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
+        }
+      } catch(_){ }
+      try { console.log('[MP][portals] recv portal_full', (msg.portals||[]).length); } catch(_){ }
+      return;
+    }
+    if (t === 'portal_ops'){
+      try {
+        if (!(window.portalDestinations instanceof Map)) window.portalDestinations = new Map();
+        for (const op of (msg.ops||[])){
+          if (!op || typeof op.k!=='string') continue;
+          if (op.op === 'set' && typeof op.dest === 'string') window.portalDestinations.set(op.k, op.dest);
+          else if (op.op === 'remove') window.portalDestinations.delete(op.k);
+        }
+      } catch(_){ }
+      return;
+    }
   if (t === 'item_ops'){ try { console.log('[MP][items] recv item_ops', msg.ops); } catch(_){ } __mp_applyItemOps(msg.ops||[]); return; }
     if (t === 'snapshot'){
       const serverNow = msg.now || 0; mpComputeOffset(serverNow);
@@ -743,7 +821,7 @@ window.mpSendMapOps = function(ops){
       if (!o || (o.op!=='add' && o.op!=='remove')) continue;
       if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
   const rec = { op:o.op, key:o.key };
-  if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4)) rec.t = (o.t|0);
+  if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5)) rec.t = (o.t|0);
   clean.push(rec);
       if (clean.length >= 512) break; // clamp
     }
@@ -821,6 +899,79 @@ window.mpForceItemsSync = function(){
   try { if (mpWS && mpWS.readyState === WebSocket.OPEN){ mpWS.send(JSON.stringify({ type:'items_sync' })); console.log('[MP][items] items_sync requested'); return true; } } catch(_){ }
   return false;
 };
+
+// Send portal metadata ops: array of { op:'set'|'remove', k:'gx,gy', dest? }
+window.mpSendPortalOps = function(ops){
+  try {
+    if (!mpWS || mpWS.readyState !== WebSocket.OPEN) return false;
+    if (!Array.isArray(ops) || !ops.length) return false;
+    const clean=[];
+    for (const o of ops){
+      if (!o || (o.op!=='set' && o.op!=='remove')) continue;
+      if (typeof o.k !== 'string') continue;
+      const rec = { op: o.op, k: o.k };
+      if (o.op === 'set'){
+        if (typeof o.dest !== 'string' || !o.dest || o.dest.length>64) continue;
+        rec.dest = o.dest;
+      }
+      clean.push(rec);
+      if (clean.length >= 256) break;
+    }
+    if (!clean.length) return false;
+    mpWS.send(JSON.stringify({ type:'portal_edit', ops: clean }));
+    return true;
+  } catch(_){ return false; }
+};
+
+// Switch to a new named level: clears local world to blank (no sample), requests server syncs, updates palette via parseLevelGroupId
+window.mpSwitchLevel = function(levelName){
+  try {
+    const name = (typeof levelName==='string' && levelName.trim()) ? levelName.trim() : 'ROOT';
+    MP_LEVEL = name;
+    window.MP_LEVEL = MP_LEVEL;
+  // Freeze player while loading new level
+  __mp_levelLoading = true;
+  __mp_freezePlayer();
+  if (__mp_levelUnfreezeTimer){ try { clearTimeout(__mp_levelUnfreezeTimer); } catch(_){ } __mp_levelUnfreezeTimer = null; }
+    // Reset client-side map and tile diffs so no old level data is re-applied
+    try {
+      if (mpMap && mpMap.adds && mpMap.removes){ mpMap.adds.clear(); mpMap.removes.clear(); mpMap.version = 0; }
+      if (mpTiles && mpTiles.set){ mpTiles.set.clear(); mpTiles.version = 0; }
+    } catch(_){ }
+    // Update palette group based on leading number
+    try { if (typeof window.parseLevelGroupId === 'function' && typeof window.setLevel === 'function'){ const gid = window.parseLevelGroupId(name); window.setLevel(gid); } } catch(_){ }
+    // Clear world to blank base: empty spans, clear tiles to OPEN
+    try {
+      if (typeof window.columnSpans !== 'undefined' && window.columnSpans && window.columnSpans.clear) window.columnSpans.clear();
+      if (typeof window.columnHeights !== 'undefined' && window.columnHeights && window.columnHeights.clear) window.columnHeights.clear();
+      if (typeof window.columnBases !== 'undefined' && window.columnBases && window.columnBases.clear) window.columnBases.clear();
+      if (typeof window.map !== 'undefined' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number' && typeof window.mapIdx==='function'){
+        for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ try { window.map[window.mapIdx(x,y)] = (window.TILE && window.TILE.OPEN)||0; } catch(_){ } }
+      }
+      // Clear any pending builder outputs from sample map module
+      try { delete window._pendingMapHeights; } catch(_){ }
+      try { delete window._pendingItems; } catch(_){ }
+      if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
+      if (typeof window.removeItemsAtWorld === 'function'){
+        // Best-effort clear items: call with a blanket area by iterating grid cells
+        for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){ const w={ x:(x+0.5)-window.MAP_W*0.5, z:(y+0.5)-window.MAP_H*0.5 }; try { window.removeItemsAtWorld(w.x, w.z); } catch(_){ } }
+      }
+      if (window.portalDestinations instanceof Map) window.portalDestinations.clear();
+    } catch(_){ }
+    // Request syncs from server for this level
+    try { if (mpWS && mpWS.readyState === WebSocket.OPEN){ mpWS.send(JSON.stringify({ type:'level_change', level: MP_LEVEL })); } } catch(_){ }
+    // UX hint
+    try { console.log('[MP] switched to level', MP_LEVEL); } catch(_){ }
+    // Safety: unfreeze if no data arrives within 3 seconds
+    try {
+      __mp_levelUnfreezeTimer = setTimeout(() => { __mp_levelLoading = false; __mp_unfreezePlayer(); __mp_levelUnfreezeTimer = null; }, 3000);
+    } catch(_){ }
+    return true;
+  } catch(_){ return false; }
+};
+
+// Allow UI to set level name without switching immediately (for gating buildSampleMap)
+window.mpSetLevelName = function(name){ try { MP_LEVEL = String(name||'ROOT'); window.MP_LEVEL = MP_LEVEL; } catch(_){ } };
 
 // Network reachability hooks: reconnect immediately on regain; close on offline
 try {

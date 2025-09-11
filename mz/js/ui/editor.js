@@ -160,6 +160,47 @@
   function addBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
     const gx=vs.gx, gy=vs.gy, y=vs.base|0; const key=`${gx},${gy}`;
+    // LEVELCHANGE placement (slot 8)
+    try {
+      if ((state.editor.blockSlot|0) === 8){
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          const idx = mapIdx(gx, gy);
+          // Prompt destination
+          let def = '';
+          try { if (window.portalDestinations instanceof Map){ const d = window.portalDestinations.get(key); if (typeof d === 'string') def = d; } } catch(_){ }
+          const dest = (window.prompt('Enter destination level (e.g., ROOT, 1A, 2B, 1-1, 1Shell):', def) || '').trim();
+          if (!dest){ if (typeof showTopNotification === 'function') showTopNotification('Portal cancelled'); return false; }
+          // Ensure metadata map exists
+          try { if (!(window.portalDestinations instanceof Map)) window.portalDestinations = new Map(); } catch(_){ }
+          try { window.portalDestinations.set(key, dest); } catch(_){ }
+          if (y === 0){
+            // Ground-level portal tile for orange visual
+            if (map[idx] !== TILE.LEVELCHANGE){
+              map[idx] = TILE.LEVELCHANGE;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.LEVELCHANGE }]); } catch(_){ }
+            }
+          } else {
+            // Elevated portal as a non-solid span marker (t:5)
+            let spans = __getSpans(gx,gy);
+            const exists = spans.some(s=>s && ((s.b|0)===y) && (((s.t|0)||0)===5));
+            if (!exists){
+              spans.push({ b: y, h: 1, t: 5 });
+              spans = spans.filter(s=>s && (Number(s.h)||0) > 0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:((s.t|0)===4?{t:4}:((s.t|0)===5?{t:5}:{})))) ) }));
+              spans.sort((p,q)=>p.b-q.b);
+              __setSpans(gx,gy,spans);
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 5 }]); } } catch(_){ }
+            }
+          }
+          // Replicate portal metadata
+          try { if (window.mpSendPortalOps) mpSendPortalOps([{ op:'set', k:key, dest }]); } catch(_){ }
+          if (typeof showTopNotification === 'function') showTopNotification('Portal → ' + dest);
+          return true;
+        }
+        return false;
+      }
+    } catch(_){ }
     // HALF tile placement (slot 5): set ground tile only, no voxel span
     try {
       if ((state.editor.blockSlot|0) === 5){
@@ -274,6 +315,39 @@
   function removeBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
     const gx=vs.gx, gy=vs.gy, y=vs.base|0;
+    // LEVELCHANGE removal (slot 8)
+    try {
+      if ((state.editor.blockSlot|0) === 8){
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          const idx = mapIdx(gx, gy);
+          if (y === 0){
+            if (map[idx] === TILE.LEVELCHANGE){
+              map[idx] = TILE.OPEN;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+              const key = `${gx},${gy}`;
+              try { if (window.portalDestinations instanceof Map) window.portalDestinations.delete(key); } catch(_){ }
+              try { if (window.mpSendPortalOps) mpSendPortalOps([{ op:'remove', k:key }]); } catch(_){ }
+              if (typeof showTopNotification === 'function') showTopNotification('Portal removed');
+              return true;
+            }
+          } else {
+            // Elevated portal removal (t:5)
+            let spans = __getSpans(gx,gy);
+            const before = spans.length;
+            spans = spans.filter(s=>!(s && ((s.b|0)===y) && (((s.t|0)||0)===5)));
+            if (spans.length !== before){
+              __setSpans(gx,gy,spans);
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 5 }]); } } catch(_){ }
+              if (typeof showTopNotification === 'function') showTopNotification('Elevated portal removed');
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
     // HALF tile removal when slot 5 is active: clear ground tile to OPEN
     try {
       if ((state.editor.blockSlot|0) === 5){
@@ -1002,6 +1076,7 @@
       } catch(_){ return '#9bdfe9'; }
     } },
   7: { name: 'BADFENCE', color: '#d92b2f' },
+  8: { name: 'LEVELCHANGE', color: '#ff8c2b' },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;

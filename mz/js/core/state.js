@@ -170,6 +170,22 @@ window.setLevel = function(levelId){
   } catch(e){ console.warn('Palette derivation failed', e); }
 };
 
+// Parse a level name/string into a palette group id.
+// Rules: 'ROOT' -> 1; strings starting with a number (e.g., '1A', '1-1', '2B', '10Shell') -> that number; default -> 1.
+window.parseLevelGroupId = function(name){
+  try {
+    if (typeof name !== 'string' || !name.trim()) return 1;
+    const s = name.trim();
+    if (/^root$/i.test(s)) return 1;
+    const m = s.match(/^(\d+)/);
+    if (m && m[1]){
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > 0) return Math.min(7, n); // clamp to defined palettes
+    }
+  } catch(_){ }
+  return 1;
+};
+
 window.getLevelBaseColor = function(){ return state.level.baseColor; };
 window.getLevelBaseColorRGB = function(){ return state.level.baseColorRGB; };
 window.getLevelWallColorRGB = function(){ return (state.level && state.level.palette && state.level.palette.wallRGB) || [0.06,0.45,0.48]; };
