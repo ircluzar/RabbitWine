@@ -658,7 +658,7 @@ function moveAndCollide(dt){
                 p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
                 p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
                 p._portalCooldownUntil = nowSec + 0.6;
-                try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
+                try { if (window.sfx) sfx.play('./sfx/VRUN_Teleport.mp3'); } catch(_){ }
                 return;
               }
             }
@@ -852,7 +852,7 @@ function moveAndCollide(dt){
                 p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
                 p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
                 p._portalCooldownUntil = nowSec + 0.6;
-                try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
+                try { if (window.sfx) sfx.play('./sfx/VRUN_Teleport.mp3'); } catch(_){ }
                 return;
               }
             }
@@ -1103,7 +1103,7 @@ function moveAndCollide(dt){
               p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
               p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
               p._portalCooldownUntil = nowSec + 0.6;
-              try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
+              try { if (window.sfx) sfx.play('./sfx/VRUN_Teleport.mp3'); } catch(_){ }
             }
           }
         }
@@ -1384,6 +1384,100 @@ function runBallMode(dt){
   const stepZ = p._ballVZ * dt;
   let nx = 0, nz = 0; // collision normal accumulator
   let bounced = false;
+  // Helper: try teleport if a portal is present at a given cell at current Y; returns true if teleported
+  function tryBallPortalAtCell(gxCell, gzCell, moveDirX, moveDirZ){
+    if (gxCell<0||gzCell<0||gxCell>=MAP_W||gzCell>=MAP_H) return false;
+    const nowSec = state.nowSec || (performance.now()/1000);
+    if (p._portalCooldownUntil && nowSec < p._portalCooldownUntil) return false;
+    let portalHit = false;
+    const cv = map[mapIdx(gxCell,gzCell)];
+    if (cv === TILE.LEVELCHANGE) portalHit = true;
+    if (!portalHit){
+      try {
+        const key = `${gxCell},${gzCell}`;
+        const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                    : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                    : null;
+        if (Array.isArray(spans)){
+          for (const s of spans){ if (!s) continue; const t=((s.t|0)||0); if (t!==5) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (p.y >= b && p.y <= top - 0.02){ portalHit = true; break; } }
+        }
+      } catch(_){ }
+    }
+    if (!portalHit) return false;
+    // Destination
+    let dest = null; try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(`${gxCell},${gzCell}`) || null; } catch(_){ }
+    if (typeof dest !== 'string' || !dest) return false;
+    // Preserve full movement/physics including ball params
+    const keep = {
+      angle: p.angle,
+      speed: p.speed,
+      movementMode: p.movementMode,
+      vy: p.vy,
+      grounded: p.grounded,
+      isDashing: !!p.isDashing,
+      dashUsed: !!p.dashUsed,
+      dashTime: p.dashTime,
+      _dashDirX: p._dashDirX,
+      _dashDirZ: p._dashDirZ,
+      isFrozen: !!p.isFrozen,
+      isBallMode: !!p.isBallMode,
+      _ballVX: p._ballVX,
+      _ballVZ: p._ballVZ,
+      _ballBouncesLeft: p._ballBouncesLeft,
+      _ballSpinAxisX: p._ballSpinAxisX,
+      _ballSpinAxisY: p._ballSpinAxisY,
+      _ballSpinAxisZ: p._ballSpinAxisZ,
+      _ballSpinSpeed: p._ballSpinSpeed,
+    };
+    // Exit placement: border portals spawn at opposite wall and use inward normal if needed; interior step forward
+    let exDirX = moveDirX, exDirZ = moveDirZ;
+    const Ld = Math.hypot(exDirX, exDirZ) || 1; exDirX/=Ld; exDirZ/=Ld;
+    const isBorder = (gxCell === 0 || gxCell === (MAP_W|0)-1 || gzCell === 0 || gzCell === (MAP_H|0)-1);
+    let outX = 0, outZ = 0;
+    if (isBorder){
+      let exGx = gxCell, exGz = gzCell;
+      let nX = 0, nZ = 0;
+      if (gxCell === 0){ nX = -1; nZ = 0; exGx = (MAP_W|0) - 1; }
+      else if (gxCell === (MAP_W|0)-1){ nX = 1; nZ = 0; exGx = 0; }
+      else if (gzCell === 0){ nX = 0; nZ = -1; exGz = (MAP_H|0) - 1; }
+      else if (gzCell === (MAP_H|0)-1){ nX = 0; nZ = 1; exGz = 0; }
+      // If moving outward or too tangent, choose inward normal
+      if (nX!==0 || nZ!==0){ const d = exDirX*nX + exDirZ*nZ; if (d <= 0.05){ exDirX = nX; exDirZ = nZ; } }
+      const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
+      const cx = exGx - MAP_W*0.5 + 0.5;
+      const cz = exGz - MAP_H*0.5 + 0.5;
+      const EXIT_DIST = 0.52;
+      outX = cx + exDirX * EXIT_DIST;
+      outZ = cz + exDirZ * EXIT_DIST;
+    } else {
+      const cx = gxCell - MAP_W*0.5 + 0.5;
+      const cz = gzCell - MAP_H*0.5 + 0.5;
+      const EXIT_DIST = 0.52;
+      outX = cx + exDirX * EXIT_DIST;
+      outZ = cz + exDirZ * EXIT_DIST;
+    }
+    try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
+    // Restore and place
+    p.angle = keep.angle;
+    p.x = outX; p.z = outZ;
+    try {
+      const gH2 = groundHeightAt(p.x, p.z);
+      if (p.y < gH2 - 1e-3){ p.y = gH2; if ((keep.vy||0) < 0) keep.vy = 0; }
+    } catch(_){ }
+    p.vy = (typeof keep.vy==='number') ? keep.vy : p.vy;
+    p.grounded = !!keep.grounded;
+    p.speed = (typeof keep.speed==='number') ? keep.speed : p.speed;
+    if (keep.movementMode) p.movementMode = keep.movementMode;
+    p.isDashing = keep.isDashing; p.dashUsed = keep.dashUsed; p.dashTime = keep.dashTime||0;
+    p._dashDirX = keep._dashDirX; p._dashDirZ = keep._dashDirZ;
+    p.isFrozen = keep.isFrozen;
+    p.isBallMode = keep.isBallMode;
+    p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
+    p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
+    p._portalCooldownUntil = nowSec + 0.6;
+  try { if (window.sfx) sfx.play('./sfx/VRUN_Teleport.mp3'); } catch(_){ }
+    return true;
+  }
   function isWallAtXZ(wx, wz){
     // Voxel-accurate lateral collision for ball mode (matches fence renderer)
     const gx = Math.floor(wx + MAP_W*0.5);
@@ -1476,9 +1570,27 @@ function runBallMode(dt){
   }
   // Try Z then X similar to normal collision for a simple normal estimate
   let nxTry = p.x, nzTry = p.z + stepZ;
-  if (!isWallAtXZ(nxTry, nzTry)) { p.z = nzTry; } else { p._ballVZ = -p._ballVZ * 0.45; bounced = true; nz = -Math.sign(stepZ); }
+  if (!isWallAtXZ(nxTry, nzTry)) { p.z = nzTry; } else {
+    // Blocked along Z: if the blocking cell is a portal, teleport instead of bouncing
+    let gxCell = Math.floor(p.x + MAP_W*0.5);
+    let gzCell = Math.floor(nzTry + MAP_H*0.5);
+    if (gxCell < 0) gxCell = 0; else if (gxCell >= (MAP_W|0)) gxCell = (MAP_W|0)-1;
+    if (gzCell < 0) gzCell = 0; else if (gzCell >= (MAP_H|0)) gzCell = (MAP_H|0)-1;
+    const dirX = stepX, dirZ = stepZ;
+    if (tryBallPortalAtCell(gxCell, gzCell, dirX, dirZ)) return; // teleported
+    p._ballVZ = -p._ballVZ * 0.45; bounced = true; nz = -Math.sign(stepZ);
+  }
   nxTry = p.x + stepX; nzTry = p.z;
-  if (!isWallAtXZ(nxTry, nzTry)) { p.x = nxTry; } else { p._ballVX = -p._ballVX * 0.45; bounced = true; nx = -Math.sign(stepX); }
+  if (!isWallAtXZ(nxTry, nzTry)) { p.x = nxTry; } else {
+    // Blocked along X: if the blocking cell is a portal, teleport instead of bouncing
+    let gxCell = Math.floor(nxTry + MAP_W*0.5);
+    let gzCell = Math.floor(p.z + MAP_H*0.5);
+    if (gxCell < 0) gxCell = 0; else if (gxCell >= (MAP_W|0)) gxCell = (MAP_W|0)-1;
+    if (gzCell < 0) gzCell = 0; else if (gzCell >= (MAP_H|0)) gzCell = (MAP_H|0)-1;
+    const dirX = stepX, dirZ = stepZ;
+    if (tryBallPortalAtCell(gxCell, gzCell, dirX, dirZ)) return; // teleported
+    p._ballVX = -p._ballVX * 0.45; bounced = true; nx = -Math.sign(stepX);
+  }
   if (bounced){
     // Smaller upward nudge on wall bounce; but don't cancel a ceiling spike this frame
     if (!hitCeilingThisFrame) p.vy = Math.max(p.vy, 1.0);
@@ -1496,6 +1608,18 @@ function runBallMode(dt){
   // SFX per wall bounce
   try { if (window.sfx) sfx.play('./sfx/TunnelRun_Jump.mp3', { volume: 0.5 }); } catch(_){ }
   }
+  // Also allow in-place portal trigger when overlapping a portal span or LEVELCHANGE while in ball mode
+  try {
+    const gx = Math.floor(p.x + MAP_W*0.5);
+    const gz = Math.floor(p.z + MAP_H*0.5);
+    if (gx>=0 && gz>=0 && gx<MAP_W && gz<MAP_H){
+      // Use current velocity as movement direction; fallback to angle if tiny
+      let mdx = p._ballVX, mdz = p._ballVZ;
+      const mv = Math.hypot(mdx, mdz);
+      if (mv < 1e-4){ mdx = Math.sin(p.angle); mdz = -Math.cos(p.angle); }
+      if (tryBallPortalAtCell(gx, gz, mdx, mdz)) return; // teleported
+    }
+  } catch(_){ }
 }
 
 function exitBallMode(){
