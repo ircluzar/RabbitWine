@@ -943,14 +943,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
       }
-      // Outlines for each level
-      for (let level=0; level<g.h; level++){
-        const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
-        const offs2 = new Float32Array(pts.length * 2);
-        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
-        const wallOutline2 = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
-        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, wallOutline2);
-      }
+  // Intentionally no outlines for portal spans (t==5)
       // Restore program/VAO after outlines
       gl.bindVertexArray(wallVAO);
       gl.useProgram(wallProgram);

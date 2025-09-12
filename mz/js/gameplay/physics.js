@@ -573,9 +573,12 @@ function moveAndCollide(dt){
       {
         const nowSec = state.nowSec || (performance.now()/1000);
         if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
-          const gxCell = gxCur;
-          const gzCell = gzNew;
-          if (!outZ && gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
+          // Use the blocking cell, clamped to the grid, so border portals still trigger
+          let gxCell = gxCur;
+          let gzCell = gzNew;
+          if (gxCell < 0) gxCell = 0; else if (gxCell >= (MAP_W|0)) gxCell = (MAP_W|0) - 1;
+          if (gzCell < 0) gzCell = 0; else if (gzCell >= (MAP_H|0)) gzCell = (MAP_H|0) - 1;
+          if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
             let portalHit = false;
             const cvBlock = map[mapIdx(gxCell,gzCell)];
             if (cvBlock === TILE.LEVELCHANGE) portalHit = true;
@@ -613,12 +616,47 @@ function moveAndCollide(dt){
         const EXIT_DIST = 0.52;
         const outX = cx + exDirX * EXIT_DIST;
         const outZ2 = cz + exDirZ * EXIT_DIST;
-                const prevAngle = p.angle;
+                // Snapshot movement/physics state and restore after level switch
+                const keep = {
+                  angle: p.angle,
+                  speed: p.speed,
+                  movementMode: p.movementMode,
+                  vy: p.vy,
+                  grounded: p.grounded,
+                  isDashing: !!p.isDashing,
+                  dashUsed: !!p.dashUsed,
+                  dashTime: p.dashTime,
+                  _dashDirX: p._dashDirX,
+                  _dashDirZ: p._dashDirZ,
+                  isFrozen: !!p.isFrozen,
+                  isBallMode: !!p.isBallMode,
+                  _ballVX: p._ballVX,
+                  _ballVZ: p._ballVZ,
+                  _ballBouncesLeft: p._ballBouncesLeft,
+                  _ballSpinAxisX: p._ballSpinAxisX,
+                  _ballSpinAxisY: p._ballSpinAxisY,
+                  _ballSpinAxisZ: p._ballSpinAxisZ,
+                  _ballSpinSpeed: p._ballSpinSpeed,
+                };
                 try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
-                // Restore facing to preserve direction across sample map rebuilds (e.g., ROOT)
-                p.angle = prevAngle;
+                // Restore movement/physics state and place player at computed exit
+                p.angle = keep.angle;
                 p.x = outX; p.z = outZ2;
-                try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
+                // Preserve vertical motion; only clamp up to ground if below it
+                try {
+                  const gH2 = groundHeightAt(p.x, p.z);
+                  if (p.y < gH2 - 1e-3){ p.y = gH2; if ((keep.vy||0) < 0) keep.vy = 0; }
+                } catch(_){ }
+                p.vy = (typeof keep.vy==='number') ? keep.vy : p.vy;
+                p.grounded = !!keep.grounded;
+                p.speed = (typeof keep.speed==='number') ? keep.speed : p.speed;
+                if (keep.movementMode) p.movementMode = keep.movementMode;
+                p.isDashing = keep.isDashing; p.dashUsed = keep.dashUsed; p.dashTime = keep.dashTime||0;
+                p._dashDirX = keep._dashDirX; p._dashDirZ = keep._dashDirZ;
+                p.isFrozen = keep.isFrozen;
+                p.isBallMode = keep.isBallMode;
+                p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
+                p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
                 p._portalCooldownUntil = nowSec + 0.6;
                 try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
                 return;
@@ -734,9 +772,12 @@ function moveAndCollide(dt){
       {
         const nowSec = state.nowSec || (performance.now()/1000);
         if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
-          const gxCell = gxNew;
-          const gzCell = gzCur;
-          if (!outX && gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
+          // Use the blocking cell, clamped to the grid, so border portals still trigger
+          let gxCell = gxNew;
+          let gzCell = gzCur;
+          if (gxCell < 0) gxCell = 0; else if (gxCell >= (MAP_W|0)) gxCell = (MAP_W|0) - 1;
+          if (gzCell < 0) gzCell = 0; else if (gzCell >= (MAP_H|0)) gzCell = (MAP_H|0) - 1;
+          if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
             let portalHit = false;
             const cvBlock = map[mapIdx(gxCell,gzCell)];
             if (cvBlock === TILE.LEVELCHANGE) portalHit = true;
@@ -772,11 +813,44 @@ function moveAndCollide(dt){
         const EXIT_DIST = 0.52;
         const outX2 = cx + exDirX * EXIT_DIST;
         const outZ3 = cz + exDirZ * EXIT_DIST;
-                const prevAngle2 = p.angle;
+                const keep = {
+                  angle: p.angle,
+                  speed: p.speed,
+                  movementMode: p.movementMode,
+                  vy: p.vy,
+                  grounded: p.grounded,
+                  isDashing: !!p.isDashing,
+                  dashUsed: !!p.dashUsed,
+                  dashTime: p.dashTime,
+                  _dashDirX: p._dashDirX,
+                  _dashDirZ: p._dashDirZ,
+                  isFrozen: !!p.isFrozen,
+                  isBallMode: !!p.isBallMode,
+                  _ballVX: p._ballVX,
+                  _ballVZ: p._ballVZ,
+                  _ballBouncesLeft: p._ballBouncesLeft,
+                  _ballSpinAxisX: p._ballSpinAxisX,
+                  _ballSpinAxisY: p._ballSpinAxisY,
+                  _ballSpinAxisZ: p._ballSpinAxisZ,
+                  _ballSpinSpeed: p._ballSpinSpeed,
+                };
                 try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
-                p.angle = prevAngle2;
+                p.angle = keep.angle;
                 p.x = outX2; p.z = outZ3;
-                try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
+                try {
+                  const gH2 = groundHeightAt(p.x, p.z);
+                  if (p.y < gH2 - 1e-3){ p.y = gH2; if ((keep.vy||0) < 0) keep.vy = 0; }
+                } catch(_){ }
+                p.vy = (typeof keep.vy==='number') ? keep.vy : p.vy;
+                p.grounded = !!keep.grounded;
+                p.speed = (typeof keep.speed==='number') ? keep.speed : p.speed;
+                if (keep.movementMode) p.movementMode = keep.movementMode;
+                p.isDashing = keep.isDashing; p.dashUsed = keep.dashUsed; p.dashTime = keep.dashTime||0;
+                p._dashDirX = keep._dashDirX; p._dashDirZ = keep._dashDirZ;
+                p.isFrozen = keep.isFrozen;
+                p.isBallMode = keep.isBallMode;
+                p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
+                p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
                 p._portalCooldownUntil = nowSec + 0.6;
                 try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
                 return;
@@ -953,28 +1027,82 @@ function moveAndCollide(dt){
             let dest = null;
             try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(key) || null; } catch(_){ }
             if (typeof dest === 'string' && dest){
-              // Compute exit position on the opposite side of this tile based on travel direction
-              // Use the current facing/velocity direction
-              let dirX = Math.sin(p.angle), dirZ = -Math.cos(p.angle);
-              if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ dirX = p._dashDirX; dirZ = p._dashDirZ; }
-              const L = Math.hypot(dirX, dirZ) || 1;
-              dirX /= L; dirZ /= L;
-              const cx = gx - MAP_W*0.5 + 0.5;
-              const cz = gz - MAP_H*0.5 + 0.5;
-              const EXIT_DIST = 0.52; // just past the tile center
-              const outX = cx + dirX * EXIT_DIST;
-              const outZ = cz + dirZ * EXIT_DIST;
+              // Snapshot movement/physics state so we can preserve feel across the switch
+              const keep = {
+                angle: p.angle,
+                speed: p.speed,
+                movementMode: p.movementMode,
+                vy: p.vy,
+                grounded: p.grounded,
+                isDashing: !!p.isDashing,
+                dashUsed: !!p.dashUsed,
+                dashTime: p.dashTime,
+                _dashDirX: p._dashDirX,
+                _dashDirZ: p._dashDirZ,
+                isFrozen: !!p.isFrozen,
+                isBallMode: !!p.isBallMode,
+                _ballVX: p._ballVX,
+                _ballVZ: p._ballVZ,
+                _ballBouncesLeft: p._ballBouncesLeft,
+                _ballSpinAxisX: p._ballSpinAxisX,
+                _ballSpinAxisY: p._ballSpinAxisY,
+                _ballSpinAxisZ: p._ballSpinAxisZ,
+                _ballSpinSpeed: p._ballSpinSpeed,
+              };
+              // Determine exit placement. If this is a border cell, spawn at the opposite wall cell
+              // and ensure exit direction points inward (unless player already points sufficiently inward).
+              const isBorder = (gx === 0 || gx === (MAP_W|0)-1 || gz === 0 || gz === (MAP_H|0)-1);
+              let outX = 0, outZ = 0;
+              if (isBorder){
+                // Base direction on current facing or dash
+                let exDirX = (p.isDashing && typeof p._dashDirX==='number') ? p._dashDirX : Math.sin(p.angle);
+                let exDirZ = (p.isDashing && typeof p._dashDirZ==='number') ? p._dashDirZ : -Math.cos(p.angle);
+                let exGx = gx, exGz = gz;
+                let nX = 0, nZ = 0; // inward normal at opposite wall
+                if (gx === 0){ nX = -1; nZ = 0; exGx = (MAP_W|0) - 1; }
+                else if (gx === (MAP_W|0)-1){ nX = 1; nZ = 0; exGx = 0; }
+                else if (gz === 0){ nX = 0; nZ = -1; exGz = (MAP_H|0) - 1; }
+                else if (gz === (MAP_H|0)-1){ nX = 0; nZ = 1; exGz = 0; }
+                // If incoming dir is outward or near-tangent, use inward normal instead
+                if (nX!==0 || nZ!==0){ const d = exDirX*nX + exDirZ*nZ; if (d <= 0.05){ exDirX = nX; exDirZ = nZ; } }
+                const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
+                const cx = exGx - MAP_W*0.5 + 0.5;
+                const cz = exGz - MAP_H*0.5 + 0.5;
+                const EXIT_DIST = 0.52;
+                outX = cx + exDirX * EXIT_DIST;
+                outZ = cz + exDirZ * EXIT_DIST;
+              } else {
+                // Interior portal: step forward through the tile center
+                let dirX = Math.sin(p.angle), dirZ = -Math.cos(p.angle);
+                if (p.isDashing && typeof p._dashDirX === 'number' && typeof p._dashDirZ === 'number'){ dirX = p._dashDirX; dirZ = p._dashDirZ; }
+                const L = Math.hypot(dirX, dirZ) || 1; dirX/=L; dirZ/=L;
+                const cx = gx - MAP_W*0.5 + 0.5;
+                const cz = gz - MAP_H*0.5 + 0.5;
+                const EXIT_DIST = 0.52;
+                outX = cx + dirX * EXIT_DIST;
+                outZ = cz + dirZ * EXIT_DIST;
+              }
               // Switch level first (clears world and requests server data)
-              const prevAngle3 = p.angle;
               try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
-              p.angle = prevAngle3;
-              // Teleport player to the computed exit position; preserve angle/speed/velocity
+              // Restore movement/physics and place the player at computed exit
+              p.angle = keep.angle;
               p.x = outX; p.z = outZ;
-              // Maintain current vertical state; ensure not below ground
-              try { const gH2 = groundHeightAt(p.x, p.z); if (p.y < gH2) { p.y = gH2; p.vy = 0.0; p.grounded = true; } } catch(_){ }
-              // Cooldown to avoid immediate re-trigger loops
+              // Preserve vertical motion; only clamp up to ground if below it
+              try {
+                const gH2 = groundHeightAt(p.x, p.z);
+                if (p.y < gH2 - 1e-3){ p.y = gH2; if ((keep.vy||0) < 0) keep.vy = 0; }
+              } catch(_){ }
+              p.vy = (typeof keep.vy==='number') ? keep.vy : p.vy;
+              p.grounded = !!keep.grounded;
+              p.speed = (typeof keep.speed==='number') ? keep.speed : p.speed;
+              if (keep.movementMode) p.movementMode = keep.movementMode;
+              p.isDashing = keep.isDashing; p.dashUsed = keep.dashUsed; p.dashTime = keep.dashTime||0;
+              p._dashDirX = keep._dashDirX; p._dashDirZ = keep._dashDirZ;
+              p.isFrozen = keep.isFrozen;
+              p.isBallMode = keep.isBallMode;
+              p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
+              p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
               p._portalCooldownUntil = nowSec + 0.6;
-              // SFX hook
               try { if (window.sfx) sfx.play('./sfx/Portal_Enter.mp3'); } catch(_){ }
             }
           }

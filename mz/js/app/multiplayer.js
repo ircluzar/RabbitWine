@@ -197,18 +197,31 @@ function __mp_rebuildWorldFromDiff(){
     arrObjs.sort((a,b)=>a.y-b.y);
     const spans = [];
     if (arrObjs.length){
-  // Separate unit voxels vs half-slabs (t=4). Portal spans (t=5) are visual markers; keep as units but non-solid.
-  const units = arrObjs.filter(o=> (o.t|0) !== 4);
+      // Separate unit voxels vs half-slabs (t=4). Treat portal markers (t=5) separately so they never color entire solid spans.
+      const solidUnits = arrObjs.filter(o=> (o.t|0)!==4 && (o.t|0)!==5);
+      const portalUnits = arrObjs.filter(o=> (o.t|0)===5);
       const slabs = arrObjs.filter(o=> (o.t|0) === 4);
-      if (units.length){
-        let b = units[0].y|0; let prev = units[0].y|0; let typeAccum = units[0].t|0; // 1 overrides; else keep 2/3/5
-        for (let i=1;i<units.length;i++){
-          const yObj = units[i]; const y = yObj.y|0; const tcur = yObj.t|0;
-          if (y === prev + 1){ prev = y; if (tcur===1) typeAccum = 1; else if (typeAccum!==1 && (tcur===2||tcur===3||tcur===5)) typeAccum = tcur; continue; }
+      // Build contiguous spans for solid units with precedence: 1 (BAD) overrides; else keep last of 2/3 when present. Do not include 5 here.
+      if (solidUnits.length){
+        let b = solidUnits[0].y|0; let prev = solidUnits[0].y|0; let typeAccum = solidUnits[0].t|0; // 1 overrides; else keep 2/3
+        for (let i=1;i<solidUnits.length;i++){
+          const yObj = solidUnits[i]; const y = yObj.y|0; const tcur = yObj.t|0;
+          if (y === prev + 1){ prev = y; if (tcur===1) typeAccum = 1; else if (typeAccum!==1 && (tcur===2||tcur===3)) typeAccum = tcur; continue; }
           spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
           b = y; prev = y; typeAccum = tcur;
         }
         spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
+      }
+      // Build contiguous portal spans independently (pure triggers, non-solid)
+      if (portalUnits.length){
+        let b = portalUnits[0].y|0; let prev = portalUnits[0].y|0;
+        for (let i=1;i<portalUnits.length;i++){
+          const yObj = portalUnits[i]; const y = yObj.y|0;
+          if (y === prev + 1){ prev = y; continue; }
+          spans.push({ b, h:(prev - b + 1), t:5 });
+          b = y; prev = y;
+        }
+        spans.push({ b, h:(prev - b + 1), t:5 });
       }
       // Add half-slabs individually (b=y, h=0.5)
       for (const s of slabs){ spans.push({ b: s.y|0, h: 0.5 }); }
@@ -219,7 +232,7 @@ function __mp_rebuildWorldFromDiff(){
     // Add new spans then normalize merge
     baseSpans = baseSpans.concat(spans);
     baseSpans.sort((p,q)=>p.b-q.b);
-  const merged=[]; for (const s of baseSpans){ const hh = (typeof s.h==='number')? s.h : ((s.h|0)); if (!merged.length){ merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))}); continue;} const t=merged[merged.length-1]; if (s.b <= t.b+t.h && ((s.t|0)===0 || (t.t|0)===0 || (s.t===t.t))){ const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; if (s.t===1) t.t=1; if ((s.t===2||s.t===3||s.t===4||s.t===5) && t.t!==1) t.t=s.t; } else { merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))}); } }
+  const merged=[]; for (const s of baseSpans){ const hh = (typeof s.h==='number')? s.h : ((s.h|0)); if (!merged.length){ merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))}); continue;} const t=merged[merged.length-1]; const sT=(s.t|0)||0, tT=(t.t|0)||0; const portalMix = (sT===5)!==(tT===5); if (!portalMix && s.b <= t.b+t.h && ((sT===0 || tT===0 || sT===tT))){ const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; if (sT===1) t.t=1; if ((sT===2||sT===3||sT===4) && t.t!==1) t.t=sT; /* do not let t==5 override when merging */ } else { merged.push({ b:s.b|0, h:hh, ...(sT===1?{t:1}:(sT===2?{t:2}:(sT===3?{t:3}:(sT===4?{t:4}:(sT===5?{t:5}:{})))))}); } }
   window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))})));
   }
   // Apply removals: removing a single voxel from any span.

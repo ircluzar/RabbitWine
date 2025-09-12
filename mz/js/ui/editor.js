@@ -663,6 +663,16 @@
 
   // Modal builder
   function openEditorModal(){
+  // Only allow opening when BASE block type (slot 1) is selected
+  try {
+    const slot = (state && state.editor) ? ((state.editor.blockSlot|0) || 0) : 0;
+    if (slot !== 1){
+      if (typeof showTopNotification === 'function') showTopNotification('Structure Builder requires BASE (1) selected');
+      // If we arrived here via pointer-unlock flow, re-lock to keep FPS editing uninterrupted
+      try { if (state && state.editor && state.editor.mode === 'fps' && document.pointerLockElement !== CANVAS && CANVAS.requestPointerLock){ CANVAS.requestPointerLock(); } } catch(_){ }
+      return; // do not open modal
+    }
+  } catch(_){ /* fail safe: if state is odd, fall through and allow default behavior */ }
   state.editor.mode = 'fps';
     state.snapTopFull = false; state.snapBottomFull = false; // keep split by default
     const EDITOR_TOGGLE = document.getElementById('editor-toggle');
