@@ -11,7 +11,7 @@
 // FENCE: connectable fence post + rails (visual + collision), brightened level color
 // BADFENCE: like FENCE but hazardous on contact with inner rails and rendered red
 // LEVELCHANGE: non-solid trigger block that switches to another level when entered
-const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6, BADFENCE: 7, LEVELCHANGE: 8 };
+const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6, BADFENCE: 7, LEVELCHANGE: 8, NOCLIMB: 9 };
 const MAP_W = 24, MAP_H = 24;
 const map = new Uint8Array(MAP_W * MAP_H);
 

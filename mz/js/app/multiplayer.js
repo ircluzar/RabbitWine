@@ -64,9 +64,15 @@ function mpApplyFullMap(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add') {
-      // Encode type flag by storing key#N in adds set where N in {1,2,3,4,5}
-      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5) ? op.t|0 : 0;
-      if (tt===1) mpMap.adds.add(op.key+'#1'); else if (tt===2) mpMap.adds.add(op.key+'#2'); else if (tt===3) mpMap.adds.add(op.key+'#3'); else if (tt===4) mpMap.adds.add(op.key+'#4'); else if (tt===5) mpMap.adds.add(op.key+'#5'); else mpMap.adds.add(op.key);
+      // Encode type flag by storing key#N in adds set where N in {1,2,3,4,5,9}
+      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===9) ? op.t|0 : 0;
+      if (tt===1) mpMap.adds.add(op.key+'#1');
+      else if (tt===2) mpMap.adds.add(op.key+'#2');
+      else if (tt===3) mpMap.adds.add(op.key+'#3');
+      else if (tt===4) mpMap.adds.add(op.key+'#4');
+      else if (tt===5) mpMap.adds.add(op.key+'#5');
+      else if (tt===9) mpMap.adds.add(op.key+'#9');
+      else mpMap.adds.add(op.key);
     }
     else if (op.op === 'remove') mpMap.removes.add(op.key);
   }
@@ -87,8 +93,8 @@ function mpApplyOps(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
-      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5) ? op.t|0 : 0;
-      const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : op.key;
+      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===9) ? op.t|0 : 0;
+      const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : (tt===9)? (op.key+'#9') : op.key;
       if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
     } else if (op.op === 'remove'){
       if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key);
@@ -97,6 +103,7 @@ function mpApplyOps(version, ops){
       else if (mpMap.adds.has(op.key+'#3')) mpMap.adds.delete(op.key+'#3');
       else if (mpMap.adds.has(op.key+'#4')) mpMap.adds.delete(op.key+'#4');
       else if (mpMap.adds.has(op.key+'#5')) mpMap.adds.delete(op.key+'#5');
+      else if (mpMap.adds.has(op.key+'#9')) mpMap.adds.delete(op.key+'#9');
       else mpMap.removes.add(op.key);
     }
   }
@@ -181,7 +188,8 @@ function __mp_rebuildWorldFromDiff(){
   const is3 = rawKey.endsWith('#3');
   const is4 = rawKey.endsWith('#4');
   const is5 = rawKey.endsWith('#5');
-  const tt = is1?1 : is2?2 : is3?3 : is4?4 : is5?5 : 0;
+  const is9 = rawKey.endsWith('#9');
+  const tt = is1?1 : is2?2 : is3?3 : is4?4 : is5?5 : is9?9 : 0;
   const key = (tt? rawKey.slice(0,-2) : rawKey);
     const parts = key.split(','); if (parts.length!==3) continue;
     const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
@@ -198,19 +206,19 @@ function __mp_rebuildWorldFromDiff(){
     const spans = [];
     if (arrObjs.length){
       // Separate unit voxels vs half-slabs (t=4). Treat portal markers (t=5) separately so they never color entire solid spans.
-      const solidUnits = arrObjs.filter(o=> (o.t|0)!==4 && (o.t|0)!==5);
+      const solidUnits = arrObjs.filter(o=> { const tt=(o.t|0); return !(tt===2||tt===3||tt===4||tt===5); });
       const portalUnits = arrObjs.filter(o=> (o.t|0)===5);
       const slabs = arrObjs.filter(o=> (o.t|0) === 4);
-      // Build contiguous spans for solid units with precedence: 1 (BAD) overrides; else keep last of 2/3 when present. Do not include 5 here.
+      // Build contiguous spans for solid units, segmented by type to avoid cross-type infection (0 normal, 1 BAD, 9 NOCLIMB)
       if (solidUnits.length){
-        let b = solidUnits[0].y|0; let prev = solidUnits[0].y|0; let typeAccum = solidUnits[0].t|0; // 1 overrides; else keep 2/3
+        let b = solidUnits[0].y|0; let prev = solidUnits[0].y|0; let curType = solidUnits[0].t|0;
         for (let i=1;i<solidUnits.length;i++){
           const yObj = solidUnits[i]; const y = yObj.y|0; const tcur = yObj.t|0;
-          if (y === prev + 1){ prev = y; if (tcur===1) typeAccum = 1; else if (typeAccum!==1 && (tcur===2||tcur===3)) typeAccum = tcur; continue; }
-          spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
-          b = y; prev = y; typeAccum = tcur;
+          if (y === prev + 1 && tcur === curType){ prev = y; continue; }
+          spans.push(curType? { b, h: (prev - b + 1), t:curType } : { b, h:(prev - b + 1) });
+          b = y; prev = y; curType = tcur;
         }
-        spans.push(typeAccum? { b, h: (prev - b + 1), t:typeAccum } : { b, h:(prev - b + 1) });
+        spans.push(curType? { b, h: (prev - b + 1), t:curType } : { b, h:(prev - b + 1) });
       }
       // Build contiguous portal spans independently (pure triggers, non-solid)
       if (portalUnits.length){
@@ -232,8 +240,32 @@ function __mp_rebuildWorldFromDiff(){
     // Add new spans then normalize merge
     baseSpans = baseSpans.concat(spans);
     baseSpans.sort((p,q)=>p.b-q.b);
-  const merged=[]; for (const s of baseSpans){ const hh = (typeof s.h==='number')? s.h : ((s.h|0)); if (!merged.length){ merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))}); continue;} const t=merged[merged.length-1]; const sT=(s.t|0)||0, tT=(t.t|0)||0; const portalMix = (sT===5)!==(tT===5); if (!portalMix && s.b <= t.b+t.h && ((sT===0 || tT===0 || sT===tT))){ const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; if (sT===1) t.t=1; if ((sT===2||sT===3||sT===4) && t.t!==1) t.t=sT; /* do not let t==5 override when merging */ } else { merged.push({ b:s.b|0, h:hh, ...(sT===1?{t:1}:(sT===2?{t:2}:(sT===3?{t:3}:(sT===4?{t:4}:(sT===5?{t:5}:{})))))}); } }
-  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:{})))))})));
+  const merged=[]; 
+  for (const s of baseSpans){ 
+    const hh = (typeof s.h==='number')? s.h : ((s.h|0)); 
+    if (!merged.length){ 
+      merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:(s.t===9?{t:9}:{}))))))}); 
+      continue;
+    }
+    const t = merged[merged.length-1]; 
+    const sT=(s.t|0)||0, tT=(t.t|0)||0; 
+    const portalMix = (sT===5)!==(tT===5);
+    // Decide if we can merge: same type, or zero with hazard only (disallow merging NOCLIMB(9) with 0 to avoid infection)
+    const canMergeTypes = (!portalMix) && (s.b <= t.b+t.h) && (
+      (sT === tT) ||
+      ((sT===0 && (tT===0 || tT===1)) || (tT===0 && (sT===0 || sT===1)))
+    );
+    if (canMergeTypes){
+      const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; 
+      if (sT===1 || tT===1) t.t=1; 
+      else if ((sT===2||sT===3||sT===4) && t.t!==1) t.t=sT; 
+      else if ((sT===9 || tT===9) && t.t!==1) t.t = 9; 
+      // do not let t==5 override when merging (handled by portalMix)
+    } else { 
+      merged.push({ b:s.b|0, h:hh, ...(sT===1?{t:1}:(sT===2?{t:2}:(sT===3?{t:3}:(sT===4?{t:4}:(sT===5?{t:5}:(sT===9?{t:9}:{}))))))}); 
+    } 
+  }
+  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:(s.t===9?{t:9}:{})))))) })));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){
@@ -245,7 +277,7 @@ function __mp_rebuildWorldFromDiff(){
     if (!spans.length) continue;
     const out=[]; 
     for (const s of spans){ 
-      const sb=s.b|0; const sh=(typeof s.h==='number')? s.h : (s.h|0); const tt=(s.t===1||s.t===2||s.t===3||s.t===4)?(s.t|0):0;
+      const sb=s.b|0; const sh=(typeof s.h==='number')? s.h : (s.h|0); const tt=(s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===9)?(s.t|0):0;
       const segStart = sb; const segEnd = sb + sh; // [segStart, segEnd)
       const remStart = y; const remEnd = y + 1;       // remove [y, y+1)
       if (remEnd <= segStart || remStart >= segEnd){ out.push(s); continue; }
@@ -834,7 +866,7 @@ window.mpSendMapOps = function(ops){
       if (!o || (o.op!=='add' && o.op!=='remove')) continue;
       if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
   const rec = { op:o.op, key:o.key };
-  if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5)) rec.t = (o.t|0);
+    if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5 || o.t===9)) rec.t = (o.t|0);
   clean.push(rec);
       if (clean.length >= 512) break; // clamp
     }
@@ -842,6 +874,36 @@ window.mpSendMapOps = function(ops){
     mpWS.send(JSON.stringify({ type:'map_edit', ops: clean }));
     return true;
   } catch(_){ return false; }
+};
+
+// One-time fixer: resend t:9 flags for elevated NOCLIMB spans currently in the world.
+// Use this if previously-saved diffs lacked t:9 and reload shows BASE instead of NOCLIMB above ground.
+// Call from console: mpFixNoClimbTypes()
+window.mpFixNoClimbTypes = function(){
+  try {
+    if (!mpWS || mpWS.readyState !== WebSocket.OPEN) { console.warn('[MP] fix: WS not open'); return false; }
+    if (!window || !window.columnSpans || typeof window.columnSpans.entries !== 'function') { console.warn('[MP] fix: no columnSpans'); return false; }
+    const BATCH_MAX = 480; // leave headroom under server clamp 512
+    let batch = [];
+    for (const [key, spans] of window.columnSpans.entries()){
+      if (!Array.isArray(spans) || spans.length===0) continue;
+      const parts = key.split(','); if (parts.length!==2) continue;
+      const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10);
+      if (!Number.isFinite(gx)||!Number.isFinite(gy)) continue;
+      for (const s of spans){
+        if (!s) continue; const t=(s.t|0)||0; if (t!==9) continue;
+        const b=(s.b|0), h=((typeof s.h==='number')?s.h:(s.h|0));
+        const top = b + Math.max(0, h|0) - 1;
+        for (let y=b; y<=top; y++){
+          batch.push({ op:'add', key: `${gx},${gy},${y}`, t: 9 });
+          if (batch.length >= BATCH_MAX){ try { window.mpSendMapOps(batch); } catch(_){} batch = []; }
+        }
+      }
+    }
+    if (batch.length){ try { window.mpSendMapOps(batch); } catch(_){} }
+    console.log('[MP] fix: sent NOCLIMB type updates');
+    return true;
+  } catch(err){ console.warn('[MP] fix failed', err); return false; }
 };
 
 // Send item edit ops (items persistence). Ops: {op:'add'|'remove', gx,gy,y?,kind(0|1),payload?}

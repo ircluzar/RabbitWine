@@ -112,7 +112,8 @@ lock = asyncio.Lock()
 class MapDiff:
     version: int
     # adds maps block key -> type flag
-    # 0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail), 4 = HALF-SLAB marker, 5 = PORTAL marker (visual, non-solid)
+    # 0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail), 4 = HALF-SLAB marker,
+    # 5 = PORTAL marker (visual, non-solid), 9 = NOCLIMB marker (solid, disables walljump)
     adds: Dict[str, int]
     removes: Set[str]
 
@@ -210,7 +211,7 @@ def db_load_all():
         try:
             raw_adds = json.loads(adds_json) if adds_json else []
             adds: Dict[str,int] = {}
-            # Backward compatibility: entries either 'key' (normal) or 'key#N' where N in {1,2,3,4}
+            # Backward compatibility: entries either 'key' (normal) or 'key#N' where N in {1,2,3,4,5,9}
             for ent in raw_adds:
                 if not isinstance(ent, str):
                     continue
@@ -224,6 +225,8 @@ def db_load_all():
                     adds[ent[:-2]] = 4
                 elif ent.endswith('#5'):
                     adds[ent[:-2]] = 5
+                elif ent.endswith('#9'):
+                    adds[ent[:-2]] = 9
                 else:
                     adds[ent] = 0
             removes = set(json.loads(removes_json)) if removes_json else set()
@@ -271,8 +274,8 @@ def db_persist_level(level: str, diff: MapDiff):
     try:
         enc_adds = []
         for k, tt in diff.adds.items():
-            # Persist as 'key' or 'key#N' (N in {1,2,3,4,5}) for backward compatibility
-            if tt in (1, 2, 3, 4, 5):
+            # Persist as 'key' or 'key#N' (N in {1,2,3,4,5,9}) for backward compatibility
+            if tt in (1, 2, 3, 4, 5, 9):
                 enc_adds.append(f"{k}#{tt}")
             else:
                 enc_adds.append(k)
@@ -361,7 +364,7 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
 
     t semantics:
         0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail),
-        4 = HALF-SLAB marker, 5 = PORTAL marker (visual trigger span)
+        4 = HALF-SLAB marker, 5 = PORTAL marker (visual trigger span), 9 = NOCLIMB solid marker
 
     Returns net ops (with 't' where applicable) to broadcast.
     """
@@ -382,12 +385,12 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
             continue
         if op == 'add':
             tval_raw = entry.get('t')
-            # Normalize t to one of {0,1,2,3,4,5}
+            # Normalize t to one of {0,1,2,3,4,5,9}
             try:
                 tval = int(tval_raw)
             except Exception:
                 tval = 0
-            if tval not in (1,2,3,4,5):
+            if tval not in (1,2,3,4,5,9):
                 tval = 0
             last[key] = ('add', tval)
         else:
@@ -402,11 +405,11 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
                 if key in md.removes:
                     md.removes.discard(key)
                 md.adds[key] = tt
-                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5) else {}) })
+                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5,9) else {}) })
             else:
                 if prev != tt:
                     md.adds[key] = tt
-                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5) else {}) })
+                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5,9) else {}) })
         else:  # remove
             changed = False
             if key in md.adds:
@@ -710,7 +713,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 try:
                     md = get_mapdiff(level)
                     if md.adds or md.removes:
-                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5) else {})} for k, t in sorted(md.adds.items())] +
+                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
                                     [{"op": "remove", "key": k} for k in sorted(md.removes)])
                     else:
                         full_ops = []
@@ -972,7 +975,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     md = get_mapdiff(lvl)
                     if have != md.version:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5) else {})} for k, t in sorted(md.adds.items())] +
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []
@@ -1145,7 +1148,7 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     # Send full map/tiles/portals/items for the new level
                     try:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5) else {})} for k, t in sorted(md.adds.items())] +
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []

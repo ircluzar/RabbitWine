@@ -167,6 +167,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   let wallsFence = new Float32Array(0);
   let wallsBadFence = new Float32Array(0);
   let wallsLevelChange = new Float32Array(0);
+  let wallsNoClimb = new Float32Array(0);
   if (data.length) {
     // Prefer spans when available regardless of feature flag
     const hasSpans = (typeof columnSpans !== 'undefined') && columnSpans && typeof columnSpans.get === 'function' && columnSpans.size > 0;
@@ -178,6 +179,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const filteredFence = [];
   const filteredBadFence = [];
   const filteredLevelChange = [];
+  const filteredNoClimb = [];
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
@@ -209,6 +211,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       if (!hideGroundWall){
         if (cell === TILE.FENCE) filteredFence.push(x,y);
         else if (cell === TILE.BADFENCE) filteredBadFence.push(x,y);
+        else if (cell === TILE.NOCLIMB) filteredNoClimb.push(x,y);
         else if (isBadTile) filteredBad.push(x,y);
         else if (isHalfTile) filteredHalf.push(x,y);
         else filteredNormal.push(x,y);
@@ -220,8 +223,9 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   wallsFence = new Float32Array(filteredFence);
   wallsBadFence = new Float32Array(filteredBadFence);
   wallsLevelChange = new Float32Array(filteredLevelChange);
+  wallsNoClimb = new Float32Array(filteredNoClimb);
   }
-  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length + wallsBadFence.length + wallsLevelChange.length;
+  const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length + wallsBadFence.length + wallsLevelChange.length + wallsNoClimb.length;
   if (!totalCount) return;
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
@@ -408,7 +412,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const nx = gx + dx, ny = gy + dy;
         if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
   const neighbor = map[mapIdx(nx,ny)];
-  const connect = (neighbor===TILE.FENCE) || (neighbor===TILE.BADFENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF);
+        const connect = (neighbor===TILE.FENCE) || (neighbor===TILE.BADFENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF) || (neighbor===TILE.NOCLIMB);
         if (connect){ railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++; }
       }
       if (!have) continue;
@@ -468,6 +472,42 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     gl.uniform1f(wall_u_height, 1.0);
     gl.uniform1f(wall_u_yBase, 0.0);
   }
+  // Fourth: NOCLIMB walls (color from palette helper, static/glitter)
+  if (wallsNoClimb.length){
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+    gl.bufferData(gl.ARRAY_BUFFER, wallsNoClimb, gl.DYNAMIC_DRAW);
+    const ncCol = (typeof getLevelNoClimbColorRGB === 'function') ? getLevelNoClimbColorRGB() : [0.7,0.7,0.7];
+    gl.uniform3fv(wall_u_color, new Float32Array(ncCol));
+    gl.uniform1f(wall_u_alpha, 0.65);
+    gl.uniform1i(wall_u_glitterMode, 1);
+    // Depth pre-pass
+    gl.disable(gl.BLEND);
+    gl.colorMask(false, false, false, false);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsNoClimb.length/2);
+        }
+      }
+    }
+    // Color pass
+    gl.colorMask(true, true, true, true);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
+    for (let vz=0; vz<voxZ; vz++){
+      for (let vy=0; vy<voxY; vy++){
+        for (let vx=0; vx<voxX; vx++){
+          gl.uniform3f(wall_u_voxOff, vx, vy, vz);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, wallsNoClimb.length/2);
+        }
+      }
+    }
+  }
   // BADFENCE rails: same geometry as fence but red and glittered; hazardous
   if (wallsBadFence.length){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
@@ -511,7 +551,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const nx = gx + dx, ny = gy + dy;
         if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
         const neighbor = map[mapIdx(nx,ny)];
-        const connect = (neighbor===TILE.BADFENCE) || (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF);
+  const connect = (neighbor===TILE.BADFENCE) || (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF) || (neighbor===TILE.NOCLIMB);
         if (connect){ railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++; }
       }
       if (!have) continue;
@@ -763,6 +803,10 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     drawOutlinesForTileArray(mvp, wallsHalf, 0.25, 1.0, wallOutline);
   }
   if (wallsBad.length) drawOutlinesForTileArray(mvp, wallsBad, 0.5, 1.02, [1.0,0.2,0.2]);
+  if (wallsNoClimb.length){
+    const ncOutline = (typeof getLevelNoClimbOutlineColorRGB === 'function') ? getLevelNoClimbOutlineColorRGB() : [0.8,0.8,0.8];
+    drawOutlinesForTileArray(mvp, wallsNoClimb, 0.5, 1.02, ncOutline);
+  }
   // Fences: no cube outlines; rails-only visuals should not show block outlines
 }
 
@@ -955,6 +999,62 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.uniform1f(wall_u_height, 1.0);
       const wallCol3p = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
       gl.uniform3fv(wall_u_color, new Float32Array(wallCol3p));
+      gl.uniform1f(wall_u_alpha, 0.65);
+      gl.uniform1i(wall_u_glitterMode, 0);
+      gl.uniform3f(wall_u_voxCount, 1,1,1);
+      continue;
+    }
+    // Special rendering for NOCLIMB spans (t==9): color from helper with glitter, non-hazard
+    if ((g.t|0) === 9){
+      const pts = g.pts;
+      const offs = new Float32Array(pts.length * 2);
+      for (let i=0;i<pts.length;i++){ offs[i*2+0]=pts[i][0]; offs[i*2+1]=pts[i][1]; }
+      gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+      gl.bufferData(gl.ARRAY_BUFFER, offs, gl.DYNAMIC_DRAW);
+      const ncCol2 = (typeof getLevelNoClimbColorRGB === 'function') ? getLevelNoClimbColorRGB() : [0.7,0.7,0.7];
+      gl.uniform3fv(wall_u_color, new Float32Array(ncCol2));
+      gl.uniform1f(wall_u_alpha, 0.65);
+      gl.uniform1i(wall_u_glitterMode, 1);
+      // Depth pre-pass
+      gl.disable(gl.BLEND);
+      gl.colorMask(false,false,false,false);
+      gl.depthMask(true);
+      gl.depthFunc(gl.LEQUAL);
+      for (let level=0; level<g.h; level++){
+        gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
+        gl.uniform3f(wall_u_voxOff, 0,0,0);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
+      }
+      // Color pass
+      gl.colorMask(true,true,true,true);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      gl.depthFunc(gl.LEQUAL);
+      for (let level=0; level<g.h; level++){
+        gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
+        gl.uniform3f(wall_u_voxOff, 0,0,0);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
+      }
+      // Outlines per level
+      for (let level=0; level<g.h; level++){
+        const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
+        const offs2 = new Float32Array(pts.length * 2);
+        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
+        const ncOutline2 = (typeof getLevelNoClimbOutlineColorRGB === 'function') ? getLevelNoClimbOutlineColorRGB() : [0.8,0.8,0.8];
+        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.02, ncOutline2);
+      }
+      // Rebind wall VAO and program after outlines
+      gl.bindVertexArray(wallVAO);
+      gl.useProgram(wallProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+      gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+      gl.uniform1f(wall_u_scale, 1.0);
+      gl.uniform1f(wall_u_height, 1.0);
+      const wallCol3nc = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+      gl.uniform3fv(wall_u_color, new Float32Array(wallCol3nc));
       gl.uniform1f(wall_u_alpha, 0.65);
       gl.uniform1i(wall_u_glitterMode, 0);
       gl.uniform3f(wall_u_voxCount, 1,1,1);

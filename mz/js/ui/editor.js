@@ -85,7 +85,7 @@
   const a = spans.filter(s=>s && (s.h|0)>0).map(s=>{
     const tt = (s.t|0)||0;
   const out = { b:s.b|0, h:s.h|0 };
-  if (tt===1 || tt===2 || tt===3) out.t = tt; // preserve BAD (1), FENCE (2), BADFENCE (3) markers
+  if (tt===1 || tt===2 || tt===3 || tt===5 || tt===9) out.t = tt; // preserve BAD(1), FENCE(2), BADFENCE(3), PORTAL(5), NOCLIMB(9)
     return out;
   });
     a.sort((p,q)=>p.b-q.b);
@@ -201,10 +201,9 @@
         return false;
       }
     } catch(_){ }
-    // HALF tile placement (slot 5): set ground tile only, no voxel span
+    // HALF tile placement (slot 5)
     try {
       if ((state.editor.blockSlot|0) === 5){
-        // HALF placement: at y==0, set ground tile; at y>0, add a 0.5-high span
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
           if (y === 0){
             const idx = mapIdx(gx, gy);
@@ -234,9 +233,37 @@
         return false;
       }
     } catch(_){ }
+    // NOCLIMB placement (slot 9): ground-only
+    try {
+      if ((state.editor.blockSlot|0) === 9){
+        if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+          if (y === 0){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] !== TILE.NOCLIMB){
+              map[idx] = TILE.NOCLIMB;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.NOCLIMB }]); } catch(_){ }
+              return true;
+            }
+            return false;
+          } else {
+            // Elevated NOCLIMB span marker (solid, disables wall-jump). Add {b:y,h:1,t:9} if absent
+            let spans = __getSpans(gx,gy);
+            for (const s of spans){ if (s && ((s.t|0)===9) && y >= (s.b|0) && y < ((s.b|0)+(Number(s.h)||0))) return false; }
+            spans.push({ b: y, h: 1, t: 9 });
+            spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:((s.t|0)===4?{t:4}:((s.t|0)===5?{t:5}:((s.t|0)===9?{t:9}:{})))) ) ) })).sort((p,q)=>p.b-q.b);
+            __setSpans(gx,gy,spans);
+            try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+            try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 9 }]); } } catch(_){ }
+            return true;
+          }
+        }
+        return false;
+      }
+    } catch(_){ }
+    // FENCE placement (slot 6)
     try {
       if ((state.editor.blockSlot|0) === 6){
-        // FENCE placement: allow at any height. At y==0, set ground tile; at y>0, add a fence span (t=2).
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
           if (y === 0){
             const idx = mapIdx(gx, gy);
@@ -248,16 +275,12 @@
             }
             return false;
           } else {
-            // Elevated (or floating) fence: encode as a span with type t=2 (fence marker).
             let spans = __getSpans(gx,gy);
-            // Prevent duplicate fence at this level
             for (const s of spans){ if (s && ((s.t|0)===2) && y >= (s.b|0) && y < ((s.b|0)+(Number(s.h)||0))) return false; }
             spans.push({ b: y, h: 1, t: 2 });
-            // Preserve t:1,2,3 during normalize
             spans = spans.filter(s=>s && (Number(s.h)||0)>0).map(s=>({ b:(s.b|0), h: Number(s.h)||0, ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:{})) ) })).sort((p,q)=>p.b-q.b);
             __setSpans(gx,gy,spans);
             try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-            // Network: send map op add with t:2 to replicate to others
             try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 2 }]); } } catch(_){ }
             return true;
           }
@@ -265,7 +288,7 @@
         return false;
       }
     } catch(_){ }
-  // BADFENCE placement (slot 7): like fence but hazardous; ground tile BADFENCE, elevated spans t:3
+    // BADFENCE placement (slot 7)
     try {
       if ((state.editor.blockSlot|0) === 7){
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
@@ -279,7 +302,6 @@
             }
             return false;
           } else {
-            // Elevated BADFENCE rails: encode as t=3 (distinct from t=2)
             let spans = __getSpans(gx,gy);
             for (const s of spans){ if (s && ((s.t|0)===3) && y >= (s.b|0) && y < ((s.b|0)+(Number(s.h)||0))) return false; }
             spans.push({ b: y, h: 1, t: 3 });
@@ -293,24 +315,22 @@
         return false;
       }
     } catch(_){ }
-    let spans = __getSpans(gx,gy);
-    // check if block exists at y
-    for (const s of spans){ if (y >= (s.b|0) && y < (s.b|0)+(s.h|0)) return false; }
-    // insert as its own span and normalize
-    const isBad = (state.editor.blockSlot === 2);
-    spans.push(isBad ? { b:y, h:1, t:1 } : { b:y, h:1 });
-    spans = __normalize(spans);
-    __setSpans(gx,gy,spans);
-    // if ground-level, mark wall tile for visibility
-    if (y===0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){
-      try { map[mapIdx(gx,gy)] = isBad ? TILE.BAD : TILE.WALL; } catch(_){ }
+    // Default: BASE/BAD voxel span
+    {
+      let spans = __getSpans(gx,gy);
+      // check if block exists at y
+      for (const s of spans){ if (s && y >= (s.b|0) && y < (s.b|0)+( (Number(s.h)||0) )) return false; }
+      const isBad = (state.editor.blockSlot === 2);
+      spans.push(isBad ? { b:y, h:1, t:1 } : { b:y, h:1 });
+      spans = __normalize(spans);
+      __setSpans(gx,gy,spans);
+      if (y===0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+        try { map[mapIdx(gx,gy)] = isBad ? TILE.BAD : TILE.WALL; } catch(_){ }
+      }
+      try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+      try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: isBad?1:0 }]); } } catch(_){ }
+      return true;
     }
-    try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){}
-    // Send network op (one block) -> encode per-block key including base height
-    try {
-      if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: isBad?1:0 }]); }
-    } catch(_){ }
-    return true;
   }
   function removeBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
@@ -348,7 +368,7 @@
         return false;
       }
     } catch(_){ }
-    // HALF tile removal when slot 5 is active: clear ground tile to OPEN
+    // HALF removal (slot 5)
     try {
       if ((state.editor.blockSlot|0) === 5){
         if (y === 0){
@@ -370,26 +390,56 @@
           for (const s of spans){
             if (!s){ continue; }
             const sb = s.b|0; const sh = (typeof s.h === 'number') ? s.h : (s.h|0);
-            const st = (s.t|0)||0; // preserve any flags
-            // We consider a half-slab at this base if it overlaps [y, y+1), but specifically drop 0.5-high starting at y
-            if (sh < 1 && Math.abs(sh - 0.5) < 1e-6 && sb === y){
-              // drop this slab entirely
-              changed = true;
-              continue;
-            }
+            if (sh < 1 && Math.abs(sh - 0.5) < 1e-6 && sb === y){ changed = true; continue; }
             out.push(s);
           }
           if (!changed) return false;
-          // Sort and apply, preserving t flags if any
           out.sort((p,q)=> (p.b|0) - (q.b|0));
-          __setSpans(gx,gy,out.map(s=>({ b:(s.b|0), h: (typeof s.h==='number')? s.h : (s.h|0), ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:((s.t|0)===4?{t:4}:{}))) ) })));
+          __setSpans(gx,gy,out.map(s=>({ b:(s.b|0), h: (typeof s.h==='number')? s.h : (s.h|0), ...( ((s.t|0)===1)?{t:1}:((s.t|0)===2?{t:2}:((s.t|0)===3?{t:3}:((s.t|0)===4?{t:4}:{}) )) ) })));
           try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
-          // Network: send typed remove for half-slab (t:4)
           try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 4 }]); } } catch(_){ }
           return true;
         }
       }
     } catch(_){ }
+    // NOCLIMB removal (slot 9)
+    try {
+      if ((state.editor.blockSlot|0) === 9){
+        if (y === 0){
+          if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
+            const idx = mapIdx(gx, gy);
+            if (map[idx] === TILE.NOCLIMB){
+              map[idx] = TILE.OPEN;
+              try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+              try { if (window.mpSendTileOps) mpSendTileOps([{ op:'set', gx, gy, v: TILE.OPEN }]); } catch(_){ }
+              return true;
+            }
+          }
+          return false;
+        } else {
+          // Elevated NOCLIMB removal: carve one layer from any span with t:9 covering y
+          let spans = __getSpans(gx,gy);
+          let changed=false; const out=[];
+          for (const s of spans){
+            if (!s){ continue; }
+            const b=s.b|0, h=(Number(s.h)||0), t=(s.t|0)||0; const top=b+h-1;
+            if (t!==9 || y < b || y > top){ out.push(s); continue; }
+            changed=true;
+            if (h===1){ /* drop */ }
+            else if (y===b){ out.push({ b:b+1, h:h-1, t:9 }); }
+            else if (y===top){ out.push({ b:b, h:h-1, t:9 }); }
+            else { const h1=y-b, h2=top-y; if (h1>0) out.push({ b:b, h:h1, t:9 }); if (h2>0) out.push({ b:y+1, h:h2, t:9 }); }
+          }
+          if (!changed) return false;
+          out.sort((p,q)=>p.b-q.b);
+          __setSpans(gx,gy,out);
+          try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+          try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 9 }]); } } catch(_){ }
+          return true;
+        }
+      }
+    } catch(_){ }
+    // FENCE removal (slot 6)
     try {
       if ((state.editor.blockSlot|0) === 6){
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
@@ -403,23 +453,17 @@
             }
             return false;
           } else {
-            // Remove only fence spans (t=2) at this level
             let spans = __getSpans(gx,gy);
             let changed=false; const out=[];
             for (const s of spans){
               if (!s){ continue; }
-              const b=s.b|0, h=s.h|0, t=(s.t|0)||0; const top=b+h-1;
+              const b=s.b|0, h=(Number(s.h)||0), t=(s.t|0)||0; const top=b+h-1;
               if (t!==2 || y < b || y > top){ out.push(s); continue; }
               changed=true;
-              // split or shrink preserving t=2
-              if (h===1){ /* drop span entirely */ }
+              if (h===1){ /* drop */ }
               else if (y===b){ out.push({ b:b+1, h:h-1, t:2 }); }
               else if (y===top){ out.push({ b:b, h:h-1, t:2 }); }
-              else {
-                const h1 = y - b; const h2 = top - y;
-                if (h1>0) out.push({ b:b, h:h1, t:2 });
-                if (h2>0) out.push({ b:y+1, h:h2, t:2 });
-              }
+              else { const h1=y-b, h2=top-y; if (h1>0) out.push({ b:b, h:h1, t:2 }); if (h2>0) out.push({ b:y+1, h:h2, t:2 }); }
             }
             if (!changed) return false;
             out.sort((p,q)=>p.b-q.b);
@@ -432,7 +476,7 @@
         return false;
       }
     } catch(_){ }
-  // BADFENCE removal (slot 7)
+    // BADFENCE removal (slot 7)
     try {
       if ((state.editor.blockSlot|0) === 7){
         if (typeof map !== 'undefined' && typeof TILE !== 'undefined'){
@@ -446,12 +490,11 @@
             }
             return false;
           } else {
-            // Remove only BADFENCE fence spans (t=3) at this level
             let spans = __getSpans(gx,gy);
             let changed=false; const out=[];
             for (const s of spans){
               if (!s){ continue; }
-              const b=s.b|0, h=s.h|0, t=(s.t|0)||0; const top=b+h-1;
+              const b=s.b|0, h=(Number(s.h)||0), t=(s.t|0)||0; const top=b+h-1;
               if (t!==3 || y < b || y > top){ out.push(s); continue; }
               changed=true;
               if (h===1){ /* drop */ }
@@ -470,28 +513,27 @@
         return false;
       }
     } catch(_){ }
-    let spans = __getSpans(gx,gy);
-    let changed=false; const out=[];
-    for (const s of spans){
-      const b=s.b|0, h=s.h|0; const top=b+h-1;
-      if (y < b || y > top){ out.push(s); continue; }
-      changed=true;
-      // split or shrink to remove just the one layer
-      if (h===1){ /* drop span entirely */ }
-      else if (y===b){ out.push({ b:b+1, h:h-1 }); }
-      else if (y===top){ out.push({ b:b, h:h-1 }); }
-      else {
-        const h1 = y - b; const h2 = top - y;
-        if (h1>0) out.push({ b:b, h:h1 });
-        if (h2>0) out.push({ b:y+1, h:h2 });
+    // Default: remove one layer of a generic span
+    {
+      let spans = __getSpans(gx,gy);
+      let changed=false; const out=[];
+      for (const s of spans){
+        if (!s){ continue; }
+        const b=s.b|0, h=(Number(s.h)||0); const top=b+h-1;
+        if (y < b || y > top){ out.push(s); continue; }
+        changed=true;
+        if (h===1){ /* drop */ }
+        else if (y===b){ out.push({ b:b+1, h:h-1, ...( ((s.t|0)===1)?{t:1}:{} ) }); }
+        else if (y===top){ out.push({ b:b, h:h-1, ...( ((s.t|0)===1)?{t:1}:{} ) }); }
+        else { const h1=y-b, h2=top-y; if (h1>0) out.push({ b:b, h:h1, ...( ((s.t|0)===1)?{t:1}:{} ) }); if (h2>0) out.push({ b:y+1, h:h2, ...( ((s.t|0)===1)?{t:1}:{} ) }); }
       }
+      if (!changed) return false;
+      out.sort((p,q)=>p.b-q.b);
+      __setSpans(gx,gy,out);
+      try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+      try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}` }]); } } catch(_){ }
+      return true;
     }
-    if (!changed) return false;
-    out.sort((p,q)=>p.b-q.b);
-    __setSpans(gx,gy,out);
-  try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){}
-  try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}` }]); } } catch(_){ }
-    return true;
   }
 
   // FPS input handler (noclip fly and look)
@@ -1087,6 +1129,7 @@
     } },
   7: { name: 'BADFENCE', color: '#d92b2f' },
   8: { name: 'LEVELCHANGE', color: '#ff8c2b' },
+  9: { name: 'NOCLIMB', color: '#777777' },
   };
   function ensureBlockTypeBar(){
     if (state.editor.mode !== 'fps') return;

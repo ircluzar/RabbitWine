@@ -364,7 +364,7 @@ if (typeof window !== 'undefined'){
                       if (window.columnHeights && window.columnHeights.has(key)){
                         const h = window.columnHeights.get(key)|0; if (h>0){ let b=0; if (window.columnBases && window.columnBases.has(key)) b = window.columnBases.get(key)|0; topY = b + h - 1; }
                       } else if (typeof mapIdx==='function' && typeof map!=='undefined' && typeof TILE!=='undefined'){
-                        const tile = map[mapIdx(gx,gy)]; if (tile===TILE.WALL || tile===TILE.BAD) topY = 0;
+                        const tile = map[mapIdx(gx,gy)]; if (tile===TILE.WALL || tile===TILE.NOCLIMB || tile===TILE.BAD) topY = 0;
                       }
                     } catch(_){ }
                   }

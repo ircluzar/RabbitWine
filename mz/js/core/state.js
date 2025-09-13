@@ -194,6 +194,29 @@ window.getLevelOutlineColored = function(){ return !!(state.level && state.level
 window.getLevelOutlineColorRGB = function(){ return window.getLevelOutlineColored() ? window.getLevelWallColorRGB() : [0,0,0]; };
 window.getLevelBackgroundColored = function(){ return !!(state.level && state.level.backgroundColored); };
 
+// NOCLIMB color helpers (single source of truth for both ground and elevated spans)
+window.getLevelNoClimbColorRGB = function(){
+  try {
+    // Allow level palette override via state.level.palette.noClimbRGB if present
+    const c = state?.level?.palette?.noClimbRGB;
+    if (Array.isArray(c) && c.length >= 3) return [c[0], c[1], c[2]];
+  } catch(_){}
+  // Default neutral gray
+  return [0.3, 0.3, 0.3];
+};
+window.getLevelNoClimbOutlineColorRGB = function(){
+  try {
+    const base = window.getLevelNoClimbColorRGB();
+    // Slightly brighten for outlines
+    const r = Math.min(1, base[0] * 1.1);
+    const g = Math.min(1, base[1] * 1.1);
+    const b = Math.min(1, base[2] * 1.1);
+    return [r, g, b];
+  } catch(_) {
+    return [0.4, 0.4, 0.4];
+  }
+};
+
 // Initialize palette immediately for initial level without requiring explicit setLevel call
 try { window.setLevel(state.level.id); } catch(_){ }
 
