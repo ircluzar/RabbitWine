@@ -66,8 +66,8 @@ function render(now) {
     renderGridViewport(0, 0, W, H, 'bottom');
     const proj = mat4Perspective(deg2rad(48), Math.max(0.1, mvAspectBot), 0.1, 150.0);
     const fx = state.camFollow.x, fz = state.camFollow.z;
-    const eye = [fx, 24.0, fz];
-    const center = [fx, 0.0, fz];
+  const eye = [fx, state.camFollow.y + 14.4, fz];
+  const center = [fx, state.camFollow.y, fz];
     const view = mat4LookAt(eye, center, [0, 0, -1]);
     const mvp = mat4Multiply(proj, view);
   // Expose a simple visibility test for world-space points in current camera
@@ -155,8 +155,8 @@ function render(now) {
     {
       const proj = mat4Perspective(deg2rad(48), Math.max(0.1, mvAspectBot), 0.1, 150.0);
       const fx = state.camFollow.x, fz = state.camFollow.z;
-  const eye = [fx, 24.0, fz];
-      const center = [fx, 0.0, fz];
+  const eye = [fx, state.camFollow.y + 14.4, fz];
+    const center = [fx, state.camFollow.y, fz];
       const view = mat4LookAt(eye, center, [0, 0, -1]);
   const mvp = mat4Multiply(proj, view);
   window._lastMVP = mvp;
