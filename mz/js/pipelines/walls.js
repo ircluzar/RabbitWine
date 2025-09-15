@@ -238,8 +238,22 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const useFade = (viewKind === 'bottom') ? 1 : 0;
   gl.uniform1i(wall_u_useFade, useFade);
   gl.uniform1f(wall_u_playerY, state.player ? (state.player.y || 0.0) : 0.0);
-  gl.uniform1f(wall_u_fadeBand, 5.0);
+  gl.uniform1f(wall_u_fadeBand, 3.0);
   gl.uniform1f(wall_u_minAlpha, 0.15);
+  // CPU-side culling for fully faded blocks in bottom view
+  const __isBottomView = (viewKind === 'bottom');
+  const __playerY_forCull = state.player ? (state.player.y || 0.0) : 0.0;
+  const __fadeBand_forCull = 3.0;
+  const __isFullyFaded = (yBase, height) => {
+    if (!__isBottomView) return false;
+    const yMin = yBase;
+    const yMax = yBase + height;
+    let minD = 0.0;
+    if (__playerY_forCull < yMin) minD = yMin - __playerY_forCull;
+    else if (__playerY_forCull > yMax) minD = __playerY_forCull - yMax;
+    else minD = 0.0;
+    return minD >= __fadeBand_forCull;
+  };
   const voxX=2, voxY=2, voxZ=2;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
@@ -248,7 +262,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
   // First: normal walls depth pre-pass (if any)
-  if (wallsNormal.length){
+  if (wallsNormal.length && !__isFullyFaded(0.0, 1.0)){
     gl.bufferData(gl.ARRAY_BUFFER, wallsNormal, gl.DYNAMIC_DRAW);
     const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
     gl.uniform3fv(wall_u_color, new Float32Array(wallCol));
@@ -269,7 +283,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   }
   // Second: LEVELCHANGE tiles (always draw, even if no normal walls)
-  if (wallsLevelChange.length){
+  if (wallsLevelChange.length && !__isFullyFaded(0.0, 1.0)){
     gl.bufferData(gl.ARRAY_BUFFER, wallsLevelChange, gl.DYNAMIC_DRAW);
     gl.uniform3fv(wall_u_color, new Float32Array([1.0, 0.55, 0.05]));
     gl.uniform1f(wall_u_alpha, 0.45);
@@ -303,7 +317,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   }
   // Third: normal walls blended color pass (if any). Rebind buffer and reset uniforms to avoid color bleed from portals.
-  if (wallsNormal.length){
+  if (wallsNormal.length && !__isFullyFaded(0.0, 1.0)){
     gl.colorMask(true, true, true, true);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -324,7 +338,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   }
   // Second: half-step walls (half height)
-  if (wallsHalf.length){
+  if (wallsHalf.length && !__isFullyFaded(0.0, 0.5)){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsHalf, gl.DYNAMIC_DRAW);
     const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
@@ -364,7 +378,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     gl.uniform1f(wall_u_height, 1.0);
   }
   // Fences (post + rails) with brightened level color and adjacency-based rails
-  if (wallsFence.length){
+  if (wallsFence.length && !__isFullyFaded(0.0, 1.5)){
     // Instance buffer holds (x,y) grid coords
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsFence, gl.DYNAMIC_DRAW);
@@ -473,7 +487,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     gl.uniform1f(wall_u_yBase, 0.0);
   }
   // Fourth: NOCLIMB walls (color from palette helper, static/glitter)
-  if (wallsNoClimb.length){
+  if (wallsNoClimb.length && !__isFullyFaded(0.0, 1.0)){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsNoClimb, gl.DYNAMIC_DRAW);
     const ncCol = (typeof getLevelNoClimbColorRGB === 'function') ? getLevelNoClimbColorRGB() : [0.7,0.7,0.7];
@@ -753,7 +767,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   }
   // Third: BAD walls
-  if (wallsBad.length){
+  if (wallsBad.length && !__isFullyFaded(0.0, 1.0)){
     gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsBad, gl.DYNAMIC_DRAW);
     gl.uniform3fv(wall_u_color, new Float32Array([0.85, 0.10, 0.12]));
@@ -793,17 +807,17 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.bindVertexArray(null);
 
   // Silhouette outlines per wall tile
-  if (wallsNormal.length){
+  if (wallsNormal.length && !__isFullyFaded(0.0, 1.0)){
     const wallOutline = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
     drawOutlinesForTileArray(mvp, wallsNormal, 0.5, 1.0, wallOutline);
   }
-  if (wallsHalf.length){
+  if (wallsHalf.length && !__isFullyFaded(0.0, 0.5)){
     const wallOutline = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
     // For half-step, center is 0.25 high
     drawOutlinesForTileArray(mvp, wallsHalf, 0.25, 1.0, wallOutline);
   }
-  if (wallsBad.length) drawOutlinesForTileArray(mvp, wallsBad, 0.5, 1.02, [1.0,0.2,0.2]);
-  if (wallsNoClimb.length){
+  if (wallsBad.length && !__isFullyFaded(0.0, 1.0)) drawOutlinesForTileArray(mvp, wallsBad, 0.5, 1.02, [1.0,0.2,0.2]);
+  if (wallsNoClimb.length && !__isFullyFaded(0.0, 1.0)){
     const ncOutline = (typeof getLevelNoClimbOutlineColorRGB === 'function') ? getLevelNoClimbOutlineColorRGB() : [0.8,0.8,0.8];
     drawOutlinesForTileArray(mvp, wallsNoClimb, 0.5, 1.02, ncOutline);
   }
@@ -934,8 +948,22 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const useFade = (viewKind === 'bottom') ? 1 : 0;
   gl.uniform1i(wall_u_useFade, useFade);
   gl.uniform1f(wall_u_playerY, state.player ? (state.player.y || 0.0) : 0.0);
-  gl.uniform1f(wall_u_fadeBand, 5.0);
+  gl.uniform1f(wall_u_fadeBand, 3.0);
   gl.uniform1f(wall_u_minAlpha, 0.15);
+  // CPU-side culling for fully faded blocks in bottom view
+  const __isBottomView_tc = (viewKind === 'bottom');
+  const __playerY_forCull_tc = state.player ? (state.player.y || 0.0) : 0.0;
+  const __fadeBand_forCull_tc = 3.0;
+  const __isFullyFaded_tc = (yBase, height) => {
+    if (!__isBottomView_tc) return false;
+    const yMin = yBase;
+    const yMax = yBase + height;
+    let minD = 0.0;
+    if (__playerY_forCull_tc < yMin) minD = yMin - __playerY_forCull_tc;
+    else if (__playerY_forCull_tc > yMax) minD = __playerY_forCull_tc - yMax;
+    else minD = 0.0;
+    return minD >= __fadeBand_forCull_tc;
+  };
   const voxX=1, voxY=1, voxZ=1;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
   gl.bindVertexArray(wallVAO);
@@ -972,6 +1000,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.depthMask(true);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
@@ -983,6 +1012,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.depthMask(false);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
@@ -1021,6 +1051,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.depthMask(true);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
@@ -1032,6 +1063,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.depthMask(false);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
@@ -1039,6 +1071,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       // Outlines per level
       for (let level=0; level<g.h; level++){
         const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         const offs2 = new Float32Array(pts.length * 2);
         for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
         const ncOutline2 = (typeof getLevelNoClimbOutlineColorRGB === 'function') ? getLevelNoClimbOutlineColorRGB() : [0.8,0.8,0.8];
@@ -1104,6 +1137,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.depthMask(true);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
@@ -1115,6 +1149,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.depthMask(false);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
+        if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
         gl.uniform1f(wall_u_yBase, (g.b + level) * 1.0 + (level>0 ? EPS*level : 0.0));
         gl.uniform3f(wall_u_voxOff, 0,0,0);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, pts.length);
@@ -1131,6 +1166,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     // Silhouette outlines per level for this group
     for (let level=0; level<g.h; level++){
       const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
+      if (__isFullyFaded_tc((g.b + level) * 1.0, 1.0)) continue;
       if (normPts.length){
         const offs2 = new Float32Array(normPts.length * 2);
         for (let i=0;i<normPts.length;i++){ offs2[i*2+0]=normPts[i][0]; offs2[i*2+1]=normPts[i][1]; }
@@ -1175,7 +1211,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     gl.uniform1f(wall_u_now, state.nowSec || (performance.now()/1000));
     gl.uniform1i(wall_u_useFade, (viewKind === 'bottom') ? 1 : 0);
     gl.uniform1f(wall_u_playerY, state.player ? (state.player.y || 0.0) : 0.0);
-    gl.uniform1f(wall_u_fadeBand, 5.0);
+  gl.uniform1f(wall_u_fadeBand, 3.0);
     gl.uniform1f(wall_u_minAlpha, 0.15);
     gl.uniform3f(wall_u_voxCount, 1,1,1);
     const keysF = Array.from(fracGroups.keys()).sort((ka,kb)=>{
@@ -1207,6 +1243,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       }
       const drawFrac = (pts, color, alpha, glitter)=>{
         if (!pts || !pts.length) return;
+        if (__isFullyFaded_tc((g.b * 1.0), g.h)) return;
         const offs = new Float32Array(pts.length * 2);
         for (let i=0;i<pts.length;i++){ offs[i*2+0]=pts[i][0]; offs[i*2+1]=pts[i][1]; }
         gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
@@ -1237,7 +1274,9 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const offs2 = new Float32Array(pts.length * 2);
         for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
         const outCol = (typeof getLevelOutlineColorRGB === 'function') ? getLevelOutlineColorRGB() : ((typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0,0,0]);
-        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, outCol);
+        if (!__isFullyFaded_tc(g.b * 1.0, g.h)){
+          drawOutlinesForTileArray(mvp, offs2, yCenter, 1.0, outCol);
+        }
         // Restore program/VAO after outlines
         gl.bindVertexArray(wallVAO);
         gl.useProgram(wallProgram);
