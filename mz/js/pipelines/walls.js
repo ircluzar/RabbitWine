@@ -1080,9 +1080,12 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
           isBad = spans.some(s => s && ((s.b|0)===bKey) && ((s.h|0)===hKey) && (((s.t|0)||0)===tKey) && tKey===1);
         }
       }
-  if (!isBad){
-        // Fallback: ground-level map BAD with no spans
-        isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false;
+      if (!isBad){
+        // Fallback only for ground-level groups: map BAD marks base=0 cube hazardous.
+        // Do NOT let a ground BAD infect elevated normal spans above.
+        if ((g.b|0) === 0){
+          isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false;
+        }
       }
       (isBad ? badPts : normPts).push([gx,gy]);
     }
@@ -1194,7 +1197,12 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
             isBad = sp.some(s=> s && ((s.t|0)===1) && Math.abs((s.b|0) - (g.b|0))<=0 && Math.abs((Number(s.h)||0) - g.h) < 1e-3);
           }
         }
-        if (!isBad){ isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false; }
+        if (!isBad){
+          // Only treat as BAD from map for ground-level slabs; avoid infecting elevated fractional slabs
+          if ((g.b|0) === 0){
+            isBad = (typeof map !== 'undefined' && typeof mapIdx === 'function' && typeof TILE !== 'undefined') ? (map[mapIdx(gx,gy)] === TILE.BAD) : false;
+          }
+        }
         (isBad ? badPts : normPts).push([gx,gy]);
       }
       const drawFrac = (pts, color, alpha, glitter)=>{

@@ -234,38 +234,58 @@ function __mp_rebuildWorldFromDiff(){
       // Add half-slabs individually (b=y, h=0.5)
       for (const s of slabs){ spans.push({ b: s.y|0, h: 0.5 }); }
     }
-    // Merge with existing spans first (so base map blocks persist unless removed)
+    // Merge with existing spans: insert without cross-type infection
     const [gx,gy] = cellK.split(',').map(n=>parseInt(n,10));
-    let baseSpans = window.columnSpans.get(cellK) || [];
-    // Add new spans then normalize merge
-    baseSpans = baseSpans.concat(spans);
-    baseSpans.sort((p,q)=>p.b-q.b);
-  const merged=[]; 
-  for (const s of baseSpans){ 
-    const hh = (typeof s.h==='number')? s.h : ((s.h|0)); 
-    if (!merged.length){ 
-      merged.push({ b:s.b|0, h:hh, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:(s.t===9?{t:9}:{}))))))}); 
-      continue;
+    const isSolid = (t)=>{ const tt=(t|0)||0; return (tt===0||tt===1||tt===9); };
+    const sameType = (a,b)=>(((a|0)||0) === ((b|0)||0));
+    // Start from existing spans, normalized by merging same-type overlaps/adjacency
+    let merged = (window.columnSpans.get(cellK) || []).map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===9)?(s.t|0):0) }));
+    const mergeSameType = ()=>{
+      merged.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
+      const out=[];
+      for (const s of merged){
+        if (!out.length){ out.push({ ...s }); continue; }
+        const t = out[out.length-1];
+        const sT=((s.t|0)||0), tT=((t.t|0)||0);
+        if (sameType(sT,tT) && s.b <= t.b + t.h + 1e-6){
+          const top = Math.max(t.b + t.h, s.b + s.h); t.h = top - t.b;
+        } else { out.push({ ...s }); }
+      }
+      merged = out;
+    };
+    mergeSameType();
+    // Insert each new span
+    const newSpans = spans.map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===9)?(s.t|0):0) }));
+    for (const s of newSpans){
+      if (!(s.h > 0)) continue;
+      const sT=((s.t|0)||0);
+      // Non-solid (portal/half/fence markers) do not split solids; append
+      if (!isSolid(sT)) { merged.push({ ...s }); continue; }
+      const sStart = s.b, sEnd = s.b + s.h;
+      // Split conflicting solid spans of different type
+      const next=[];
+      for (const e of merged){
+        const eT=((e.t|0)||0);
+        const eStart = e.b, eEnd = e.b + e.h;
+        if (!isSolid(eT) || sameType(eT, sT)) { next.push(e); continue; }
+        // Check overlap
+        const overlapStart = Math.max(eStart, sStart);
+        const overlapEnd   = Math.min(eEnd, sEnd);
+        if (overlapEnd <= overlapStart + 1e-6){ next.push(e); continue; }
+        // Keep left piece
+        if (overlapStart - eStart > 1e-6){ next.push({ b: eStart, h: overlapStart - eStart, ...(eT?{t:eT}:{}) }); }
+        // Keep right piece
+        if (eEnd - overlapEnd > 1e-6){ next.push({ b: overlapEnd, h: eEnd - overlapEnd, ...(eT?{t:eT}:{}) }); }
+        // Drop middle (it will be replaced by s)
+      }
+      merged = next;
+      // Insert s
+      merged.push({ ...s });
+      // Merge adjacent same-type
+      mergeSameType();
     }
-    const t = merged[merged.length-1]; 
-    const sT=(s.t|0)||0, tT=(t.t|0)||0; 
-    const portalMix = (sT===5)!==(tT===5);
-    // Decide if we can merge: same type, or zero with hazard only (disallow merging NOCLIMB(9) with 0 to avoid infection)
-    const canMergeTypes = (!portalMix) && (s.b <= t.b+t.h) && (
-      (sT === tT) ||
-      ((sT===0 && (tT===0 || tT===1)) || (tT===0 && (sT===0 || sT===1)))
-    );
-    if (canMergeTypes){
-      const top=Math.max(t.b+t.h, s.b+hh); t.h = top - t.b; 
-      if (sT===1 || tT===1) t.t=1; 
-      else if ((sT===2||sT===3||sT===4) && t.t!==1) t.t=sT; 
-      else if ((sT===9 || tT===9) && t.t!==1) t.t = 9; 
-      // do not let t==5 override when merging (handled by portalMix)
-    } else { 
-      merged.push({ b:s.b|0, h:hh, ...(sT===1?{t:1}:(sT===2?{t:2}:(sT===3?{t:3}:(sT===4?{t:4}:(sT===5?{t:5}:(sT===9?{t:9}:{}))))))}); 
-    } 
-  }
-  window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:(s.t===9?{t:9}:{})))))) })));
+    // Final write
+    window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:(s.t===9?{t:9}:{})))))) })));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){

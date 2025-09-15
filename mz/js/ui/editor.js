@@ -82,24 +82,24 @@
   }
   function __setSpans(gx, gy, spans){ try { window.setSpansAt(gx, gy, spans); } catch(_){} }
   function __normalize(spans){
-  const a = spans.filter(s=>s && (s.h|0)>0).map(s=>{
-    const tt = (s.t|0)||0;
-  const out = { b:s.b|0, h:s.h|0 };
-  if (tt===1 || tt===2 || tt===3 || tt===5 || tt===9) out.t = tt; // preserve BAD(1), FENCE(2), BADFENCE(3), PORTAL(5), NOCLIMB(9)
-    return out;
-  });
-    a.sort((p,q)=>p.b-q.b);
-    // merge adjacent same-base? not necessary for single blocks, but compact overlaps
+    // Normalize spans and merge only same-type overlaps/adjacency to avoid type infection
+    const arr = (Array.isArray(spans)?spans:[])
+      .filter(s=>s && (Number(s.h)||0) > 0)
+      .map(s=>{
+        const tt = (s.t|0)||0;
+        const o = { b: (s.b|0), h: (typeof s.h==='number'? s.h : (s.h|0)) };
+        if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===9) o.t = tt;
+        return o;
+      });
+    arr.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
     const out=[];
-    for (const s of a){
-      if (!out.length) { out.push(s); continue; }
+    for (const s of arr){
+      if (!out.length){ out.push({ ...s }); continue; }
       const t = out[out.length-1];
-      if (s.b <= t.b + t.h){
-        const top = Math.max(t.b+t.h, s.b+s.h);
-    t.h = top - t.b;
-    // If either segment is hazardous keep hazard flag
-    if ((s.t|0)===1) t.t = 1;
-      } else out.push(s);
+      const sT = (s.t|0)||0; const tT = (t.t|0)||0;
+      if (sT===tT && s.b <= t.b + t.h + 1e-6){
+        const top = Math.max(t.b + t.h, s.b + s.h); t.h = top - t.b;
+      } else { out.push({ ...s }); }
     }
     return out;
   }
@@ -879,18 +879,35 @@
     const isBad = (state.editor.blockSlot === 2);
     for (const it of pts){
       const key = `${it.gx},${it.gy}`;
-      const spans = window.columnSpans.get(key) || [];
-      // Merge or replace span at same base with max height
-      let replaced = false;
-      for (let i=0;i<spans.length;i++){
-        const s = spans[i]; if ((s.b|0) === (it.b|0)){
-          const hazard = ((s.t|0)===1) || isBad;
-          spans[i] = hazard ? { b: it.b|0, h: Math.max(it.h|0, s.h|0), t:1 } : { b: it.b|0, h: Math.max(it.h|0, s.h|0) };
-          replaced = true; break; }
+      let spans = (window.columnSpans.get(key) || []).map(s=>({ b:s.b|0, h:s.h|0, t: ((s.t|0)||0) }));
+      const newT = isBad ? 1 : 0;
+      const nb = it.b|0; const nh = it.h|0; if (!(nh>0)) continue;
+      // Split out overlaps of different type
+      const out=[]; const nStart=nb, nEnd=nb+nh;
+      for (const s of spans){
+        const sT=(s.t|0)||0; const sStart=s.b, sEnd=s.b+s.h;
+        if (sT===newT){ out.push(s); continue; }
+        const overlapStart = Math.max(sStart, nStart);
+        const overlapEnd   = Math.min(sEnd, nEnd);
+        if (overlapEnd <= overlapStart){ out.push(s); continue; }
+        if (overlapStart - sStart > 0){ out.push({ b:sStart, h: overlapStart - sStart, ...(sT?{t:sT}:{}) }); }
+        if (sEnd - overlapEnd > 0){ out.push({ b:overlapEnd, h: sEnd - overlapEnd, ...(sT?{t:sT}:{}) }); }
       }
-      if (!replaced) spans.push(isBad ? { b: it.b|0, h: it.h|0, t:1 } : { b: it.b|0, h: it.h|0 });
-      // normalize and apply
-      const norm = spans.filter(s=>s && (s.h|0)>0).map(s=>({ b:s.b|0, h:s.h|0, ...( (s.t|0)===1 ? { t:1 } : {} ) }));
+      spans = out;
+      // Insert new span
+      spans.push(newT? { b: nb, h: nh, t: newT } : { b: nb, h: nh });
+      // Merge same-type adjacency
+      spans.sort((a,b)=> (a.b-b.b) || (((a.t|0)||0)-((b.t|0)||0)) );
+      const merged=[];
+      for (const s of spans){
+        if (!merged.length){ merged.push({ ...s }); continue; }
+        const t = merged[merged.length-1];
+        const sT=(s.t|0)||0, tT=(t.t|0)||0;
+        if (sT===tT && s.b <= t.b + t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; } else { merged.push({ ...s }); }
+      }
+      const norm = merged
+        .filter(s=>s && (s.h|0)>0)
+        .map(s=>{ const tt=((s.t|0)||0); const o={ b:(s.b|0), h:(s.h|0) }; if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===9) o.t=tt; return o; });
       window.setSpansAt(it.gx, it.gy, norm);
       // Also set ground tile if base==0 to WALL for visibility
       if ((it.b|0) === 0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){
