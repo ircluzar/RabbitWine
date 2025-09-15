@@ -16,6 +16,7 @@ uniform vec3 u_voxCount;
 uniform vec3 u_voxOff;
 uniform float u_yBase;
 out float v_worldY;
+out vec2 v_worldXZ;
 void main(){
   float lx = (a_pos.x + u_voxOff.x) / u_voxCount.x;
   float ly = (a_pos.y + u_voxOff.y) / u_voxCount.y;
@@ -23,6 +24,7 @@ void main(){
   vec2 xz = (vec2(lx, lz) + a_off + u_origin) * u_scale;
   float y = ly * u_height + u_yBase;
   v_worldY = y;
+  v_worldXZ = xz;
   gl_Position = u_mvp * vec4(xz.x, y, xz.y, 1.0);
 }`;
 const WALL_FS = `#version 300 es
@@ -35,7 +37,16 @@ uniform float u_fadeBand;
 uniform float u_minAlpha;
 uniform int u_glitterMode;
 uniform float u_now;
+// Top-view only screendoor transparency for obstructions above the player
+uniform int u_stippleMode;      // 0=off, 1=top-view screendoor
+uniform float u_stippleAllow;   // allowed space (blocks) above player before stipple kicks in
+uniform vec2 u_camXZ;           // camera world XZ
+uniform float u_camY;           // camera world Y
+uniform float u_stippleRadius;  // radius around camera (in world units) where effect applies
+uniform int u_stippleInvert;    // 0=apply within radius, 1=apply outside radius
+uniform int u_stippleAbove;     // 1=check above player (default), 0=check below
 in float v_worldY;
+in vec2 v_worldXZ;
 out vec4 outColor;
 void main(){
   float aMul = 1.0;
@@ -45,6 +56,22 @@ void main(){
     aMul = mix(1.0, max(0.0, u_minAlpha), t);
   }
   vec4 col = vec4(u_color, u_alpha * aMul);
+  // Top-view screendoor: if fragment is above the player's head by more than a small allowance,
+  // apply a 50% ordered-dither point pattern within a local radius around the player (not a checkerboard or lines).
+  if (u_stippleMode == 1) {
+    bool heightCond = (u_stippleAbove == 1) ? (v_worldY > (u_playerY + u_stippleAllow))
+                                           : (v_worldY < (u_playerY - u_stippleAllow));
+  float dist3 = distance(vec3(v_worldXZ.x, v_worldY, v_worldXZ.y), vec3(u_camXZ.x, u_camY, u_camXZ.y));
+    bool radialWithin = (dist3 <= u_stippleRadius);
+    bool radialHit = (u_stippleInvert == 1) ? (!radialWithin) : radialWithin;
+    if (heightCond && radialHit) {
+      // Dot lattice: remove every other column and every other row (25% coverage kept)
+      int xi2 = int(mod(floor(gl_FragCoord.x), 2.0));
+      int yi2 = int(mod(floor(gl_FragCoord.y), 2.0));
+      // Keep only when both are odd (1); discard if either is even (0)
+      if (xi2 == 0 || yi2 == 0) { discard; }
+    }
+  }
   if (u_glitterMode == 1) {
     float n = fract(sin(v_worldY * 47.0 + u_now * 83.0) * 43758.5453);
     col.rgb += vec3(n) * 0.15;
@@ -70,6 +97,13 @@ const wall_u_color     = gl.getUniformLocation(wallProgram, 'u_color');
 const wall_u_alpha     = gl.getUniformLocation(wallProgram, 'u_alpha');
 const wall_u_glitterMode = gl.getUniformLocation(wallProgram, 'u_glitterMode');
 const wall_u_now       = gl.getUniformLocation(wallProgram, 'u_now');
+const wall_u_stippleMode = gl.getUniformLocation(wallProgram, 'u_stippleMode');
+const wall_u_stippleAllow = gl.getUniformLocation(wallProgram, 'u_stippleAllow');
+const wall_u_camXZ  = gl.getUniformLocation(wallProgram, 'u_camXZ');
+const wall_u_camY   = gl.getUniformLocation(wallProgram, 'u_camY');
+const wall_u_stippleRadius = gl.getUniformLocation(wallProgram, 'u_stippleRadius');
+const wall_u_stippleInvert = gl.getUniformLocation(wallProgram, 'u_stippleInvert');
+const wall_u_stippleAbove = gl.getUniformLocation(wallProgram, 'u_stippleAbove');
 
 // Geometry: unit cube
 const wallBasePosData = new Float32Array([
@@ -234,6 +268,22 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.uniform1f(wall_u_height, 1.0);
   gl.uniform1f(wall_u_yBase, 0.0);
   gl.uniform1f(wall_u_now, state.nowSec || (performance.now()/1000));
+  // Top-view screendoor settings
+  if (viewKind === 'top') {
+    gl.uniform1i(wall_u_stippleMode, (state.topStippleEnabled===0)?0:1);
+    gl.uniform1f(wall_u_stippleAllow, (typeof state.topStippleAllow==='number')? state.topStippleAllow : 1.0);
+  // Bind to camera: use last computed top eye if available; fallback to camFollow
+  const eyeTop = (typeof window !== 'undefined' && Array.isArray(window._lastTopEye)) ? window._lastTopEye : null;
+  const cx = eyeTop ? eyeTop[0] : (state?.camFollow?.x || 0);
+  const cz = eyeTop ? eyeTop[2] : (state?.camFollow?.z || 0);
+  const cy = eyeTop ? eyeTop[1] : ((state?.camFollow?.y || 0) + 2.6);
+  gl.uniform2f(wall_u_camXZ, cx, cz);
+  gl.uniform1f(wall_u_camY, cy);
+  gl.uniform1f(wall_u_stippleRadius, (typeof state.topStippleRadius==='number') ? state.topStippleRadius : 3.0);
+    gl.uniform1i(wall_u_stippleInvert, (typeof state.topStippleInvert==='number') ? (state.topStippleInvert|0) : 0);
+    gl.uniform1i(wall_u_stippleAbove, (typeof state.topStippleAbove==='number') ? (state.topStippleAbove|0) : 1);
+  }
+  else { gl.uniform1i(wall_u_stippleMode, 0); gl.uniform1f(wall_u_stippleAllow, 0.0); }
   // Height-based fade config (enabled only for bottom view)
   const useFade = (viewKind === 'bottom') ? 1 : 0;
   gl.uniform1i(wall_u_useFade, useFade);
@@ -944,6 +994,21 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.uniform1f(wall_u_scale, 1.0);
   gl.uniform1f(wall_u_height, 1.0);
   gl.uniform1f(wall_u_now, state.nowSec || (performance.now()/1000));
+  // Top-view screendoor settings
+  if (viewKind === 'top') {
+    gl.uniform1i(wall_u_stippleMode, (state.topStippleEnabled===0)?0:1);
+    gl.uniform1f(wall_u_stippleAllow, (typeof state.topStippleAllow==='number')? state.topStippleAllow : 1.0);
+  const eyeTop = (typeof window !== 'undefined' && Array.isArray(window._lastTopEye)) ? window._lastTopEye : null;
+  const cx = eyeTop ? eyeTop[0] : (state?.camFollow?.x || 0);
+  const cz = eyeTop ? eyeTop[2] : (state?.camFollow?.z || 0);
+  const cy = eyeTop ? eyeTop[1] : ((state?.camFollow?.y || 0) + 2.6);
+  gl.uniform2f(wall_u_camXZ, cx, cz);
+  gl.uniform1f(wall_u_camY, cy);
+  gl.uniform1f(wall_u_stippleRadius, (typeof state.topStippleRadius==='number') ? state.topStippleRadius : 3.0);
+    gl.uniform1i(wall_u_stippleInvert, (typeof state.topStippleInvert==='number') ? (state.topStippleInvert|0) : 0);
+    gl.uniform1i(wall_u_stippleAbove, (typeof state.topStippleAbove==='number') ? (state.topStippleAbove|0) : 1);
+  }
+  else { gl.uniform1i(wall_u_stippleMode, 0); gl.uniform1f(wall_u_stippleAllow, 0.0); }
   // Height-based fade config (enabled only for bottom view)
   const useFade = (viewKind === 'bottom') ? 1 : 0;
   gl.uniform1i(wall_u_useFade, useFade);

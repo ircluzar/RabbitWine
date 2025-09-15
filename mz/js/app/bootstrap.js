@@ -34,6 +34,13 @@ function render(now) {
   state.timePrev = now;
   state.nowSec = now / 1000;
   stepGame(dt);
+  // Smooth bottom camera vertical follow toward player Y (lag a little)
+  try {
+    if (!Number.isFinite(state.bottomCamY)) state.bottomCamY = state.camFollow.y;
+    const k = (typeof state.bottomCamLagK === 'number' && state.bottomCamLagK > 0) ? state.bottomCamLagK : 8.0;
+    const a = 1 - Math.exp(-k * dt);
+    state.bottomCamY += (state.camFollow.y - state.bottomCamY) * a;
+  } catch(_) {}
   // Multiplayer net tick + ghost interpolation
   try { if (typeof __mp_onFrame === 'function') __mp_onFrame(dt, now); } catch(_){}
   // 1) Render into offscreen low-res target (480x720)
@@ -66,8 +73,8 @@ function render(now) {
     renderGridViewport(0, 0, W, H, 'bottom');
     const proj = mat4Perspective(deg2rad(48), Math.max(0.1, mvAspectBot), 0.1, 150.0);
     const fx = state.camFollow.x, fz = state.camFollow.z;
-  const eye = [fx, state.camFollow.y + 14.4, fz];
-  const center = [fx, state.camFollow.y, fz];
+  const eye = [fx, state.bottomCamY + (state.bottomCamOffset || 14.4), fz];
+  const center = [fx, state.bottomCamY, fz];
     const view = mat4LookAt(eye, center, [0, 0, -1]);
     const mvp = mat4Multiply(proj, view);
   // Expose a simple visibility test for world-space points in current camera
@@ -129,7 +136,9 @@ function render(now) {
       eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
       center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
     }
-    const view = mat4LookAt(eye, center, [0, 1, 0]);
+  const view = mat4LookAt(eye, center, [0, 1, 0]);
+  // Expose eye for top view so pipelines can bind camera-centric uniforms
+  window._lastTopEye = eye;
   const mvp = mat4Multiply(proj, view);
   window._lastMVP = mvp;
   window._mvpTop = mvp;
@@ -155,8 +164,8 @@ function render(now) {
     {
       const proj = mat4Perspective(deg2rad(48), Math.max(0.1, mvAspectBot), 0.1, 150.0);
       const fx = state.camFollow.x, fz = state.camFollow.z;
-  const eye = [fx, state.camFollow.y + 14.4, fz];
-    const center = [fx, state.camFollow.y, fz];
+  const eye = [fx, state.bottomCamY + (state.bottomCamOffset || 14.4), fz];
+    const center = [fx, state.bottomCamY, fz];
       const view = mat4LookAt(eye, center, [0, 0, -1]);
   const mvp = mat4Multiply(proj, view);
   window._lastMVP = mvp;
@@ -200,7 +209,8 @@ function render(now) {
         eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
         center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
       }
-      const view = mat4LookAt(eye, center, [0, 1, 0]);
+  const view = mat4LookAt(eye, center, [0, 1, 0]);
+  window._lastTopEye = eye;
     const mvp = mat4Multiply(proj, view);
   drawTiles(mvp, 'open');
   drawWalls(mvp, 'top');

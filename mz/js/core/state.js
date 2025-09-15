@@ -106,6 +106,10 @@ const state = {
     ttl: 0.69, // seconds
   },
   camFollow: { x: 0, y: 0, z: 0 },
+  // Bottom camera vertical follow (smoothed)
+  bottomCamY: 0.0,              // current eased camera Y target
+  bottomCamOffset: 14.4,        // height above player for eye
+  bottomCamLagK: 8.0,           // smoothing constant (higher = snappier)
   camYaw: 0.0,
   snapBottomFull: false,
   snapTopFull: false,
