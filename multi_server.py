@@ -21,6 +21,9 @@ import sqlite3
 import re
 from dataclasses import dataclass
 from typing import Dict, Any, Set, Optional, Tuple, List
+import os
+import math
+import time as _time
 
 try:
     import websockets
@@ -41,6 +44,84 @@ DEFAULT_DB_FILE = "rw_maps.db"
 MAP_W_DEFAULT = 24
 MAP_H_DEFAULT = 24
 TILE_LEVELCHANGE = 8  # client uses TILE.LEVELCHANGE == 8
+
+# ---- Music clock (server-side, silent) -------------------------------------
+# We "play" vrun64.mp3 at volume 0 and loop it by tracking wall-clock time
+# against the track duration. This avoids needing an audio device on the
+# server while providing a consistent position reference for clients.
+
+_MUSIC_FILE_NAME = "vrun64.mp3"
+_music_duration_ms: int = 0
+_music_started_mono: float = 0.0
+_music_enabled: bool = False
+
+def _detect_music_path() -> Optional[str]:
+    """Return an absolute path to vrun64.mp3 if present.
+
+    Priority:
+    1) next to this script (same directory)
+    2) ./mz/music/vrun64.mp3 relative to cwd (fallback for dev)
+    """
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        p1 = os.path.join(here, _MUSIC_FILE_NAME)
+        if os.path.isfile(p1):
+            return p1
+    except Exception:
+        pass
+    try:
+        p2 = os.path.join(os.getcwd(), "mz", "music", _MUSIC_FILE_NAME)
+        if os.path.isfile(p2):
+            return p2
+    except Exception:
+        pass
+    return None
+
+def _load_mp3_duration_ms(path: str) -> int:
+    """Best-effort MP3 duration probing. Tries mutagen; falls back to 0 on failure."""
+    try:
+        # Lazy import so mutagen is optional
+        from mutagen.mp3 import MP3  # type: ignore
+        audio = MP3(path)
+        dur = float(getattr(audio, 'info', None).length) if getattr(audio, 'info', None) else float(audio.info.length)
+        if math.isfinite(dur) and dur > 0:
+            return int(round(dur * 1000.0))
+    except Exception as e:
+        try:
+            print(f"[MUSIC] mutagen probe failed: {e}")
+        except Exception:
+            pass
+    # Fallback: unknown duration
+    return 0
+
+def music_clock_init():
+    """Initialize the silent looping music clock if the file is present."""
+    global _music_duration_ms, _music_started_mono, _music_enabled
+    mpath = _detect_music_path()
+    if not mpath:
+        print("[MUSIC] vrun64.mp3 not found; music position sync disabled")
+        _music_enabled = False
+        return
+    _music_duration_ms = _load_mp3_duration_ms(mpath)
+    if _music_duration_ms <= 0:
+        print(f"[MUSIC] Could not determine duration for '{mpath}'. Position will be 0.")
+        _music_duration_ms = 0
+    else:
+        print(f"[MUSIC] '{os.path.basename(mpath)}' duration = {_music_duration_ms} ms")
+    _music_started_mono = _time.monotonic()
+    _music_enabled = True
+    # We don't actually output audio; this is a silent clock at volume 0 by design.
+
+def music_current_pos_ms(now_mono: Optional[float] = None) -> int:
+    """Return current looping position in ms, or 0 if disabled/unknown duration."""
+    if not _music_enabled or _music_duration_ms <= 0:
+        return 0
+    if now_mono is None:
+        now_mono = _time.monotonic()
+    elapsed_ms = int((now_mono - _music_started_mono) * 1000.0)
+    if _music_duration_ms > 0:
+        return elapsed_ms % _music_duration_ms
+    return 0
 
 @dataclass
 class Player:
@@ -791,6 +872,20 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
 
                 await broadcast_filtered(msg, player.channel, player.level)
 
+            elif typ == "music_pos":
+                # Respond with the current music clock position and duration.
+                try:
+                    pos = music_current_pos_ms()
+                    await ws.send(json.dumps({
+                        "type": "music_pos",
+                        "posMs": int(pos),
+                        "durationMs": int(_music_duration_ms),
+                        "now": now_ms(),
+                        "enabled": bool(_music_enabled),
+                    }, separators=(",", ":")))
+                except Exception:
+                    pass
+
             # Map incremental ops from an editor client
             elif typ == "map_edit":
                 # Expect { type:'map_edit', ops:[{op:'add'|'remove', key:'...'}] }
@@ -1319,7 +1414,13 @@ async def main():
         except Exception as e:
             print(f"[DB] Failed to init DB '{args.db}': {e}")
             use_db = False
-    print(f"Serving on {scheme}://{args.host}:{args.port} (TTL={TTL_MS}ms) persistence={'on' if use_db else 'off'}")
+    # Start silent music clock
+    try:
+        music_clock_init()
+    except Exception as e:
+        try: print(f"[MUSIC] init failed: {e}")
+        except Exception: pass
+    print(f"Serving on {scheme}://{args.host}:{args.port} (TTL={TTL_MS}ms) persistence={'on' if use_db else 'off'} music={'on' if _music_enabled else 'off'}")
     async with websockets.serve(handle_client, args.host, args.port, ssl=ssl_ctx, ping_interval=20, ping_timeout=20):
         try:
             # Periodic tasks: player sweep (60s) & DB vacuum (every 30 min)

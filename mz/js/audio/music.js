@@ -157,6 +157,25 @@
     } catch(_){}
   }
 
+  function setCurrentTimeSeconds(sec){
+    const a = init();
+    if (!a) return;
+    try {
+      const t = Math.max(0, Number(sec)||0);
+      // If metadata not ready, set a.pending seek by attaching a one-shot handler
+      if (isNaN(a.duration) || !isFinite(a.duration)){
+        const handler = ()=>{ try { a.currentTime = t; } catch(_){ } a.removeEventListener('loadedmetadata', handler); };
+        try { a.addEventListener('loadedmetadata', handler, { once: true }); } catch(_){ }
+      } else {
+        const dur = Number(a.duration)||0; a.currentTime = (dur > 0) ? (t % dur) : t;
+      }
+    } catch(_){ }
+  }
+
+  function getCurrentTimeSeconds(){ try { return _audio ? Number(_audio.currentTime)||0 : 0; } catch(_){ return 0; } }
+  function getDurationSeconds(){ try { return _audio && isFinite(_audio.duration) ? Number(_audio.duration)||0 : 0; } catch(_){ return 0; } }
+  function isReady(){ try { return !!(_audio && isFinite(_audio.duration) && _audio.duration>0); } catch(_){ return false; } }
+
   function setFilterCutoffHz(hz){
     _ensureWebAudio();
     if (_filterNode){
@@ -184,6 +203,10 @@
   setPreservesPitch,
   setFilterCutoffHz,
   setFilterProgress,
+  setCurrentTimeSeconds,
+  getCurrentTimeSeconds,
+  getDurationSeconds,
+  isReady,
     get isUnlocked(){ return _unlocked; },
     get volume(){ return getVolume(); },
     set volume(v){ setVolume(v); },

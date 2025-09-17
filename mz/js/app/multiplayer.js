@@ -331,6 +331,8 @@ let __mp_retryMs = MP_FAIL_BASE_MS; // exponential backoff that caps at MP_FAIL_
 let __mp_pingTimer = null;         // keep-alive/time-sync ping timer
 let __mp_sendWatchTimer = null;    // watchdog to ensure updates resume
 let __mp_lastSendReal = 0;         // last real-time send moment
+// One-shot callbacks waiting for a music_pos reply
+let __mp_musicPosWaiters = [];
 // Level loading freeze management
 let __mp_levelLoading = false;     // true while waiting for server data after level switch
 let __mp_levelUnfreezeTimer = null;// fallback unfreeze timer id
@@ -511,6 +513,14 @@ function mpEnsureWS(nowMs){
   ws.onmessage = (ev)=>{
     let msg = null; try { msg = JSON.parse(ev.data); } catch(_){ return; }
     const t = msg && msg.type;
+    if (t === 'music_pos'){
+      try {
+        const list = __mp_musicPosWaiters.slice();
+        __mp_musicPosWaiters.length = 0;
+        for (const cb of list){ try { if (typeof cb === 'function') cb(msg); } catch(_){} }
+      } catch(_){ }
+      return;
+    }
     if (t === 'items_full'){ try { console.log('[MP][items] recv items_full', (msg.items||[]).length); } catch(_){ } __mp_applyItemsFull(msg.items||[]); return; }
     if (t === 'portal_full'){
       try { if (!(window.portalDestinations instanceof Map)) window.portalDestinations = new Map(); window.portalDestinations.clear(); } catch(_){ }
@@ -874,6 +884,17 @@ window.mpSetChannel = function(newChannel){
     mpEnsureWS(Date.now());
     return true;
   } catch(_) { return false; }
+};
+
+// Request the current server music position; invokes cb once with
+// { type:'music_pos', posMs:number, durationMs:number, now:number, enabled:boolean }
+window.mpRequestMusicPos = function(cb){
+  try {
+    if (!mpWS || mpWS.readyState !== WebSocket.OPEN) return false;
+    if (cb && typeof cb === 'function') __mp_musicPosWaiters.push(cb);
+    mpWS.send(JSON.stringify({ type:'music_pos' }));
+    return true;
+  } catch(_){ return false; }
 };
 
 // Send batch of map edit ops (array of {op,key})

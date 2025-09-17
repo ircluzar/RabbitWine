@@ -22,8 +22,23 @@ function startMusicOnce(){
           }
         }
       } catch(_) {}
-  if (!music.isUnlocked) music.unlock('./music/vrun64.mp3');
-  else music.play('./music/vrun64.mp3');
+  const src = './music/vrun64.mp3';
+  if (!music.isUnlocked) music.unlock(src);
+  else music.play(src);
+  // After starting local playback, request server music position and seek
+  try {
+    if (typeof window.mpRequestMusicPos === 'function'){
+      window.mpRequestMusicPos((resp)=>{
+        try {
+          if (!resp || typeof resp.posMs !== 'number') return;
+          const posSec = Math.max(0, (resp.posMs|0) / 1000);
+          if (window.music && typeof music.setCurrentTimeSeconds === 'function'){
+            music.setCurrentTimeSeconds(posSec);
+          }
+        } catch(_){ }
+      });
+    }
+  } catch(_){ }
     }
   } catch(_){}
 }
