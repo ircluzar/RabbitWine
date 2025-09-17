@@ -8,10 +8,11 @@
 // Camera helpers and seam speed factor
 /**
  * Calculate speed multiplier based on seam position
- * @returns {number} Speed factor (0.6 to 1.5)
+ * Seam scaling disabled: always return 1.0 so speed equals base speed.
+ * @returns {number} Speed factor (fixed 1.0)
  */
 function seamSpeedFactor(){
-  return 0.6 + 0.9 * state.seamRatio;
+  return 1.0;
 }
 
 /**

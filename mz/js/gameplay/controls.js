@@ -22,8 +22,8 @@ function startMusicOnce(){
           }
         }
       } catch(_) {}
-      if (!music.isUnlocked) music.unlock('./music/1.mp3');
-      else music.play('./music/1.mp3');
+  if (!music.isUnlocked) music.unlock('./music/vrun64.mp3');
+  else music.play('./music/vrun64.mp3');
     }
   } catch(_){}
 }
@@ -78,7 +78,7 @@ function swipeDown(){
     p.dashTime = 0.0;
     // Clamp speed to normal max (exit dash boost)
     try {
-      const base = 3.0; const max = base * seamSpeedFactor();
+      const base = 3.0; const max = base; // seam scaling removed
       if (p.speed > max) p.speed = max;
     } catch(_){ /* ignore */ }
   }
@@ -175,10 +175,9 @@ function startDash(dir){
   if (typeof normalizeAngle === 'function') p.angle = normalizeAngle(p.angle);
   // Set displayed speed to max instantly (actual step handled in physics)
   try {
-    const base = 3.0; const max = base * seamSpeedFactor();
-    p.speed = max * 1.25;
+    const base = 3.0; p.speed = base * 1.25;
   } catch(e) {
-    p.speed = 6.25;
+    p.speed = 3.0 * 1.25;
   }
   if (typeof showSwipeGlow === 'function') showSwipeGlow(dir);
 }
