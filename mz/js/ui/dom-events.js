@@ -112,40 +112,25 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     h.textContent = 'Settings';
     // Channel section
     const channelWrap = document.createElement('div');
-    channelWrap.style.margin = '0 0 18px';
-    channelWrap.style.display = 'flex';
-    channelWrap.style.flexDirection = 'column';
-    channelWrap.style.gap = '6px';
+    channelWrap.className = 'mz-section';
     const channelLabel = document.createElement('label');
     channelLabel.textContent = 'Multiplayer Channel';
-    channelLabel.style.fontSize = '12px';
-    channelLabel.style.opacity = '0.85';
+    // Use section title visuals but keep default cursor
+    channelLabel.className = 'mz-section-title';
+    channelLabel.style.cursor = 'default';
     const channelRow = document.createElement('div');
-    channelRow.style.display = 'flex';
-    channelRow.style.gap = '8px';
+    channelRow.className = 'mz-field-row';
     const channelInput = document.createElement('input');
     channelInput.type = 'text';
     channelInput.placeholder = 'DEFAULT';
     channelInput.maxLength = 32;
     channelInput.value = (window.MP_CHANNEL || 'DEFAULT');
-    channelInput.style.flex = '1';
-    channelInput.style.padding = '8px 10px';
-    channelInput.style.background = '#121722';
-    channelInput.style.color = '#d8e2ff';
-    channelInput.style.border = '1px solid #2e3648';
-    channelInput.style.font = 'inherit';
-    channelInput.style.fontSize = '13px';
-    channelInput.style.outline = 'none';
+    channelInput.className = 'mz-input';
     channelInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); btnApplyChannel.click(); }});
     const btnApplyChannel = document.createElement('button');
     btnApplyChannel.type = 'button';
     btnApplyChannel.textContent = 'Apply';
-    btnApplyChannel.style.background = '#1b2030';
-    btnApplyChannel.style.color = '#fff';
-    btnApplyChannel.style.border = '1px solid #343a52';
-    btnApplyChannel.style.cursor = 'pointer';
-    btnApplyChannel.style.font = 'inherit';
-    btnApplyChannel.style.padding = '8px 14px';
+    btnApplyChannel.className = 'mz-btn-inline';
     btnApplyChannel.addEventListener('click', ()=>{
       const val = channelInput.value.trim();
       if (/^[A-Za-z0-9_\-]{1,32}$/.test(val)){
@@ -165,45 +150,29 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     channelWrap.appendChild(channelRow);
     // Audio section (Music + SFX volume)
     const audioWrap = document.createElement('div');
-    audioWrap.style.margin = '0 0 20px';
-    audioWrap.style.display = 'flex';
-    audioWrap.style.flexDirection = 'column';
-    audioWrap.style.gap = '8px';
+    audioWrap.className = 'mz-section';
     const audioTitle = document.createElement('div');
     audioTitle.textContent = 'Audio';
-    audioTitle.style.fontSize = '12px';
-    audioTitle.style.opacity = '0.85';
-    audioTitle.style.marginBottom = '4px';
+    audioTitle.className = 'mz-section-title';
     // Helper to build a slider row
     function makeSliderRow(labelText, id, initial, onChange){
       const row = document.createElement('div');
-      row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.gap = '10px';
+      row.className = 'mz-field-row';
       const lab = document.createElement('label');
       lab.textContent = labelText;
       lab.setAttribute('for', id);
-      lab.style.flex = '0 0 90px';
-      lab.style.fontSize = '13px';
+      lab.className = 'mz-field-label';
       const valSpan = document.createElement('span');
       valSpan.id = id + '-val';
       valSpan.textContent = String(initial);
-      valSpan.style.width = '34px';
-      valSpan.style.textAlign = 'right';
-      valSpan.style.fontSize = '12px';
-      valSpan.style.opacity = '0.85';
+      valSpan.className = 'mz-slider-val';
       const input = document.createElement('input');
       input.type = 'range';
       input.min = '0';
       input.max = '100';
       input.value = String(initial);
       input.id = id;
-      input.style.flex = '1';
-      input.style.appearance = 'none';
-      input.style.height = '6px';
-      input.style.background = '#1b2230';
-      input.style.border = '1px solid #2e3648';
-      input.style.borderRadius = '4px';
+      input.className = 'mz-slider';
       input.addEventListener('input', ()=>{
         const v = parseInt(input.value,10); valSpan.textContent = String(v);
         try { onChange(v); } catch(_){}
@@ -224,6 +193,26 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
       const norm = Math.max(0, Math.min(100, v));
       try { if (window.sfx) sfx.volume = norm/100; } catch(_){ }
       try { localStorage.setItem('mz_sfx_vol', String(norm)); } catch(_){ }
+    });
+    // Click on the Audio title resets both sliders to defaults
+    audioTitle.addEventListener('click', ()=>{
+      const defaults = { music: 20, sfx: 45 };
+      const musicInput = document.getElementById('mz-music-vol');
+      const sfxInput = document.getElementById('mz-sfx-vol');
+      const musicVal = document.getElementById('mz-music-vol-val');
+      const sfxVal = document.getElementById('mz-sfx-vol-val');
+      if (musicInput && musicVal){
+        musicInput.value = String(defaults.music);
+        musicVal.textContent = String(defaults.music);
+        try { if (window.music) music.volume = defaults.music/100; } catch(_){ }
+        try { localStorage.setItem('mz_music_vol', String(defaults.music)); } catch(_){ }
+      }
+      if (sfxInput && sfxVal){
+        sfxInput.value = String(defaults.sfx);
+        sfxVal.textContent = String(defaults.sfx);
+        try { if (window.sfx) sfx.volume = defaults.sfx/100; } catch(_){ }
+        try { localStorage.setItem('mz_sfx_vol', String(defaults.sfx)); } catch(_){ }
+      }
     });
     audioWrap.appendChild(audioTitle);
     audioWrap.appendChild(musicRow);
@@ -261,13 +250,69 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     });
     btnReset.addEventListener('click', (e)=>{
       e.stopPropagation();
-  try { if (window.gameSave) { gameSave.suspendSaving(); gameSave.stopAuto(); gameSave.clear(); } } catch(_){ }
-      try { if (window.location && window.location.reload) window.location.reload(); } catch(_){}
+      // Close settings and open confirm dialog
+      closeSettings();
+      openConfirmReset();
     });
     // Close by clicking backdrop
     ov.addEventListener('click', (e)=>{ if (e.target === ov) closeSettings(); });
     // Close with Escape
     window.addEventListener('keydown', function esc(e){ if (e.key === 'Escape'){ closeSettings(); window.removeEventListener('keydown', esc, true); } }, true);
+  }
+
+  function openConfirmReset(){
+    // Confirmation overlay
+    const ov = document.createElement('div');
+    ov.className = 'mz-settings-overlay';
+    ov.id = 'mz-confirm-overlay';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    // Card
+    const card = document.createElement('div');
+    card.className = 'mz-settings-card';
+    const title = document.createElement('div');
+    title.className = 'mz-settings-title';
+    title.textContent = 'Confirm Reset';
+    const msg = document.createElement('div');
+    msg.style.margin = '6px 0 16px';
+    msg.style.fontSize = '14px';
+    msg.style.lineHeight = '1.3';
+    msg.textContent = 'Are you sure you want to Reset Progress? This will undo everything you have ever done and send you back to the beginning.';
+    const actions = document.createElement('div');
+    actions.className = 'mz-settings-actions';
+    const btnYes = document.createElement('button');
+    btnYes.type = 'button';
+    btnYes.className = 'mz-settings-btn';
+    btnYes.textContent = 'Yes';
+    const btnNo = document.createElement('button');
+    btnNo.type = 'button';
+    btnNo.className = 'mz-settings-btn';
+    btnNo.textContent = 'No';
+    actions.appendChild(btnYes);
+    actions.appendChild(btnNo);
+    card.appendChild(title);
+    card.appendChild(msg);
+    card.appendChild(actions);
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+
+    function closeConfirm(){
+      try { if (ov && ov.parentNode) ov.parentNode.removeChild(ov); } catch(_){}
+      // Return focus to canvas so keys work
+      setTimeout(()=>{ try { if (CANVAS && CANVAS.focus) CANVAS.focus(); } catch(_){} }, 0);
+    }
+
+    // Wire buttons
+    btnNo.addEventListener('click', (e)=>{ e.stopPropagation(); closeConfirm(); });
+    btnYes.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      try { if (window.gameSave) { gameSave.suspendSaving(); gameSave.stopAuto(); gameSave.clear(); } } catch(_){ }
+      try { if (window.location && window.location.reload) window.location.reload(); } catch(_){}
+    });
+    // Backdrop click closes confirm
+    ov.addEventListener('click', (e)=>{ if (e.target === ov) closeConfirm(); });
+    // Close with Escape
+    window.addEventListener('keydown', function esc(e){ if (e.key === 'Escape'){ closeConfirm(); window.removeEventListener('keydown', esc, true); } }, true);
   }
 
   // Prevent canvas focus stealing and bubbling
@@ -327,3 +372,43 @@ try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockBu
 // Pointer lock state tracking for editor
 document.addEventListener('pointerlockchange', onPointerLockChange);
 document.addEventListener('mozpointerlockchange', onPointerLockChange);
+
+// Stats box updater (materials, purple per-room, rooms completed)
+(function statsUpdater(){
+  try {
+    if (STATS_BOX){
+      // Materials (general variable or getter)
+      const materials = (typeof window.getMaterials === 'function') ? (window.getMaterials()|0)
+                        : (typeof window.MATERIALS === 'number') ? (window.MATERIALS|0)
+                        : (state && typeof state.materials === 'number') ? (state.materials|0)
+                        : 0;
+      if (STATS_MATERIALS) STATS_MATERIALS.textContent = String(materials);
+      // Purple per-room
+      let cur = 0, total = 0;
+      if (window.gameSave && typeof gameSave.getPurpleCountsForCurrentRoom === 'function'){
+        const k = gameSave.getPurpleCountsForCurrentRoom();
+        if (k && typeof k.cur==='number' && typeof k.total==='number'){ cur = k.cur|0; total = k.total|0; }
+      } else if (typeof window.getPurpleCountsForRoom === 'function'){
+        const k = window.getPurpleCountsForRoom();
+        if (k && typeof k.cur==='number' && typeof k.total==='number'){ cur = k.cur|0; total = k.total|0; }
+      }
+      if (STATS_PURPLE){
+        STATS_PURPLE.textContent = `${cur}/${total}`;
+        // Color teal if completed and there are purples in room
+        if (total > 0 && cur >= total){
+          STATS_PURPLE.classList.add('stats-complete');
+          // Mark level completed once (idempotent)
+          try { if (window.gameSave && typeof gameSave.markLevelCompleted==='function') gameSave.markLevelCompleted(); } catch(_){ }
+        }
+        else { STATS_PURPLE.classList.remove('stats-complete'); }
+      }
+      // Rooms completed
+      const rooms = (window.gameSave && typeof gameSave.getRoomsCompleted === 'function') ? (gameSave.getRoomsCompleted()|0)
+                   : (typeof window.getRoomsCompleted === 'function') ? (window.getRoomsCompleted()|0)
+                   : (state && typeof state.roomsCompleted === 'number') ? (state.roomsCompleted|0)
+                   : 0;
+      if (STATS_ROOMS) STATS_ROOMS.textContent = String(rooms);
+    }
+  } catch(_){ }
+  requestAnimationFrame(statsUpdater);
+})();

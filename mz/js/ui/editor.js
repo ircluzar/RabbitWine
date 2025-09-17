@@ -15,10 +15,7 @@
   function onPointerLockChange(){
     const locked = document.pointerLockElement === CANVAS;
     state.editor.pointerLocked = !!locked;
-    if (!locked && state.editor.mode === 'fps' && !state.editor.modalOpen){
-      // Opening modal on unlock
-      openEditorModal();
-    }
+    // Do not auto-open modal on unlock. Modal should open only via explicit actions (e.g., middle mouse).
   }
 
   function onToggleEditorMode(){
@@ -580,11 +577,31 @@
   }
   window.addEventListener('mousemove', onEditorMouseMove);
 
+  // Safe-exit on Escape while editor is active
+  window.addEventListener('keydown', (e)=>{
+    if (e.key !== 'Escape') return;
+    if (state.editor.mode !== 'fps') return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Close modal if open, then fully exit editor and free mouse
+    try { if (state.editor.modalOpen) closeEditorModal(); } catch(_){ }
+    try { exitEditor(); } catch(_){ }
+    // Return focus to canvas for consistency
+    setTimeout(()=>{ try { if (CANVAS && CANVAS.focus) CANVAS.focus(); } catch(_){ } }, 0);
+  }, true);
+
   // Exit editor and restore gameplay
   function exitEditor(){
     state.editor.mode = 'none';
     state.editor.modalOpen = false;
     state._hidePlayer = false;
+    // Close and clear any open editor modal UI
+    try {
+      const root = document.getElementById('mz-editor-modal-root');
+      if (root){ root.innerHTML = ''; root.style.pointerEvents = 'none'; }
+    } catch(_){ }
+    // Clear lingering inputs so movement doesn't stick after exiting
+    try { state.inputs.keys.clear(); } catch(_){ }
     try { state.editor.preview = []; } catch(_){}
     try { const c = document.getElementById('editor-crosshair'); if (c) c.style.display = 'none'; } catch(_){}
     try { if (document.pointerLockElement === CANVAS && document.exitPointerLock) document.exitPointerLock(); } catch(_){}
@@ -710,8 +727,7 @@
     const slot = (state && state.editor) ? ((state.editor.blockSlot|0) || 0) : 0;
     if (slot !== 1){
       if (typeof showTopNotification === 'function') showTopNotification('Structure Builder requires BASE (1) selected');
-      // If we arrived here via pointer-unlock flow, re-lock to keep FPS editing uninterrupted
-      try { if (state && state.editor && state.editor.mode === 'fps' && document.pointerLockElement !== CANVAS && CANVAS.requestPointerLock){ CANVAS.requestPointerLock(); } } catch(_){ }
+      // Do not auto re-lock pointer; modal opens only when explicitly requested
       return; // do not open modal
     }
   } catch(_){ /* fail safe: if state is odd, fall through and allow default behavior */ }
@@ -836,8 +852,7 @@
       applyStructureFromForm();
       rebuildInstances && rebuildInstances();
       closeEditorModal();
-      // Keep in FPS editor after save; lock again for continue placement
-      if (CANVAS.requestPointerLock) try { CANVAS.requestPointerLock(); } catch(_){}
+      // Do not auto-lock pointer; user explicitly resumes by clicking canvas or middle-clicking for modal
       // After applying structure, send aggregated ops for preview spans (each block)
       try {
         if (window.mpSendMapOps){
@@ -856,7 +871,7 @@
     btnCancel.addEventListener('click', ()=>{
       // Close the modal and return to FPS mode without saving
       closeEditorModal();
-      if (CANVAS.requestPointerLock) try { CANVAS.requestPointerLock(); } catch(_){ }
+      // Do not auto-lock pointer
     });
     btnQuit.addEventListener('click', ()=>{ closeEditorModal(); exitEditor(); });
 

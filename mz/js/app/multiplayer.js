@@ -367,6 +367,11 @@ function __mp_offlineApplyItemsFull(list){
         else { if (typeof window.spawnItemWorld==='function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost }); }
       } catch(_){ }
     }
+    // Update purple total for current room based on list (0 if none)
+    try {
+      const totalPurple = Array.isArray(list) ? list.reduce((n,e)=> n + ((e && (e.kind===1 || e.kind==="1"))?1:0), 0) : 0;
+      if (window.gameSave && typeof gameSave.setPurpleTotalForCurrentRoom === 'function') gameSave.setPurpleTotalForCurrentRoom(totalPurple|0);
+    } catch(_){ }
   } catch(_){ }
 }
 
@@ -536,6 +541,11 @@ function mpEnsureWS(nowMs){
       } catch(_){ }
     }
     try { console.log('[MP] items_full applied count=', shadowItems.length); } catch(_){ }
+    // Update purple total for current room based on snapshot (0 if none)
+    try {
+      const totalPurple = Array.isArray(shadowItems) ? shadowItems.reduce((n,it)=> n + ((it && it.kind===1)?1:0), 0) : 0;
+      if (window.gameSave && typeof gameSave.setPurpleTotalForCurrentRoom === 'function') gameSave.setPurpleTotalForCurrentRoom(totalPurple|0);
+    } catch(_){ }
   }
   function __mp_applyItemOps(ops){
     if (!Array.isArray(ops)) return;
@@ -574,6 +584,11 @@ function mpEnsureWS(nowMs){
         shadowItems = shadowItems.filter(it => !(it.gx===gx && it.gy===gy && (op.kind==null || it.kind===kind)));
       }
     }
+    // Recompute purple total after ops
+    try {
+      const totalPurple = shadowItems.reduce((n,it)=> n + ((it && it.kind===1)?1:0), 0);
+      if (window.gameSave && typeof gameSave.setPurpleTotalForCurrentRoom === 'function') gameSave.setPurpleTotalForCurrentRoom(totalPurple|0);
+    } catch(_){ }
   }
   // Expose a lightweight debug accessor
   try { window.mpListShadowItems = ()=> shadowItems.map(it=>({ ...it })); } catch(_){ }
@@ -1151,8 +1166,10 @@ window.mpSendPortalOps = function(ops){
 window.mpSwitchLevel = function(levelName){
   try {
     const name = (typeof levelName==='string' && levelName.trim()) ? levelName.trim() : 'ROOT';
-    MP_LEVEL = name;
-    window.MP_LEVEL = MP_LEVEL;
+  MP_LEVEL = name;
+  window.MP_LEVEL = MP_LEVEL;
+  // Reset purple totals for the new room; item loaders will set the correct total shortly
+  try { if (window.gameSave && typeof gameSave.setPurpleTotalForCurrentRoom === 'function') gameSave.setPurpleTotalForCurrentRoom(0); } catch(_){ }
     // If we're about to switch levels, ensure any previous offline-load guard is cleared
     // so that offline diffs will re-apply after we rebuild the base (e.g., ROOT sample).
     try { __mp_offlineLoadedForLevel = null; } catch(_){ }

@@ -42,7 +42,14 @@ function bust($path) {
   <div id="camera-status" aria-hidden="true" data-hidden="true" style="display:none">Camera - Auto</div>
   <button id="alt-control-lock" type="button" aria-pressed="false" aria-hidden="true" data-hidden="true" style="display:none" title="Lock bottom controls (toggle)">⬍⬌</button>
 
-  <!-- Settings (top-left) -->
+  <!-- Top-left stats box (where settings used to be) -->
+  <div id="stats-box" aria-hidden="false">
+    <div class="stats-line"><span class="stats-diamond stats-orange">♦</span><span class="stats-sep"> : </span><span id="stats-materials">0</span></div>
+    <div class="stats-line"><span class="stats-diamond stats-purple">♦</span><span class="stats-sep"> : </span><span id="stats-purple">0/0</span></div>
+    <div class="stats-line"><span class="stats-diamond stats-teal">♦</span><span class="stats-sep"> : </span><span id="stats-rooms">0</span></div>
+  </div>
+
+  <!-- Settings (top-right) -->
   <button id="settings-button" type="button" aria-haspopup="dialog" aria-expanded="false" title="Settings">
     <!-- Cog icon will be injected via JS for consistency; fallback glyph: -->
     ⚙

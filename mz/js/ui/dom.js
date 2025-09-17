@@ -16,6 +16,10 @@ const DEBUG_TOGGLE = document.getElementById('debug-toggle');
 const ALT_LOCK_BTN = document.getElementById('alt-control-lock');
 const CAMERA_STATUS = document.getElementById('camera-status');
 const SETTINGS_BTN = document.getElementById('settings-button');
+const STATS_BOX = document.getElementById('stats-box');
+const STATS_MATERIALS = document.getElementById('stats-materials');
+const STATS_PURPLE = document.getElementById('stats-purple');
+const STATS_ROOMS = document.getElementById('stats-rooms');
 
 // Expose references globally (for simpler interop and debugging)
 if (typeof window !== 'undefined'){
@@ -29,4 +33,8 @@ if (typeof window !== 'undefined'){
 		window.ALT_LOCK_BTN = ALT_LOCK_BTN;
 		window.CAMERA_STATUS = CAMERA_STATUS;
 		window.SETTINGS_BTN = SETTINGS_BTN;
+		window.STATS_BOX = STATS_BOX;
+		window.STATS_MATERIALS = STATS_MATERIALS;
+		window.STATS_PURPLE = STATS_PURPLE;
+		window.STATS_ROOMS = STATS_ROOMS;
 }

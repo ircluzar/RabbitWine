@@ -37,10 +37,7 @@ function onKey(e) {
     state.inputs.keys.delete(raw);
     state.inputs.keys.delete(tok);
   }
-  // Escape to quit editor
-  if (e.type === 'keydown' && raw === 'Escape' && state && state.editor && state.editor.mode === 'fps'){
-    if (typeof onToggleEditorMode === 'function') onToggleEditorMode();
-  }
+  // Escape safe-exit handled in editor.js to ensure modal closure and pointer unlock
 }
 
 // Clear keys on window blur or when tab becomes hidden to prevent stuck inputs

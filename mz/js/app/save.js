@@ -11,6 +11,10 @@
   const yellowByLevel = new Map(); // levelId -> Set(payload)
   // NEW: Purple items keyed by (levelId + '|' + x,y,z) with rounded coords
   const purple3DByLevel = new Map(); // levelId -> Set("x,y,z")
+  // Totals of purple items per level (persisted)
+  const purpleTotalsByLevel = new Map(); // levelId -> number
+  // Completed levels set (persisted)
+  const completedLevels = new Set();
   let autosaveId = null;
   let suppressSaving = false;
   function onBeforeUnloadHandler(){ try { if (!suppressSaving) saveNow(); } catch(_){ } }
@@ -26,8 +30,11 @@
     return 'ROOT';
   }
   function getLevelId(){
-    try { if (state && state.level && state.level.id) return String(state.level.id); } catch(_){ }
-    try { if (typeof MP_LEVEL === 'string') return MP_LEVEL; } catch(_){ }
+    // Prefer the full level name (e.g., '1A', '2-3', 'ROOT') for per-level scoping
+    try { if (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL) return String(window.MP_LEVEL); } catch(_){ }
+    try { if (typeof MP_LEVEL === 'string' && MP_LEVEL) return MP_LEVEL; } catch(_){ }
+    // Fallback to numeric group id if name is unavailable
+    try { if (state && state.level && state.level.id != null) return String(state.level.id); } catch(_){ }
     return 'ROOT';
   }
 
@@ -60,7 +67,9 @@
   itemPayloads: Array.from(collectedPayloads), // legacy
   purple: Array.from(purpleCollected.entries()).map(([lvl,set])=>[lvl, Array.from(set)]), // legacy
   yellowComposite: Array.from(yellowByLevel.entries()).map(([lvl,set])=>[lvl, Array.from(set)]),
-  purple3d: Array.from(purple3DByLevel.entries()).map(([lvl,set])=>[lvl, Array.from(set)])
+  purple3d: Array.from(purple3DByLevel.entries()).map(([lvl,set])=>[lvl, Array.from(set)]),
+  purpleTotals: Array.from(purpleTotalsByLevel.entries()),
+  completedLevels: Array.from(completedLevels)
     };
   }
 
@@ -148,6 +157,20 @@
           }
         }
       }
+      // Purple totals per level
+      if (Array.isArray(data.purpleTotals)){
+        purpleTotalsByLevel.clear();
+        for (const row of data.purpleTotals){
+          if (Array.isArray(row) && row.length===2){
+            const lvl = String(row[0]); const tot = row[1]|0; purpleTotalsByLevel.set(lvl, Math.max(0, tot));
+          }
+        }
+      }
+      // Completed levels
+      if (Array.isArray(data.completedLevels)){
+        completedLevels.clear();
+        for (const lvl of data.completedLevels){ if (typeof lvl === 'string') completedLevels.add(lvl); }
+      }
       // Always spawn stationary on load so first swipe counts as first accel
       try {
         p.speed = 0.0;
@@ -223,6 +246,12 @@
   function clear(){
     try { localStorage.removeItem(SAVE_KEY); } catch(_){ }
     collected.clear();
+    collectedPayloads.clear();
+    purpleCollected.clear();
+    yellowByLevel.clear();
+    purple3DByLevel.clear();
+    purpleTotalsByLevel.clear();
+    completedLevels.clear();
   }
   function startAuto(){
     if (autosaveId) return autosaveId;
@@ -264,6 +293,19 @@
       try { const lvl = getLevelId(); const key3 = xyzKey(it.x, it.y, it.z); if (!purple3DByLevel.has(lvl)) purple3DByLevel.set(lvl, new Set()); purple3DByLevel.get(lvl).add(key3); } catch(_){ }
     },
     getPurpleProgress(){ const lvl = getLevelId(); const set = purple3DByLevel.get(lvl); return set ? set.size : 0; }
+    ,
+    // Purple totals per room/level
+    setPurpleTotalForCurrentRoom(total){ try { const lvl = getLevelId(); purpleTotalsByLevel.set(lvl, Math.max(0, total|0)); } catch(_){ } },
+    getPurpleCountsForCurrentRoom(){
+      const lvl = getLevelId();
+      const cur = (purple3DByLevel.get(lvl) || new Set()).size;
+      const total = purpleTotalsByLevel.has(lvl) ? (purpleTotalsByLevel.get(lvl)|0) : 0;
+      return { cur, total };
+    },
+    // Rooms completion tracking
+    markLevelCompleted(levelId){ try { const lvl = String(levelId||getLevelId()); completedLevels.add(lvl); } catch(_){ } },
+    isLevelCompleted(levelId){ try { const lvl = String(levelId||getLevelId()); return completedLevels.has(lvl); } catch(_){ return false; } },
+    getRoomsCompleted(){ return completedLevels.size; }
   };
   window.gameSave = api;
 
