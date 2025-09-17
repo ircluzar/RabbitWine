@@ -8,7 +8,7 @@
   function ensureStyle(){
     if (document.getElementById('start-modal-style')) return;
     const css = `
-    :root{ --px: 3px; }
+  :root{ --px: 2px; }
   /* Overlay */
   .mz-start-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10000;pointer-events:auto;background:radial-gradient(120% 120% at 50% 10%, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.4) 100%);} 
   .mz-start-overlay{image-rendering: pixelated;}
@@ -23,8 +23,8 @@
       background-size: 4px 4px;opacity:0.35;pointer-events:none;mix-blend-mode:soft-light;}
 
     /* Card */
-  .mz-start-card{position:relative;max-width:min(92vw,480px);padding:26px 24px 22px;border-radius:0;border:var(--px) solid rgba(255,255,255,0.12);background:rgba(14,16,22,0.28);box-shadow:0 0 0 var(--px) rgba(0,0,0,0.85);} 
-  .mz-start-card{color:#e6e9f9;text-align:center;font-family:'DEGRADE',system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;image-rendering: pixelated;}
+  .mz-start-card{position:relative;max-width:min(92vw,480px);padding:28px 24px 24px;border-radius:0;border:2px solid #ffffff;background:rgba(0,0,0,0.69);box-shadow:none;}
+  .mz-start-card{color:#ffffff;text-align:center;font-family:'DEGRADE',system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;image-rendering: pixelated;font-size:14px;}
   /* card inherits overlay filter; ensure no extra filtering */
   .mz-start-card{filter:none;} 
     /* subtle inner dither */
@@ -33,14 +33,14 @@
       opacity:.35;pointer-events:none;mix-blend-mode:overlay;}
 
     /* Title: clean, airy */
-    .mz-start-title{position:relative;font-size:20px;font-weight:700;letter-spacing:1px;margin:0 0 12px;text-shadow:none;}
+  .mz-start-title{position:relative;font-size:20px;font-weight:700;letter-spacing:1px;margin:0 0 12px;text-shadow:none;}
 
     .mz-start-desc{opacity:0.85;font-size:13px;margin:0 0 16px;}
 
     /* Button */
-    .mz-start-btn{font:inherit;font-weight:800;color:#fff;background:#1b2030;border:var(--px) solid #343a52;border-radius:0;padding:10px 16px;cursor:pointer;box-shadow:0 var(--px) 0 #0b0d16;transition:transform .08s ease-out, background .12s ease-out;} 
-    .mz-start-btn:hover{transform:translateY(calc(var(--px) * -1));background:#212741;} 
-    .mz-start-btn:active{transform:translateY(0);} 
+  .mz-start-btn{font:inherit;font-weight:800;color:#ffffff;background:rgba(0,0,0,0.69);border:2px solid #ffffff;border-radius:0;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:none;font-size:14px;} 
+  .mz-start-btn:hover{filter:brightness(1.05);} 
+  .mz-start-btn:active{filter:brightness(0.95);} 
 
     /* Remove decorative corners from the layout (kept for DOM simplicity) */
     .mz-start-card .corners{display:none;}

@@ -15,6 +15,8 @@ function onToggleDebug(){
   DEBUG_TOGGLE.textContent = `Debug: ${state.debugVisible ? 'ON' : 'OFF'}`;
   // Update HUD aria-hidden to reflect visibility; updateHUD will render text when visible
   HUD.setAttribute('aria-hidden', state.debugVisible ? 'false' : 'true');
+  try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
+  try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
 
   // When debug is ON, unlock all abilities for convenience
   if (state.debugVisible && state.player){
@@ -81,6 +83,14 @@ if (typeof window !== 'undefined'){
     ALT_LOCK_BTN.innerHTML = (pressed === 'true') ? lockSVG : unlockSVG;
     ALT_LOCK_BTN.title = (pressed === 'true') ? 'Unlock (return to normal controls)' : 'Lock controls (camera-relative)';
   };
+  // Update the floating camera status label text
+  window.setCameraStatusLabel = function setCameraStatusLabel(){
+    if (!CAMERA_STATUS) return;
+  let mode = 'Auto';
+  if (state.lockedCameraForced){ mode = 'Locked'; }
+  else if (state.altBottomControlLocked){ mode = 'Fixed'; }
+  CAMERA_STATUS.textContent = `Camera - ${mode}`;
+  };
   // Alt control lock toggle: when on, use bottom-fullscreen controls without bottom being fullscreen.
   window.onToggleAltControlLock = function onToggleAltControlLock(){
     try {
@@ -93,6 +103,7 @@ if (typeof window !== 'undefined'){
         state.camYaw = target;
       }
   if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon();
+  if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel();
   // Remove focus from the button to avoid accidental Space re-activation; return focus to canvas (next tick)
   setTimeout(()=>{
     try { if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN) ALT_LOCK_BTN.blur(); } catch(_){ }

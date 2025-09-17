@@ -64,7 +64,28 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
   } catch(_){}
   // Inject cog icon SVG once
   try {
-    const cogSVG = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g fill="none" stroke="#fff" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter"><path d="M30 10 h40 M85 35 v30 M70 90 h-40 M15 65 v-30" opacity="0.0001"/></g><g fill="none" stroke="#e9f3ff" stroke-width="8"><path d="M50 28 l8 3 l6 -6 l10 6 l-2 9 l7 7 l-7 7 l2 9 l-10 6 l-6 -6 l-8 3 l-8 -3 l-6 6 l-10 -6 l2 -9 l-7 -7 l7 -7 l-2 -9 l10 -6 l6 6 l8 -3 z"/><circle cx="50" cy="50" r="10"/></g></svg>';
+    const cogSVG = (
+      '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">'
+      + '<defs>'
+      + '  <mask id="mz-cog-hole">'
+      + '    <rect x="0" y="0" width="100" height="100" fill="#fff"/>'
+      + '    <circle cx="50" cy="50" r="14" fill="#000"/>'
+      + '  </mask>'
+      + '</defs>'
+      + '<g fill="#fff" mask="url(#mz-cog-hole)">'
+      + '  <circle cx="50" cy="50" r="34"/>'
+      + '  <!-- Teeth: identical radial length L=12 from base circle r=34 -->'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(0 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(45 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(90 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(135 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(180 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(225 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(270 50 50)"/>'
+      + '  <rect x="44" y="4" width="12" height="12" rx="2" ry="2" transform="rotate(315 50 50)"/>'
+      + '</g>'
+      + '</svg>'
+    );
     SETTINGS_BTN.innerHTML = cogSVG;
   } catch(_){ }
 
@@ -273,6 +294,20 @@ SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
   ALT_LOCK_BTN.style.display = hide ? 'none' : 'inline-flex';
   // Only update text/icon when visibility state changes or pressed changes; avoid frequent rewrites
       ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
+    }
+    // Update camera status label visibility and text to mirror lock button state
+    if (CAMERA_STATUS){
+      const canTurn = !!(state.player && state.player.canTurn);
+      const hide = !!state.snapBottomFull || !canTurn;
+      const hiddenStr = hide ? 'true' : 'false';
+      CAMERA_STATUS.dataset.hidden = hiddenStr;
+      CAMERA_STATUS.setAttribute('aria-hidden', hiddenStr);
+      CAMERA_STATUS.style.display = hide ? 'none' : 'block';
+      // Compute status: Auto (normal), Fixed (altBottomControlLocked true), Locked (future flag state.lockedCameraForced true)
+  let mode = 'Auto';
+  if (state.lockedCameraForced){ mode = 'Locked'; }
+  else if (state.altBottomControlLocked){ mode = 'Fixed'; }
+  CAMERA_STATUS.textContent = `Camera - ${mode}`;
     }
     if (SEAM_HANDLE){
       const canTurn = !!(state.player && state.player.canTurn);

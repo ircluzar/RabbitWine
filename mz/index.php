@@ -38,7 +38,8 @@ function bust($path) {
       <div id="seam-handle" aria-hidden="true" data-hidden="true" style="display:none"></div>
     </div>
 
-  <!-- Alt control lock button (bottom-center) -->
+  <!-- Camera status label + Alt control lock button (bottom-left) -->
+  <div id="camera-status" aria-hidden="true" data-hidden="true" style="display:none">Camera - Auto</div>
   <button id="alt-control-lock" type="button" aria-pressed="false" aria-hidden="true" data-hidden="true" style="display:none" title="Lock bottom controls (toggle)">⬍⬌</button>
 
   <!-- Settings (top-left) -->

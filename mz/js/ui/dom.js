@@ -14,6 +14,7 @@ const GLOW_L = document.getElementById('swipe-glow-left');
 const GLOW_R = document.getElementById('swipe-glow-right');
 const DEBUG_TOGGLE = document.getElementById('debug-toggle');
 const ALT_LOCK_BTN = document.getElementById('alt-control-lock');
+const CAMERA_STATUS = document.getElementById('camera-status');
 const SETTINGS_BTN = document.getElementById('settings-button');
 
 // Expose references globally (for simpler interop and debugging)
@@ -26,5 +27,6 @@ if (typeof window !== 'undefined'){
 	window.GLOW_R = GLOW_R;
 	window.DEBUG_TOGGLE = DEBUG_TOGGLE;
 		window.ALT_LOCK_BTN = ALT_LOCK_BTN;
+		window.CAMERA_STATUS = CAMERA_STATUS;
 		window.SETTINGS_BTN = SETTINGS_BTN;
 }

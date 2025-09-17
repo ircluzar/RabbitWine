@@ -117,6 +117,8 @@ const state = {
   altBottomControlLocked: false,
   // Camera yaw lock (freeze top camera yaw when true)
   lockCameraYaw: false,
+  // Future: forced camera lock mode (shows Camera [Locked])
+  lockedCameraForced: false,
   // First acceleration marker/event state
   firstAccelFired: false,
   firstAccelSlowUntil: 0,
