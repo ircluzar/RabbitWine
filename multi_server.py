@@ -54,6 +54,7 @@ _MUSIC_FILE_NAME = "vrun64.mp3"
 _music_duration_ms: int = 0
 _music_started_mono: float = 0.0
 _music_enabled: bool = False
+_music_offset_ms: int = 0  # persisted offset used to start from last known position
 
 def _detect_music_path() -> Optional[str]:
     """Return an absolute path to vrun64.mp3 if present.
@@ -94,9 +95,12 @@ def _load_mp3_duration_ms(path: str) -> int:
     # Fallback: unknown duration
     return 0
 
-def music_clock_init():
-    """Initialize the silent looping music clock if the file is present."""
-    global _music_duration_ms, _music_started_mono, _music_enabled
+def music_clock_init(initial_pos_ms: Optional[int] = None):
+    """Initialize the silent looping music clock if the file is present.
+
+    If initial_pos_ms is provided, start from that position (mod duration).
+    """
+    global _music_duration_ms, _music_started_mono, _music_enabled, _music_offset_ms
     mpath = _detect_music_path()
     if not mpath:
         print("[MUSIC] vrun64.mp3 not found; music position sync disabled")
@@ -109,6 +113,14 @@ def music_clock_init():
     else:
         print(f"[MUSIC] '{os.path.basename(mpath)}' duration = {_music_duration_ms} ms")
     _music_started_mono = _time.monotonic()
+    # Set starting offset if provided
+    try:
+        if initial_pos_ms is not None and _music_duration_ms > 0:
+            _music_offset_ms = int(initial_pos_ms) % int(_music_duration_ms)
+        else:
+            _music_offset_ms = 0
+    except Exception:
+        _music_offset_ms = 0
     _music_enabled = True
     # We don't actually output audio; this is a silent clock at volume 0 by design.
 
@@ -120,7 +132,8 @@ def music_current_pos_ms(now_mono: Optional[float] = None) -> int:
         now_mono = _time.monotonic()
     elapsed_ms = int((now_mono - _music_started_mono) * 1000.0)
     if _music_duration_ms > 0:
-        return elapsed_ms % _music_duration_ms
+        pos = (elapsed_ms + int(_music_offset_ms)) % int(_music_duration_ms)
+        return pos
     return 0
 
 @dataclass
@@ -282,6 +295,15 @@ def db_init(path: str):
         )
         """
     )
+    _db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS music_state(
+            track TEXT PRIMARY KEY,
+            pos_ms INTEGER NOT NULL,
+            updated INTEGER NOT NULL
+        )
+        """
+    )
     _db_conn.commit()
 
 def db_load_all():
@@ -349,6 +371,34 @@ def db_load_all():
         print(f"[DB] Loaded portals for {len(level_portals)} levels")
     except Exception as e:
         print(f"[DB] Failed to load portals: {e}")
+
+def db_music_load_pos(track: str) -> Optional[int]:
+    """Load last known music position for the given track (ms), if any."""
+    if not _db_conn:
+        return None
+    try:
+        cur = _db_conn.execute("SELECT pos_ms FROM music_state WHERE track=?", (track,))
+        row = cur.fetchone()
+        if row and isinstance(row[0], (int, float)):
+            return int(row[0])
+    except Exception as e:
+        try: print(f"[DB] music load fail: {e}")
+        except Exception: pass
+    return None
+
+def db_music_save_pos(track: str, pos_ms: int) -> None:
+    """Persist current music position (ms)."""
+    if not _db_conn:
+        return
+    try:
+        _db_conn.execute(
+            "REPLACE INTO music_state(track,pos_ms,updated) VALUES (?,?,?)",
+            (track, int(max(0, pos_ms)), now_ms())
+        )
+        _db_conn.commit()
+    except Exception as e:
+        try: print(f"[DB] music save fail: {e}")
+        except Exception: pass
 
 def db_persist_level(level: str, diff: MapDiff):
     if not _db_conn: return
@@ -1415,9 +1465,18 @@ async def main():
         except Exception as e:
             print(f"[DB] Failed to init DB '{args.db}': {e}")
             use_db = False
-    # Start silent music clock
+    # Start silent music clock (restore last known position if available)
     try:
-        music_clock_init()
+        init_pos = None
+        if use_db:
+            try:
+                init_pos = db_music_load_pos(_MUSIC_FILE_NAME)
+                if isinstance(init_pos, int):
+                    print(f"[MUSIC] restoring position {init_pos} ms from DB")
+            except Exception as e:
+                try: print(f"[MUSIC] load pos fail: {e}")
+                except Exception: pass
+        music_clock_init(init_pos)
     except Exception as e:
         try: print(f"[MUSIC] init failed: {e}")
         except Exception: pass
@@ -1425,14 +1484,15 @@ async def main():
     async with websockets.serve(handle_client, args.host, args.port, ssl=ssl_ctx, ping_interval=20, ping_timeout=20):
         # Start background tasks
         sweeper_task = asyncio.create_task(_sweeper_task(use_db))
+        music_task = asyncio.create_task(_music_persist_task(enabled=use_db))
+        tasks = [sweeper_task, music_task]
         if args.interactive:
             console_task = asyncio.create_task(_interactive_loop())
-            await asyncio.gather(sweeper_task, console_task)
-        else:
-            try:
-                await sweeper_task
-            except asyncio.CancelledError:
-                pass
+            tasks.append(console_task)
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            pass
 
 
 # ------------------------- Admin/Interactive Mode ---------------------------
@@ -1458,6 +1518,28 @@ async def _sweeper_task(use_db: bool):
                     print('[DB] VACUUM complete')
                 except Exception as e:
                     print(f"[DB] VACUUM failed: {e}")
+    except asyncio.CancelledError:
+        pass
+
+async def _music_persist_task(enabled: bool):
+    """Every 30 seconds, persist current music position (if DB enabled and music clock active)."""
+    if not enabled:
+        # Nothing to do if not using DB
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            return
+    try:
+        while True:
+            await asyncio.sleep(30)
+            try:
+                if _music_enabled and _music_duration_ms > 0 and _db_conn is not None:
+                    pos = int(music_current_pos_ms())
+                    db_music_save_pos(_MUSIC_FILE_NAME, pos)
+            except Exception as e:
+                try: print(f"[MUSIC] persist tick failed: {e}")
+                except Exception: pass
     except asyncio.CancelledError:
         pass
 
