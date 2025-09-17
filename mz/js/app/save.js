@@ -19,6 +19,12 @@
   // Identify items by x,z only (y may vary slightly or be implicit)
   function itemKey(x, z){ return `${round2(x)},${round2(z)}`; } // legacy 2D key
   function xyzKey(x,y,z){ return `${round2(x)},${round2(y)},${round2(z)}`; }
+  // Current level name helper (string like 'ROOT', '1A', etc.)
+  function getLevelName(){
+    try { if (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL) return String(window.MP_LEVEL); } catch(_){ }
+    try { if (typeof MP_LEVEL === 'string' && MP_LEVEL) return MP_LEVEL; } catch(_){ }
+    return 'ROOT';
+  }
   function getLevelId(){
     try { if (state && state.level && state.level.id) return String(state.level.id); } catch(_){ }
     try { if (typeof MP_LEVEL === 'string') return MP_LEVEL; } catch(_){ }
@@ -30,6 +36,7 @@
     return {
       v: 1,
       t: Date.now(),
+      levelName: getLevelName(),
       player: {
         x: p.x || 0, y: p.y || 0, z: p.z || 0,
         angle: p.angle || 0,
@@ -60,6 +67,16 @@
   function applyLoaded(data){
     try {
       if (!data || typeof data !== 'object') return;
+      // If a levelName exists but wasn't handled earlier, propagate palette and window.MP_LEVEL as a fallback
+      try {
+        const lvl = (typeof data.levelName === 'string' && data.levelName.trim()) ? data.levelName.trim() : null;
+        if (lvl){
+          // Set global for modules that consult window.MP_LEVEL (e.g., map-data builder gating)
+          try { window.MP_LEVEL = lvl; } catch(_){ }
+          // Update palette group to match saved level naming convention
+          try { if (typeof window.parseLevelGroupId === 'function' && typeof window.setLevel === 'function'){ const gid = window.parseLevelGroupId(lvl); window.setLevel(gid); } } catch(_){ }
+        }
+      } catch(_){ }
       const p = state.player;
       if (data.player){
         const d = data.player;
@@ -145,6 +162,34 @@
   try { if (typeof window.resizeCanvasToViewport === 'function') resizeCanvasToViewport(); } catch(_){ }
   }
 
+  // Defer a level switch until the multiplayer layer is ready; ensures correct base map (ROOT sample vs. blank) and server sync
+  function scheduleSwitchLevelIfPossible(levelName){
+    try {
+      const name = (typeof levelName === 'string' && levelName.trim()) ? levelName.trim() : 'ROOT';
+      // Small guard to avoid scheduling multiple times
+      if (window._mzBootSwitchScheduled) return;
+      window._mzBootSwitchScheduled = true;
+      const tryOnce = () => {
+        try {
+          if (typeof window.mpSwitchLevel === 'function'){ window.mpSwitchLevel(name); return true; }
+        } catch(_){ }
+        return false;
+      };
+      if (tryOnce()) return;
+      // Retry briefly while scripts finish wiring up
+      let tries = 0;
+      const id = setInterval(() => {
+        tries++;
+        if (tryOnce() || tries > 50){ // ~5s max
+          try { clearInterval(id); } catch(_){ }
+        }
+      }, 100);
+      // Also attempt on DOMContentLoaded/load to cover late availability
+      try { window.addEventListener('DOMContentLoaded', tryOnce, { once: true }); } catch(_){ }
+      try { window.addEventListener('load', tryOnce, { once: true }); } catch(_){ }
+    } catch(_){ }
+  }
+
   function saveNow(){
     if (suppressSaving) return;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(buildPayload())); } catch(_){ }
@@ -154,6 +199,19 @@
       const s = localStorage.getItem(SAVE_KEY);
       if (!s) return null;
       const data = JSON.parse(s);
+      // On boot, if a saved level name exists and a player payload is present, set the boot level first
+      try {
+        const lvl = (typeof data.levelName === 'string' && data.levelName.trim()) ? data.levelName.trim() : null;
+        const hasPos = !!(data.player && (typeof data.player.x === 'number' || typeof data.player.z === 'number'));
+        if (lvl && hasPos){
+          // Expose level name early for modules that gate ROOT vs others
+          try { window.MP_LEVEL = lvl; } catch(_){ }
+          // Align palette to saved level group id immediately (best-effort)
+          try { if (typeof window.parseLevelGroupId === 'function' && typeof window.setLevel === 'function'){ const gid = window.parseLevelGroupId(lvl); window.setLevel(gid); } } catch(_){ }
+          // Schedule a proper level switch once multiplayer/bootstrap are ready
+          scheduleSwitchLevelIfPossible(lvl);
+        }
+      } catch(_){ }
       applyLoaded(data);
       return data;
     } catch(_){ return null; }
