@@ -88,6 +88,7 @@ function mpApplyFullMap(version, ops){
       console.log('[MP] level data received; unfreezing player');
     }
   } catch(_){ }
+  try { __mp_clearBootWatch(); } catch(_){ }
 }
 function mpApplyOps(version, ops){
   for (const op of (ops||[])){
@@ -118,6 +119,7 @@ function mpApplyOps(version, ops){
       console.log('[MP] map ops applied; unfreezing player');
     }
   } catch(_){ }
+  try { __mp_clearBootWatch(); } catch(_){ }
 }
 
 // Apply full tile overrides list
@@ -152,6 +154,7 @@ function mpApplyFullTiles(version, tiles){
       console.log('[MP] tile snapshot applied; unfreezing player');
     }
   } catch(_){ }
+  try { __mp_clearBootWatch(); } catch(_){ }
 }
 
 function mpApplyTileOps(version, ops){
@@ -173,6 +176,7 @@ function mpApplyTileOps(version, ops){
       console.log('[MP] tile ops applied; unfreezing player');
     }
   } catch(_){ }
+  try { __mp_clearBootWatch(); } catch(_){ }
 }
 
 // Rebuild columnSpans from current diff each time (simple; can be optimized later)
@@ -338,6 +342,14 @@ let __mp_levelLoading = false;     // true while waiting for server data after l
 let __mp_levelUnfreezeTimer = null;// fallback unfreeze timer id
 // Offline fallback flags
 let __mp_offlineLoadedForLevel = null; // tracks last level loaded from local maps to avoid refetch spam
+// Boot-time aggressive fallback watchdogs
+let __mp_bootConnectWatch = null;
+let __mp_bootMapWatch = null;
+
+function __mp_clearBootWatch(){
+  try { if (__mp_bootConnectWatch){ clearTimeout(__mp_bootConnectWatch); __mp_bootConnectWatch = null; } } catch(_){ }
+  try { if (__mp_bootMapWatch){ clearTimeout(__mp_bootMapWatch); __mp_bootMapWatch = null; } } catch(_){ }
+}
 
 // Offline items applier (replicates spawn logic used in network path)
 function __mp_offlineApplyItemsFull(list){
@@ -437,6 +449,7 @@ async function mpLoadOfflineLevel(levelName){
     try { __mp_levelLoading = false; if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer=null; } __mp_unfreezePlayer(); } catch(_){ }
     __mp_offlineLoadedForLevel = lvl;
     console.log('[MP][offline] loaded map for', lvl);
+    try { __mp_clearBootWatch(); } catch(_){ }
     return true;
   } catch(err){
     console.warn('[MP][offline] load failed', err);
@@ -963,6 +976,8 @@ function drawGhosts(mvp){
 // Hooks into main loop
 function __mp_onFrame(dt, nowMs){
   __mp_onFrame._count = ( __mp_onFrame._count || 0 ) + 1;
+  // Keep player frozen while level is loading to avoid falling through
+  try { if (__mp_levelLoading){ const s = __mp_getState(); if (s && s.player){ s.player.isFrozen = true; } } } catch(_){ }
   mpTickNet(nowMs);
   mpUpdateGhosts(dt);
 }
@@ -1281,6 +1296,33 @@ setTimeout(() => {
     console.log('[MP] frame hook active');
   }
 }, 1500);
+
+// Aggressive boot-time fallback to prevent falling through when server is unreachable
+try {
+  // Freeze player immediately until a map (online or offline) is applied
+  __mp_levelLoading = true;
+  __mp_freezePlayer();
+  // Kick a WS connect attempt now; don't wait for first frame
+  mpEnsureWS(Date.now());
+  // If WS is not open very quickly, try loading offline map
+  __mp_bootConnectWatch = setTimeout(() => {
+    try {
+      if (mpWSState !== 'open' && (mpMap.version|0) === 0){
+        console.warn('[MP] WS slow at boot; fast offline map fallback');
+        mpLoadOfflineLevel(MP_LEVEL);
+      }
+    } catch(_){ }
+  }, 150);
+  // Secondary guard at ~1s in case first attempt races
+  __mp_bootMapWatch = setTimeout(() => {
+    try {
+      if ((mpMap.version|0) === 0){
+        console.warn('[MP] No map after 1s; forcing offline fallback');
+        mpLoadOfflineLevel(MP_LEVEL);
+      }
+    } catch(_){ }
+  }, 1000);
+} catch(_){ }
 
 // Try to resolve and bridge state for modules that load out of order
 let __mp_state_probe_count = 0;
