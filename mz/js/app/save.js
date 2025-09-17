@@ -209,7 +209,11 @@
           // Align palette to saved level group id immediately (best-effort)
           try { if (typeof window.parseLevelGroupId === 'function' && typeof window.setLevel === 'function'){ const gid = window.parseLevelGroupId(lvl); window.setLevel(gid); } } catch(_){ }
           // Schedule a proper level switch once multiplayer/bootstrap are ready
-          scheduleSwitchLevelIfPossible(lvl);
+          // Important: Do NOT schedule a switch for ROOT on boot, because switching to ROOT
+          // will rebuild the SampleMap and re-apply the spawn, overwriting saved X/Z.
+          // The ROOT base map is already built during module init; we only need to switch
+          // for non-ROOT saves.
+          if (lvl !== 'ROOT') scheduleSwitchLevelIfPossible(lvl);
         }
       } catch(_){ }
       applyLoaded(data);
