@@ -40,7 +40,7 @@ VERBOSE_UPDATES = False
 
 ALLOWED_STATES = {"good", "ball"}
 LEVEL_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
-DEFAULT_DB_FILE = "rw_maps.db"
+DEFAULT_DB_FILE = "vrun64.db"
 MAP_W_DEFAULT = 24
 MAP_H_DEFAULT = 24
 TILE_LEVELCHANGE = 8  # client uses TILE.LEVELCHANGE == 8
@@ -1385,6 +1385,7 @@ async def main():
     parser.add_argument("--cert", help="TLS certificate file (PEM)")
     parser.add_argument("--key", help="TLS private key file (PEM)")
     parser.add_argument("--db", help="SQLite DB file for persistent map diffs (optional). If omitted, uses rw_maps.db (auto-created). Use --db '' to disable.")
+    parser.add_argument("--interactive", action="store_true", help="Enable interactive console mode to accept admin commands.")
     args = parser.parse_args()
 
     ssl_ctx = None
@@ -1420,26 +1421,487 @@ async def main():
     except Exception as e:
         try: print(f"[MUSIC] init failed: {e}")
         except Exception: pass
-    print(f"Serving on {scheme}://{args.host}:{args.port} (TTL={TTL_MS}ms) persistence={'on' if use_db else 'off'} music={'on' if _music_enabled else 'off'}")
+    print(f"Serving on {scheme}://{args.host}:{args.port} (TTL={TTL_MS}ms) persistence={'on' if use_db else 'off'} music={'on' if _music_enabled else 'off'} interactive={'on' if args.interactive else 'off'}")
     async with websockets.serve(handle_client, args.host, args.port, ssl=ssl_ctx, ping_interval=20, ping_timeout=20):
+        # Start background tasks
+        sweeper_task = asyncio.create_task(_sweeper_task(use_db))
+        if args.interactive:
+            console_task = asyncio.create_task(_interactive_loop())
+            await asyncio.gather(sweeper_task, console_task)
+        else:
+            try:
+                await sweeper_task
+            except asyncio.CancelledError:
+                pass
+
+
+# ------------------------- Admin/Interactive Mode ---------------------------
+
+def _levels_all_known() -> List[str]:
+    """Return a sorted list of all level IDs known in memory (union of sources)."""
+    lvls = set(level_diffs.keys()) | set(level_tiles.keys()) | set(level_items.keys()) | set(level_portals.keys())
+    return sorted(lvls)
+
+async def _sweeper_task(use_db: bool):
+    """Periodic maintenance: player sweep and optional DB vacuum."""
+    last_vac = time.time()
+    try:
+        while True:
+            await asyncio.sleep(60)
+            await sweep(now_ms())
+            if use_db and _db_conn is not None and (time.time() - last_vac) > 1800:
+                try:
+                    print('[DB] VACUUM start')
+                    _db_conn.execute('VACUUM')
+                    _db_conn.commit()
+                    last_vac = time.time()
+                    print('[DB] VACUUM complete')
+                except Exception as e:
+                    print(f"[DB] VACUUM failed: {e}")
+    except asyncio.CancelledError:
+        pass
+
+async def _interactive_loop():
+    """Read commands from stdin and execute admin actions until EOF/quit."""
+    import sys
+    print("[ADMIN] Interactive mode enabled. Type 'help' for commands.")
+    loop = asyncio.get_running_loop()
+    while True:
         try:
-            # Periodic tasks: player sweep (60s) & DB vacuum (every 30 min)
-            last_vac = time.time()
-            while True:
-                await asyncio.sleep(60)
-                await sweep(now_ms())
-                if use_db and (time.time() - last_vac) > 1800:
-                    try:
-                        print('[DB] VACUUM start')
-                        _db_conn.execute('VACUUM')
-                        _db_conn.commit()
-                        last_vac = time.time()
-                        print('[DB] VACUUM complete')
-                    except Exception as e:
-                        print(f"[DB] VACUUM failed: {e}")
-        except asyncio.CancelledError:
+            line = await loop.run_in_executor(None, sys.stdin.readline)
+            if line is None or line == '':
+                # EOF
+                print("[ADMIN] stdin closed; leaving interactive mode")
+                return
+            line = line.strip()
+            if not line:
+                continue
+            await _handle_admin_command(line)
+        except Exception as e:
+            try:
+                print(f"[ADMIN] error: {e}")
+            except Exception:
+                pass
+
+async def _handle_admin_command(line: str):
+    parts = line.strip().split()
+    cmd = parts[0].lower()
+    args = parts[1:]
+    if cmd == "help":
+        _print_help()
+        return
+    if cmd == "list":
+        sub = args[0].lower() if args else "levels"
+        if sub == "levels":
+            _admin_list_levels()
+            return
+        if sub == "players":
+            _admin_list_players()
+            return
+        # default: list levels
+        _admin_list_levels()
+        return
+    if cmd == "export":
+        if not args:
+            # default: export all
+            _admin_export_all()
+            return
+        if args[0].lower() == "all":
+            _admin_export_all()
+            return
+        if args[0].lower() == "level" and len(args) >= 2:
+            lvl = args[1]
+            _admin_export_level(lvl)
+            return
+        # try export <LEVEL>
+        _admin_export_level(args[0])
+        return
+    if cmd == "import":
+        if not args:
+            print("usage: import <fileOrLevel.json>")
+            return
+        await _admin_import_file(args[0])
+        return
+    if cmd == "reset":
+        if not args:
+            print("usage: reset <LEVEL>|all")
+            return
+        target = args[0]
+        if target.lower() == "all":
+            await _admin_reset_all()
+        else:
+            await _admin_reset_level(target)
+        return
+    if cmd == "delete":
+        if not args:
+            print("usage: delete <LEVEL>|all")
+            return
+        target = args[0]
+        if target.lower() == "all":
+            await _admin_delete_all()
+        else:
+            await _admin_delete_level(target)
+        return
+    print("Unknown command. Type 'help' for usage.")
+
+def _print_help():
+    print("""
+help -> displays the various commands
+
+list -> forwards to list levels by default
+list levels -> lists the known levels saved in the db
+list players -> lists the currently connected players
+
+export -> forwards to export all by default
+export all -> export all the levels from the db to json files (e.g., 1A.json)
+export level <LEVEL> -> export that level only (e.g., ROOT)
+
+import <fileOrLevel.json> -> import the json file to the db (replacing existing for that level)
+
+reset <LEVEL> -> resets a level to empty but keeps portals in place
+reset all -> resets all levels (keeping portals)
+
+delete <LEVEL> -> deletes one level from the db
+delete all -> deletes all levels
+""".strip())
+
+def _admin_list_levels():
+    try:
+        lvls = []
+        if _db_conn is not None:
+            try:
+                cur = _db_conn.execute("SELECT level, version FROM map_diffs ORDER BY level")
+                lvls = cur.fetchall()
+            except Exception:
+                lvls = []
+        if not lvls:
+            # fall back to memory
+            lvls = [(l, level_diffs.get(l).version if level_diffs.get(l) else 1) for l in _levels_all_known()]
+        if not lvls:
+            print("[LIST] No levels found")
+            return
+        print("[LIST] Levels:")
+        for lvl, ver in lvls:
+            print(f" - {lvl} (v{ver})")
+    except Exception as e:
+        print(f"[LIST] error: {e}")
+
+def _admin_list_players():
+    try:
+        ts = now_ms()
+        if not players:
+            print("[LIST] No players connected")
+            return
+        print("[LIST] Players:")
+        for pid, p in players.items():
+            age = ts - p.last_seen
+            pos = f"({p.x:.2f},{p.y:.2f},{p.z:.2f})"
+            rot = f", rot={p.rotation:.1f}" if (p.state == 'ball' and p.rotation is not None) else ""
+            print(f" - id={pid} ip={p.ip} chan={p.channel} level={p.level} pos={pos} state={p.state}{rot} ageMs={age}")
+    except Exception as e:
+        print(f"[LIST] error: {e}")
+
+def _build_level_json(level: str) -> Dict[str, Any]:
+    md = get_mapdiff(level)
+    td = get_tilediff(level)
+    plist = level_portals.get(level) or {}
+    items = level_items.get(level) or []
+    return {
+        "level": level,
+        "version": int(md.version),
+        "map": {
+            "adds": [{"key": k, **({"t": t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())],
+            "removes": sorted(list(md.removes)),
+        },
+        "tiles": [{"k": k, "v": int(v)} for (k, v) in td.set.items()],
+        "portals": [{"k": k, "dest": dest} for (k, dest) in plist.items()],
+        "items": [
+            {"gx": it.gx, "gy": it.gy, "y": it.y, "kind": it.kind, **({"payload": it.payload} if (it.kind==0 and it.payload) else {})}
+            for it in items
+        ],
+    }
+
+def _admin_export_level(level: str):
+    try:
+        if not LEVEL_NAME_RE.match(level):
+            print(f"[EXPORT] Invalid level name: {level}")
+            return
+        data = _build_level_json(level)
+        fname = f"{level}.json"
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"[EXPORT] Wrote {fname}")
+    except Exception as e:
+        print(f"[EXPORT] error for level '{level}': {e}")
+
+def _admin_export_all():
+    levels: List[str] = []
+    # Prefer DB-backed list as per spec
+    if _db_conn is not None:
+        try:
+            cur = _db_conn.execute("SELECT level FROM map_diffs ORDER BY level")
+            levels = [r[0] for r in cur.fetchall()]
+        except Exception:
+            levels = []
+    if not levels:
+        # fallback to all known in memory
+        levels = _levels_all_known()
+    if not levels:
+        print("[EXPORT] No levels found to export")
+        return
+    count = 0
+    for lvl in levels:
+        _admin_export_level(lvl)
+        count += 1
+    print(f"[EXPORT] Exported {count} level(s)")
+
+def _parse_import_json(content: Dict[str, Any], fallback_level: Optional[str]) -> Tuple[str, MapDiff, TileDiff, Dict[str, str], List[MapItem]]:
+    # Determine level
+    lvl = content.get("level") if isinstance(content.get("level"), str) else None
+    if not lvl:
+        lvl = fallback_level or "ROOT"
+    if not LEVEL_NAME_RE.match(lvl):
+        raise ValueError("invalid level name in JSON")
+    # Map
+    map_obj = content.get("map") or {}
+    adds_raw = map_obj.get("adds")
+    adds: Dict[str,int] = {}
+    if isinstance(adds_raw, dict):
+        for k, v in adds_raw.items():
+            try:
+                adds[str(k)] = int(v) if int(v) in (1,2,3,4,5,9) else 0
+            except Exception:
+                adds[str(k)] = 0
+    elif isinstance(adds_raw, list):
+        for e in adds_raw:
+            if isinstance(e, dict) and isinstance(e.get("key"), str):
+                try:
+                    t = int(e.get("t", 0))
+                except Exception:
+                    t = 0
+                adds[e["key"]] = t if t in (1,2,3,4,5,9) else 0
+            elif isinstance(e, str):
+                adds[e] = 0
+    removes_raw = map_obj.get("removes")
+    removes: Set[str] = set()
+    if isinstance(removes_raw, list):
+        for k in removes_raw:
+            if isinstance(k, str):
+                removes.add(k)
+    ver = content.get("version")
+    try:
+        ver = int(ver)
+    except Exception:
+        ver = 1
+    md = MapDiff(version=max(1, ver), adds=adds, removes=removes)
+    # Tiles
+    tiles_list = content.get("tiles") or []
+    tset: Dict[str,int] = {}
+    if isinstance(tiles_list, list):
+        for e in tiles_list:
+            if isinstance(e, dict) and isinstance(e.get("k"), str) and isinstance(e.get("v"), (int, float)):
+                tset[e["k"]] = int(e["v"])  # normalize
+    td = TileDiff(version=1, set=tset)
+    # Portals
+    portal_list = content.get("portals") or []
+    pmap: Dict[str,str] = {}
+    if isinstance(portal_list, list):
+        for e in portal_list:
+            if isinstance(e, dict) and isinstance(e.get("k"), str) and isinstance(e.get("dest"), str):
+                pmap[e["k"]] = e["dest"]
+    # Items
+    items_list = content.get("items") or []
+    items: List[MapItem] = []
+    if isinstance(items_list, list):
+        for e in items_list:
+            if not isinstance(e, dict):
+                continue
+            try:
+                gx = int(e.get("gx")); gy = int(e.get("gy"))
+                y = float(e.get("y", 0.75))
+                kind = int(e.get("kind", 0))
+                payload = e.get("payload") if kind == 0 else ''
+                if payload is None: payload = ''
+                items.append(MapItem(gx=gx, gy=gy, y=y, kind=kind, payload=str(payload)))
+            except Exception:
+                continue
+    return (lvl, md, td, pmap, items)
+
+def _db_delete_level(level: str):
+    if _db_conn is None:
+        return
+    try:
+        _db_conn.execute("DELETE FROM map_diffs WHERE level=?", (level,))
+        _db_conn.execute("DELETE FROM map_items WHERE level=?", (level,))
+        _db_conn.execute("DELETE FROM map_tiles WHERE level=?", (level,))
+        _db_conn.execute("DELETE FROM map_portals WHERE level=?", (level,))
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] delete level '{level}' failed: {e}")
+
+def _db_delete_all_levels():
+    if _db_conn is None:
+        return
+    try:
+        _db_conn.execute("DELETE FROM map_diffs")
+        _db_conn.execute("DELETE FROM map_items")
+        _db_conn.execute("DELETE FROM map_tiles")
+        _db_conn.execute("DELETE FROM map_portals")
+        _db_conn.commit()
+    except Exception as e:
+        print(f"[DB] delete all failed: {e}")
+
+async def _broadcast_full_state(level: str):
+    """Send full state (map/tiles/portals/items) to all clients in this level."""
+    try:
+        md = get_mapdiff(level)
+        td = get_tilediff(level)
+        if md.adds or md.removes:
+            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
+                        [{"op": "remove", "key": k} for k in sorted(md.removes)])
+        else:
+            full_ops = []
+        payload_map = json.dumps({"type":"map_full","version": md.version, "ops": full_ops, "baseVersion": 0}, separators=(',',':'))
+        tiles_list = [{ 'k': k, 'v': v } for (k,v) in td.set.items()]
+        payload_tiles = json.dumps({"type":"tiles_full","version": td.version, "tiles": tiles_list}, separators=(',',':'))
+        plist = [{ 'k': k, 'dest': dest } for (k, dest) in (level_portals.get(level) or {}).items()]
+        payload_portals = json.dumps({ 'type': 'portal_full', 'portals': plist }, separators=(',',':'))
+        items_list = [
+            {"gx": it.gx, "gy": it.gy, "y": it.y, "kind": it.kind, **({"payload": it.payload} if (it.kind==0 and it.payload) else {})}
+            for it in level_items.get(level, [])
+        ]
+        payload_items = json.dumps({"type":"items_full","items": items_list}, separators=(',',':'))
+        targets = [w for w in list(connections) if (ws_meta.get(w) or (None, None))[1] == level]
+        awaitables = []
+        for w in targets:
+            awaitables.append(w.send(payload_map))
+            awaitables.append(w.send(payload_tiles))
+            awaitables.append(w.send(payload_portals))
+            awaitables.append(w.send(payload_items))
+        if awaitables:
+            await asyncio.gather(*awaitables, return_exceptions=True)
+    except Exception as e:
+        try:
+            print(f"[ADMIN] full-state broadcast failed: {e}")
+        except Exception:
             pass
 
+async def _admin_import_file(arg: str):
+    import os
+    path = arg
+    # Accept bare level name by appending .json if file not found
+    if not os.path.isfile(path) and LEVEL_NAME_RE.match(arg or ''):
+        trial = f"{arg}.json"
+        if os.path.isfile(trial):
+            path = trial
+    if not os.path.isfile(path):
+        print(f"[IMPORT] file not found: {arg}")
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = json.load(f)
+        lvl, md, td, pmap, items = _parse_import_json(content, None)
+        # Replace memory & DB for this level
+        async with lock:
+            # DB: wipe and reinsert
+            _db_delete_level(lvl)
+            level_diffs[lvl] = md
+            db_persist_level(lvl, md)
+            level_tiles[lvl] = TileDiff(version=max(1, td.version), set=dict(td.set))
+            db_persist_tiles(lvl, level_tiles[lvl])
+            level_portals[lvl] = dict(pmap)
+            if _db_conn is not None:
+                for k, dest in pmap.items():
+                    db_portal_set(lvl, k, dest)
+            level_items[lvl] = list(items)
+            if _db_conn is not None:
+                for it in items:
+                    db_upsert_item(lvl, it)
+        print(f"[IMPORT] Imported level '{lvl}' from {os.path.basename(path)}")
+        await _broadcast_full_state(lvl)
+    except Exception as e:
+        print(f"[IMPORT] failed: {e}")
+
+async def _admin_reset_level(level: str):
+    if not LEVEL_NAME_RE.match(level):
+        print(f"[RESET] invalid level: {level}")
+        return
+    async with lock:
+        # Ensure entries exist
+        md = get_mapdiff(level)
+        td = get_tilediff(level)
+        # Keep portal spans (t==5) only
+        new_adds: Dict[str,int] = {k:t for (k,t) in md.adds.items() if t == 5}
+        md.adds = new_adds
+        md.removes = set()
+        md.version = max(1, md.version + 1)
+        db_persist_level(level, md)
+        # Keep only LEVELCHANGE tiles
+        td.set = {k:v for (k,v) in td.set.items() if int(v) == TILE_LEVELCHANGE}
+        td.version = max(1, td.version + 1)
+        db_persist_tiles(level, td)
+        # Clear items
+        level_items[level] = []
+        if _db_conn is not None:
+            try:
+                _db_conn.execute("DELETE FROM map_items WHERE level=?", (level,))
+                _db_conn.commit()
+            except Exception as e:
+                print(f"[DB] clear items on reset failed: {e}")
+        # Keep portals as-is (both memory and DB)
+    print(f"[RESET] Level '{level}' reset (kept portals)")
+    await _broadcast_full_state(level)
+
+async def _admin_reset_all():
+    lvls = _levels_all_known()
+    if not lvls:
+        print("[RESET] No levels to reset")
+        return
+    for lvl in lvls:
+        await _admin_reset_level(lvl)
+    print(f"[RESET] Reset {len(lvls)} level(s)")
+
+async def _admin_delete_level(level: str):
+    if not LEVEL_NAME_RE.match(level):
+        print(f"[DELETE] invalid level: {level}")
+        return
+    async with lock:
+        level_diffs.pop(level, None)
+        level_tiles.pop(level, None)
+        level_items.pop(level, None)
+        level_portals.pop(level, None)
+        _db_delete_level(level)
+        # Initialize empty defaults so clients receive empties
+        level_diffs[level] = MapDiff(version=1, adds={}, removes=set())
+        level_tiles[level] = TileDiff(version=1, set={})
+    print(f"[DELETE] Level '{level}' deleted")
+    await _broadcast_full_state(level)
+    # After broadcasting empties, remove the empty placeholders from memory
+    async with lock:
+        level_diffs.pop(level, None)
+        level_tiles.pop(level, None)
+
+async def _admin_delete_all():
+    lvls = _levels_all_known()
+    async with lock:
+        level_diffs.clear()
+        level_tiles.clear()
+        level_items.clear()
+        level_portals.clear()
+        _db_delete_all_levels()
+        # Create placeholders to broadcast empties
+        for lvl in lvls:
+            level_diffs[lvl] = MapDiff(version=1, adds={}, removes=set())
+            level_tiles[lvl] = TileDiff(version=1, set={})
+    # Broadcast empties
+    for lvl in lvls:
+        await _broadcast_full_state(lvl)
+    # Clean placeholders
+    async with lock:
+        for lvl in lvls:
+            level_diffs.pop(lvl, None)
+            level_tiles.pop(lvl, None)
+    print(f"[DELETE] Deleted {len(lvls)} level(s)")
 
 if __name__ == "__main__":
     try:
