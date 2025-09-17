@@ -1703,13 +1703,42 @@ def _build_level_json(level: str) -> Dict[str, Any]:
         ],
     }
 
+def _resolve_maps_dir() -> str:
+    """Determine the maps directory to use for import/export.
+
+    Preference order (first existing or creatable wins):
+    1) <repo>/mz/maps relative to this script
+    2) ./mz/maps relative to current working directory
+    3) <repo>/maps next to this script
+    4) ./maps relative to current working directory
+    """
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+    except Exception:
+        here = os.getcwd()
+    candidates = [
+        os.path.join(here, 'mz', 'maps'),
+        os.path.join(os.getcwd(), 'mz', 'maps'),
+        os.path.join(here, 'maps'),
+        os.path.join(os.getcwd(), 'maps'),
+    ]
+    for d in candidates:
+        try:
+            os.makedirs(d, exist_ok=True)
+            return d
+        except Exception:
+            continue
+    # Fallback to CWD if all else fails
+    return os.getcwd()
+
 def _admin_export_level(level: str):
     try:
         if not LEVEL_NAME_RE.match(level):
             print(f"[EXPORT] Invalid level name: {level}")
             return
         data = _build_level_json(level)
-        fname = f"{level}.json"
+        maps_dir = _resolve_maps_dir()
+        fname = os.path.join(maps_dir, f"{level}.json")
         with open(fname, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"[EXPORT] Wrote {fname}")
@@ -1876,6 +1905,15 @@ async def _admin_import_file(arg: str):
         trial = f"{arg}.json"
         if os.path.isfile(trial):
             path = trial
+        else:
+            # Also try in maps directory
+            try:
+                maps_dir = _resolve_maps_dir()
+                trial2 = os.path.join(maps_dir, trial)
+                if os.path.isfile(trial2):
+                    path = trial2
+            except Exception:
+                pass
     if not os.path.isfile(path):
         print(f"[IMPORT] file not found: {arg}")
         return

@@ -336,6 +336,111 @@ let __mp_musicPosWaiters = [];
 // Level loading freeze management
 let __mp_levelLoading = false;     // true while waiting for server data after level switch
 let __mp_levelUnfreezeTimer = null;// fallback unfreeze timer id
+// Offline fallback flags
+let __mp_offlineLoadedForLevel = null; // tracks last level loaded from local maps to avoid refetch spam
+
+// Offline items applier (replicates spawn logic used in network path)
+function __mp_offlineApplyItemsFull(list){
+  try {
+    if (!Array.isArray(list)) return;
+    // Clear all existing runtime items
+    if (typeof window.removeItemsAtWorld === 'function' && typeof window.MAP_W==='number' && typeof window.MAP_H==='number'){
+      for (let y=0;y<window.MAP_H;y++) for (let x=0;x<window.MAP_W;x++){
+        const w = { x:(x+0.5)-window.MAP_W*0.5, z:(y+0.5)-window.MAP_H*0.5 };
+        try { window.removeItemsAtWorld(w.x, w.z); } catch(_){ }
+      }
+    }
+    const worldFromGrid = (gx,gy)=>{ let W=window.MAP_W||128, H=window.MAP_H||128; return { x:(gx+0.5)-W*0.5, z:(gy+0.5)-H*0.5 }; };
+    for (const it of list){
+      if (!it || typeof it.gx!== 'number' || typeof it.gy!=='number') continue;
+      const gx=it.gx|0, gy=it.gy|0; const y=(typeof it.y==='number')? it.y : 0.75; const kind=(it.kind===1)?1:0; const payload=(kind===0 && typeof it.payload==='string')? it.payload : '';
+      const w = worldFromGrid(gx,gy);
+      let ghost = false;
+      try {
+        if (window.gameSave){
+          if (kind===0 && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true;
+          if (kind===1 && gameSave.isPurpleCollected){ if (gameSave.isPurpleCollected(null, w.x, y, w.z) || gameSave.isPurpleCollected(null, w.x, 0.75, w.z) || gameSave.isPurpleCollected(null, w.x, 0, w.z)) ghost = true; }
+        }
+      } catch(_){ }
+      try {
+        if (kind===1){ if (typeof window.spawnPurpleItemWorld==='function') window.spawnPurpleItemWorld(w.x, y, w.z, { ghost }); }
+        else { if (typeof window.spawnItemWorld==='function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost }); }
+      } catch(_){ }
+    }
+  } catch(_){ }
+}
+
+// Offline map loader: fetch maps/{LEVEL}.json and apply as full snapshots
+async function mpLoadOfflineLevel(levelName){
+  try {
+    const lvl = (typeof levelName==='string' && levelName.trim()) ? levelName.trim() : 'ROOT';
+    // Avoid refetch spam for same level unless explicitly switching
+    if (__mp_offlineLoadedForLevel === lvl) return false;
+    const base = (window.__MP_MAPS_BASE || 'maps');
+    const url = `${base}/${encodeURIComponent(lvl)}.json`;
+    console.log('[MP][offline] loading', url);
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok){ console.warn('[MP][offline] fetch failed', res.status); __mp_offlineLoadedForLevel = null; return false; }
+    const data = await res.json();
+    // Validate structure minimally
+    const mapObj = (data && data.map) || {};
+    const addsRaw = mapObj.adds;
+    const removesList = Array.isArray(mapObj.removes) ? mapObj.removes : [];
+    const tilesRaw = data.tiles;
+    const portalsRaw = data.portals;
+    const itemsList = Array.isArray(data.items) ? data.items : [];
+    // Build ops array compatible with mpApplyFullMap
+    const ops = [];
+    if (Array.isArray(addsRaw)){
+      for (const e of addsRaw){ if (!e) continue; if (typeof e === 'string'){ ops.push({ op:'add', key:e }); } else if (typeof e.key === 'string'){ const rec = { op:'add', key:e.key }; if (e.t===1||e.t===2||e.t===3||e.t===4||e.t===5||e.t===9) rec.t = (e.t|0); ops.push(rec); } }
+      try { console.log('[MP][offline] adds: list format', addsRaw.length); } catch(_){ }
+    } else if (addsRaw && typeof addsRaw === 'object'){
+      // Object mapping { key: type }
+      for (const k in addsRaw){ if (!Object.prototype.hasOwnProperty.call(addsRaw,k)) continue; const v = addsRaw[k]; const rec = { op:'add', key: String(k) }; const t = (v|0); if (t===1||t===2||t===3||t===4||t===5||t===9) rec.t = t; ops.push(rec); }
+      try { console.log('[MP][offline] adds: object map with', Object.keys(addsRaw).length, 'keys'); } catch(_){ }
+    }
+    for (const k of removesList){ if (typeof k === 'string') ops.push({ op:'remove', key:k }); }
+    // Apply map
+    try { mpApplyFullMap((data.version|0)||1, ops); } catch(_){ }
+    // Normalize tiles into list of {k,v}
+    let tilesList = [];
+    if (Array.isArray(tilesRaw)){
+      tilesList = tilesRaw;
+      try { console.log('[MP][offline] tiles: list format', tilesList.length); } catch(_){ }
+    } else if (tilesRaw && typeof tilesRaw === 'object'){
+      for (const k in tilesRaw){ if (!Object.prototype.hasOwnProperty.call(tilesRaw,k)) continue; const v = tilesRaw[k]; if (typeof v === 'number') tilesList.push({ k, v: v|0 }); }
+      try { console.log('[MP][offline] tiles: object map with', tilesList.length, 'entries'); } catch(_){ }
+    }
+    try { mpApplyFullTiles(1, tilesList); } catch(_){ }
+    // Apply portals
+    try {
+      if (!(window.portalDestinations instanceof Map)) window.portalDestinations = new Map();
+      window.portalDestinations.clear();
+      if (Array.isArray(portalsRaw)){
+        for (const p of portalsRaw){ if (!p||typeof p.k!=='string'||typeof p.dest!=='string') continue; window.portalDestinations.set(p.k, p.dest); }
+        try { console.log('[MP][offline] portals: list format', portalsRaw.length); } catch(_){ }
+      } else if (portalsRaw && typeof portalsRaw === 'object'){
+        const keys = Object.keys(portalsRaw);
+        for (const k of keys){ const dest = portalsRaw[k]; if (typeof k==='string' && typeof dest==='string') window.portalDestinations.set(k, dest); }
+        try { console.log('[MP][offline] portals: object map with', keys.length, 'entries'); } catch(_){ }
+      }
+      if (typeof window.rebuildInstances === 'function') window.rebuildInstances();
+    } catch(_){ }
+    // Apply items
+    try { __mp_offlineApplyItemsFull(itemsList); } catch(_){ }
+    // Unfreeze the player now that offline state is ready
+    try { __mp_levelLoading = false; if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer=null; } __mp_unfreezePlayer(); } catch(_){ }
+    __mp_offlineLoadedForLevel = lvl;
+    console.log('[MP][offline] loaded map for', lvl);
+    return true;
+  } catch(err){
+    console.warn('[MP][offline] load failed', err);
+    try { __mp_levelLoading = false; if (__mp_levelUnfreezeTimer){ clearTimeout(__mp_levelUnfreezeTimer); __mp_levelUnfreezeTimer=null; } __mp_unfreezePlayer(); } catch(_){ }
+    __mp_offlineLoadedForLevel = null;
+    return false;
+  }
+}
+window.mpLoadOfflineLevel = mpLoadOfflineLevel;
 
 function __mp_freezePlayer(){
   try {
@@ -476,6 +581,7 @@ function mpEnsureWS(nowMs){
     mpWSState = 'open';
   __mp_cooldownActive = false; mpNextConnectAt = 0; __mp_retryMs = MP_FAIL_BASE_MS;
     try { console.log('[MP] WS connected'); } catch(_){}
+    try { __mp_offlineLoadedForLevel = null; } catch(_){ }
     // Introduce ourselves so the server can send a snapshot
   try { ws.send(JSON.stringify({ type:'hello', id: MP_ID, channel: MP_CHANNEL, level: MP_LEVEL })); } catch(_){ }
   // If we don't get a map_full within 2s, request sync explicitly
@@ -618,6 +724,8 @@ function mpEnsureWS(nowMs){
       const reason = ev && typeof ev.reason === 'string' ? ev.reason : '';
       console.warn(`[MP] WS closed; retry in ~${Math.max(0, wait|0)}ms`, { code, reason });
     } catch(_){}
+    // Attempt offline fallback load for current level
+    try { mpLoadOfflineLevel(MP_LEVEL); } catch(_){ }
   };
   ws.onerror = (e)=>{ startCooldown(e); };
   ws.onclose = (e)=>{ startCooldown(e); };
@@ -1045,6 +1153,9 @@ window.mpSwitchLevel = function(levelName){
     const name = (typeof levelName==='string' && levelName.trim()) ? levelName.trim() : 'ROOT';
     MP_LEVEL = name;
     window.MP_LEVEL = MP_LEVEL;
+    // If we're about to switch levels, ensure any previous offline-load guard is cleared
+    // so that offline diffs will re-apply after we rebuild the base (e.g., ROOT sample).
+    try { __mp_offlineLoadedForLevel = null; } catch(_){ }
   // Freeze player while loading new level
   __mp_levelLoading = true;
   __mp_freezePlayer();
@@ -1092,7 +1203,14 @@ window.mpSwitchLevel = function(levelName){
       }
     } catch(_){ }
     // Request syncs from server for this level
-    try { if (mpWS && mpWS.readyState === WebSocket.OPEN){ mpWS.send(JSON.stringify({ type:'level_change', level: MP_LEVEL })); } } catch(_){ }
+    try {
+      if (mpWS && mpWS.readyState === WebSocket.OPEN){
+        mpWS.send(JSON.stringify({ type:'level_change', level: MP_LEVEL }));
+      } else {
+        // No server? Try offline fallback
+        mpLoadOfflineLevel(MP_LEVEL);
+      }
+    } catch(_){ }
     // UX hint
     try { console.log('[MP] switched to level', MP_LEVEL); } catch(_){ }
     // Safety: unfreeze if no data arrives within 3 seconds
