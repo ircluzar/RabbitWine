@@ -70,11 +70,14 @@ function updateHUD(now) {
   const gridX = safeInt((state.player && state.player.x) + MAP_W * 0.5);
   const gridY = safeInt((state.player && state.player.z) + MAP_H * 0.5);
   const lb = state.letterboxCss || { w: 0, h: 0, x: 0, y: 0 };
+  const playerY = safeFixed(state.player && state.player.y, 2);
+  const worldX = safeFixed(state.player && state.player.x, 2);
+  const worldZ = safeFixed(state.player && state.player.z, 2);
   HUD.textContent = [
     `FPS ${state.fps} | t ${safeFixed(elapsed,1)}s | DPR ${safeFixed(state.dpr,2)}`,
     `Canvas ${CANVAS && CANVAS.width || 0}x${CANVAS && CANVAS.height || 0} (px) | seam ${safeFixed((state.seamRatio*100),1)}%`,
     `Present ${lb.w||0}x${lb.h||0} css @ (${lb.x||0},${lb.y||0})`,
-    `Player grid=${gridX},${gridY} | world=${safeFixed(state.player && state.player.x,2)} ,${safeFixed(state.player && state.player.z,2)} | ang=${safeFixed((state.player && state.player.angle)*180/Math.PI,0)} speed=${safeFixed(state.player && state.player.speed,2)} mode=${(state.player && state.player.movementMode) || 'n/a'}`,
+    `Player grid=${gridX},${gridY} y=${playerY} | world=${worldX},${playerY},${worldZ} | ang=${safeFixed((state.player && state.player.angle)*180/Math.PI,0)} speed=${safeFixed(state.player && state.player.speed,2)} mode=${(state.player && state.player.movementMode) || 'n/a'}`,
     pointerLines.length ? `Pointers:\n${pointerLines.join('\n')}` : 'Pointers: none',
     state.inputs.keys.size ? `Keys: ${Array.from(state.inputs.keys).join(',')}` : 'Keys: none',
   ].join('\n');
