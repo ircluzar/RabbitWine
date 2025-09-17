@@ -279,7 +279,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const cy = eyeTop ? eyeTop[1] : ((state?.camFollow?.y || 0) + 2.6);
   gl.uniform2f(wall_u_camXZ, cx, cz);
   gl.uniform1f(wall_u_camY, cy);
-  gl.uniform1f(wall_u_stippleRadius, (typeof state.topStippleRadius==='number') ? state.topStippleRadius : 3.0);
+  // Increase passthrough sphere radius by 40% (default 3.0 -> 4.2)
+  gl.uniform1f(wall_u_stippleRadius, (typeof state.topStippleRadius==='number') ? state.topStippleRadius : 4.2);
     gl.uniform1i(wall_u_stippleInvert, (typeof state.topStippleInvert==='number') ? (state.topStippleInvert|0) : 0);
     gl.uniform1i(wall_u_stippleAbove, (typeof state.topStippleAbove==='number') ? (state.topStippleAbove|0) : 1);
   }
@@ -1004,7 +1005,8 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const cy = eyeTop ? eyeTop[1] : ((state?.camFollow?.y || 0) + 2.6);
   gl.uniform2f(wall_u_camXZ, cx, cz);
   gl.uniform1f(wall_u_camY, cy);
-  gl.uniform1f(wall_u_stippleRadius, (typeof state.topStippleRadius==='number') ? state.topStippleRadius : 3.0);
+  // Increase passthrough sphere radius by 40% (default 3.0 -> 4.2)
+  gl.uniform1f(wall_u_stippleRadius, (typeof state.topStippleRadius==='number') ? state.topStippleRadius : 4.2);
     gl.uniform1i(wall_u_stippleInvert, (typeof state.topStippleInvert==='number') ? (state.topStippleInvert|0) : 0);
     gl.uniform1i(wall_u_stippleAbove, (typeof state.topStippleAbove==='number') ? (state.topStippleAbove|0) : 1);
   }
