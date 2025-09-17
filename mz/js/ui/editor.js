@@ -751,6 +751,7 @@
   panel.style.background = '#0f1722cc';
   panel.style.border = '1px solid #2a3a4a';
   panel.style.borderRadius = '8px';
+  panel.style.fontFamily = "'DEGRADE', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
   panel.style.zIndex = '2000';
   panel.style.pointerEvents = 'auto';
   const title = document.createElement('div');
@@ -1164,7 +1165,7 @@
       bar.style.background='#0f1722cc';
       bar.style.border='1px solid #2a3a4a';
       bar.style.borderRadius='6px';
-      bar.style.fontFamily='monospace';
+  bar.style.fontFamily="'DEGRADE', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
       bar.style.fontSize='12px';
       bar.style.zIndex='2500';
       bar.style.pointerEvents='none';

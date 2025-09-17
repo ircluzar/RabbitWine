@@ -23,8 +23,8 @@
       background-size: 4px 4px;opacity:0.35;pointer-events:none;mix-blend-mode:soft-light;}
 
     /* Card */
-    .mz-start-card{position:relative;max-width:min(92vw,480px);padding:26px 24px 22px;border-radius:0;border:var(--px) solid rgba(255,255,255,0.12);background:rgba(14,16,22,0.28);box-shadow:0 0 0 var(--px) rgba(0,0,0,0.85);} 
-    .mz-start-card{color:#e6e9f9;text-align:center;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;image-rendering: pixelated;}
+  .mz-start-card{position:relative;max-width:min(92vw,480px);padding:26px 24px 22px;border-radius:0;border:var(--px) solid rgba(255,255,255,0.12);background:rgba(14,16,22,0.28);box-shadow:0 0 0 var(--px) rgba(0,0,0,0.85);} 
+  .mz-start-card{color:#e6e9f9;text-align:center;font-family:'DEGRADE',system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;image-rendering: pixelated;}
   /* card inherits overlay filter; ensure no extra filtering */
   .mz-start-card{filter:none;} 
     /* subtle inner dither */

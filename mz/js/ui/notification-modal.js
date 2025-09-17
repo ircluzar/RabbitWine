@@ -10,7 +10,7 @@
     const css = `
     :root{ --px: 3px; }
     .${CONTAINER_ID}{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:11000;display:flex;flex-direction:column;gap:10px;pointer-events:none;image-rendering: pixelated}
-  .mz-toast{position:relative;min-width:min(92vw, 520px);max-width:min(92vw, 520px);padding:12px 16px;border-radius:0;border:var(--px) solid rgba(255,255,255,0.12);background:rgba(14,16,22,0.28);box-shadow:0 0 0 var(--px) rgba(0,0,0,0.85);color:#e6e9f9;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;text-align:center;line-height:1.25;image-rendering: pixelated;}
+  .mz-toast{position:relative;min-width:min(92vw, 520px);max-width:min(92vw, 520px);padding:12px 16px;border-radius:0;border:var(--px) solid rgba(255,255,255,0.12);background:rgba(14,16,22,0.28);box-shadow:0 0 0 var(--px) rgba(0,0,0,0.85);color:#e6e9f9;font-family:'DEGRADE',system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;text-align:center;line-height:1.25;image-rendering: pixelated;}
   /* stack for crossfade between normal and bitcrushed content */
   .mz-toast .t-stack{position:relative}
   .mz-toast .layer-normal,.mz-toast .layer-crunch{position:relative}

@@ -25,6 +25,7 @@ function bust($path) {
       })();
     </script>
     <title>VRUN MZ</title>
+    <link rel="preload" href="<?php echo bust('./DEGRADE.ttf'); ?>" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="<?php echo bust('./styles.css'); ?>" as="style" />
     <link rel="stylesheet" href="<?php echo bust('./styles.css'); ?>" />
   </head>
