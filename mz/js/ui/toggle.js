@@ -51,23 +51,31 @@ if (typeof window !== 'undefined'){
     if (typeof ALT_LOCK_BTN === 'undefined' || !ALT_LOCK_BTN) return;
     const pressed = state.altBottomControlLocked ? 'true' : 'false';
     ALT_LOCK_BTN.setAttribute('aria-pressed', pressed);
-    // SVGs (white, thick strokes)
+    ALT_LOCK_BTN.setAttribute('aria-disabled', state.lockedCameraForced ? 'true' : 'false');
+    // SVGs (white)
+    // Forced camera lock icon: padlock (outline)
+    const forcedLockSVG = (
+      '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">'
+      + '<g stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none">'
+      + '  <path d="M32 44 v-8 a18 18 0 1 1 36 0 v8"/>'
+      + '  <rect x="22" y="44" width="56" height="42" rx="6" ry="6"/>'
+      + '  <circle cx="50" cy="63" r="5"/>'
+      + '  <path d="M50 68 v10"/>'
+      + '</g>'
+      + '</svg>'
+    );
+    // Normal lock/unlock icons (arrows/cross and chevrons)
     const lockSVG = (
       '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">'
       + '<g stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none">'
-      // Cross (vertical + horizontal)
       + '<path d="M50 10 L50 90"/>'
       + '<path d="M10 50 L90 50"/>'
-      // Arrowheads: North
       + '<path d="M50 10 L44 20"/>'
       + '<path d="M50 10 L56 20"/>'
-      // South
       + '<path d="M50 90 L44 80"/>'
       + '<path d="M50 90 L56 80"/>'
-      // West
       + '<path d="M10 50 L20 44"/>'
       + '<path d="M10 50 L20 56"/>'
-      // East
       + '<path d="M90 50 L80 44"/>'
       + '<path d="M90 50 L80 56"/>'
       + '</g></svg>'
@@ -80,8 +88,13 @@ if (typeof window !== 'undefined'){
       + '<path d="M70 35 L80 50 L70 65"/>'
       + '</g></svg>'
     );
-    ALT_LOCK_BTN.innerHTML = (pressed === 'true') ? lockSVG : unlockSVG;
-    ALT_LOCK_BTN.title = (pressed === 'true') ? 'Unlock (return to normal controls)' : 'Lock controls (camera-relative)';
+    if (state.lockedCameraForced){
+      ALT_LOCK_BTN.innerHTML = forcedLockSVG;
+      ALT_LOCK_BTN.title = 'Camera Locked';
+    } else {
+      ALT_LOCK_BTN.innerHTML = (pressed === 'true') ? lockSVG : unlockSVG;
+      ALT_LOCK_BTN.title = (pressed === 'true') ? 'Unlock (return to normal controls)' : 'Lock controls (camera-relative)';
+    }
   };
   // Update the floating camera status label text
   window.setCameraStatusLabel = function setCameraStatusLabel(){
@@ -94,6 +107,11 @@ if (typeof window !== 'undefined'){
   // Alt control lock toggle: when on, use bottom-fullscreen controls without bottom being fullscreen.
   window.onToggleAltControlLock = function onToggleAltControlLock(){
     try {
+      // If camera is in forced lock mode, ignore clicks (no-op)
+      if (state.lockedCameraForced){
+        try { if (typeof ALT_LOCK_BTN !== 'undefined' && ALT_LOCK_BTN) ALT_LOCK_BTN.blur(); } catch(_){ }
+        return;
+      }
       state.altBottomControlLocked = !state.altBottomControlLocked;
       // When locking, freeze camera yaw; when unlocking, allow normal yaw follow
       state.lockCameraYaw = !!state.altBottomControlLocked;

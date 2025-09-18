@@ -155,6 +155,16 @@ body {
 #alt-control-lock[aria-pressed="true"]{ background:rgba(0,0,0,0.69); color:#ffffff; }
 #alt-control-lock:active{ transform: translateY(1px); }
 
+/* Disabled state when camera is forcibly locked (still visible, but dim and non-interactive) */
+#alt-control-lock[aria-disabled="true"]{
+  opacity: 0.6;
+  filter: saturate(0.8) brightness(0.95);
+  cursor: default;
+}
+#alt-control-lock[aria-disabled="true"]:active{
+  transform: none;
+}
+
 /* Hide the lock when bottom is full-screen to avoid redundancy */
 #alt-control-lock[data-hidden="true"]{ display: none !important; }
 #alt-control-lock[data-hidden="false"]{ display: inline-flex; }

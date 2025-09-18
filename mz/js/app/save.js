@@ -40,7 +40,7 @@
 
   function buildPayload(){
     const p = state.player || {};
-    return {
+    const payload = {
       v: 1,
       t: Date.now(),
       levelName: getLevelName(),
@@ -71,6 +71,13 @@
   purpleTotals: Array.from(purpleTotalsByLevel.entries()),
   completedLevels: Array.from(completedLevels)
     };
+    // New: persist typed map diffs (adds/removes) so lock blocks and other types survive reloads in single-player
+    try {
+      if (typeof window.__mp_getMapSnapshot === 'function'){
+        payload.mapDiff = window.__mp_getMapSnapshot();
+      }
+    } catch(_){ }
+    return payload;
   }
 
   function applyLoaded(data){
@@ -108,6 +115,12 @@
         state.lockCameraYaw = !!data.ui.lockCameraYaw;
         if (typeof data.ui.seamRatio === 'number') state.seamRatio = Math.min(0.95, Math.max(0.05, data.ui.seamRatio));
       }
+      // Apply saved map diff snapshot early so world geometry (typed spans) is restored offline
+      try {
+        if (data.mapDiff && typeof window.__mp_applyMapSnapshot === 'function'){
+          window.__mp_applyMapSnapshot(data.mapDiff);
+        }
+      } catch(_){ }
   if (Array.isArray(data.items)){
         collected.clear();
         for (const k of data.items){ if (typeof k === 'string') collected.add(k); }

@@ -339,6 +339,11 @@ function moveAndCollide(dt){
     state._inLockNow = !!inLockNow;
     if (inLockNow && !was){
       // Entering Lock: force Locked camera mode and Fixed control scheme
+      // Preserve user's prior preferences to restore on exit
+      try {
+        if (typeof state._prevAltBottomControlLocked === 'undefined') state._prevAltBottomControlLocked = !!state.altBottomControlLocked;
+        if (typeof state._prevLockCameraYaw === 'undefined') state._prevLockCameraYaw = !!state.lockCameraYaw;
+      } catch(_){ }
       state.lockedCameraForced = true;
       state.altBottomControlLocked = true;
       state.lockCameraYaw = true;
@@ -376,8 +381,17 @@ function moveAndCollide(dt){
     } else if (!inLockNow && was){
       // Exiting Lock: revert to Fixed camera mode
       state.lockedCameraForced = false;
-      state.altBottomControlLocked = true;
-      state.lockCameraYaw = true;
+      // Restore user's prior preferences if available; otherwise leave as-is
+      try {
+        if (typeof state._prevAltBottomControlLocked !== 'undefined'){
+          state.altBottomControlLocked = !!state._prevAltBottomControlLocked;
+        }
+        if (typeof state._prevLockCameraYaw !== 'undefined'){
+          state.lockCameraYaw = !!state._prevLockCameraYaw;
+        }
+      } catch(_){ }
+      // Clear the stored preferences to avoid stale carryover across future locks
+      try { delete state._prevAltBottomControlLocked; delete state._prevLockCameraYaw; } catch(_){ }
       try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
       try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
     }
@@ -1614,8 +1628,8 @@ function runBallMode(dt){
       for (const s of spanList){
   if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
   const top=b+h; const t=((s.t|0)||0);
-    // Portal spans (t==5) are non-solid triggers; do not block in ball mode
-  if (t === 5) { continue; }
+    // Portal (t==5) and Lock (t==6) are non-solid; do not block in ball mode
+  if (t === 5 || t === 6) { continue; }
     // Solid spans (non-fence) keep strict vertical check
   if (t !== 2 && t !== 3){ if (py > b - 0.02 && py < top - 0.02) return true; else continue; }
   // Fence spans: allow small vertical tolerance
@@ -1633,7 +1647,7 @@ function runBallMode(dt){
         const hasSolidAtLevel = (x,y,level)=>{
           const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
           if (Array.isArray(sp)){
-            for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && (tt!==2 && tt!==3) && level>=bb && level<bb+hh) return true; }
+            for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && (tt!==2 && tt!==3 && tt!==5 && tt!==6) && level>=bb && level<bb+hh) return true; }
           }
           return false;
         };

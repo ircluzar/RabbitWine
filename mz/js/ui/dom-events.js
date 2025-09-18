@@ -46,6 +46,13 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
   }, { passive: true });
   ALT_LOCK_BTN.addEventListener('click', (e)=>{
     e.stopPropagation();
+    // If forced camera lock is active, do nothing
+    try {
+      if (state && state.lockedCameraForced){
+        e.preventDefault();
+        return;
+      }
+    } catch(_){ }
     onToggleAltControlLock(e);
   });
 }
@@ -339,6 +346,9 @@ SEAM_HANDLE.addEventListener('pointercancel', onSeamPointerEnd);
   ALT_LOCK_BTN.style.display = hide ? 'none' : 'inline-flex';
   // Only update text/icon when visibility state changes or pressed changes; avoid frequent rewrites
       ALT_LOCK_BTN.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true' : 'false');
+      ALT_LOCK_BTN.setAttribute('aria-disabled', state.lockedCameraForced ? 'true' : 'false');
+      // Keep the icon/title in sync with forced lock vs normal pressed/unpressed
+      try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
     }
     // Update camera status label visibility and text to mirror lock button state
     if (CAMERA_STATUS){

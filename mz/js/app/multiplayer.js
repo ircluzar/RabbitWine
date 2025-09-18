@@ -346,6 +346,32 @@ function __mp_rebuildWorldFromDiff(){
   try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
 }
 
+// --- Local snapshot helpers for single-player persistence ---
+// NOTE: A snapshot is a plain object { version:number, adds:string[], removes:string[] }
+function __mp_getMapSnapshot(){
+  try {
+    return {
+      version: mpMap.version|0,
+      adds: Array.from(mpMap.adds.values()),
+      removes: Array.from(mpMap.removes.values()),
+    };
+  } catch(_){ return { version: 0, adds: [], removes: [] }; }
+}
+function __mp_applyMapSnapshot(snap){
+  try {
+    if (!snap || typeof snap !== 'object') return false;
+    mpMap.adds.clear(); mpMap.removes.clear();
+    if (Array.isArray(snap.adds)) for (const k of snap.adds){ if (typeof k === 'string') mpMap.adds.add(k); }
+    if (Array.isArray(snap.removes)) for (const k of snap.removes){ if (typeof k === 'string') mpMap.removes.add(k); }
+    mpMap.version = (snap.version|0) || 0;
+    __mp_rebuildWorldFromDiff();
+    return true;
+  } catch(_){ return false; }
+}
+// Expose snapshot API for save system
+window.__mp_getMapSnapshot = __mp_getMapSnapshot;
+window.__mp_applyMapSnapshot = __mp_applyMapSnapshot;
+
 // Time sync with server for interpolation
 const timeSync = { offsetMs: 0, rttMs: 0, ready: false };
 const INTERP_DELAY_MS = 150;   // render slightly in the past for smooth playback
