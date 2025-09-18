@@ -495,7 +495,8 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
 
     t semantics:
         0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail),
-        4 = HALF-SLAB marker, 5 = PORTAL marker (visual trigger span), 9 = NOCLIMB solid marker
+        4 = HALF-SLAB marker, 5 = PORTAL marker (visual trigger span), 6 = LOCK block (non-base protected),
+        9 = NOCLIMB solid marker
 
     Returns net ops (with 't' where applicable) to broadcast.
     """
@@ -516,12 +517,13 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
             continue
         if op == 'add':
             tval_raw = entry.get('t')
-            # Normalize t to one of {0,1,2,3,4,5,9}
+            # Normalize t to one of {0,1,2,3,4,5,6,9}
             try:
                 tval = int(tval_raw)
             except Exception:
                 tval = 0
-            if tval not in (1,2,3,4,5,9):
+            # Allow 6 (LOCK) now; previously it was stripped to 0 causing reload downgrades.
+            if tval not in (1,2,3,4,5,6,9):
                 tval = 0
             last[key] = ('add', tval)
         else:
@@ -536,11 +538,11 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
                 if key in md.removes:
                     md.removes.discard(key)
                 md.adds[key] = tt
-                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5,9) else {}) })
+                net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5,6,9) else {}) })
             else:
                 if prev != tt:
                     md.adds[key] = tt
-                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5,9) else {}) })
+                    net.append({ 'op':'add', 'key': key, **({'t':tt} if tt in (1,2,3,4,5,6,9) else {}) })
         else:  # remove
             changed = False
             if key in md.adds:
@@ -844,7 +846,8 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                 try:
                     md = get_mapdiff(level)
                     if md.adds or md.removes:
-                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
+                        # Include type 6 (LOCK) in broadcast so clients persist typed entries across reloads
+                        full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,6,9) else {})} for k, t in sorted(md.adds.items())] +
                                     [{"op": "remove", "key": k} for k in sorted(md.removes)])
                     else:
                         full_ops = []
@@ -1868,7 +1871,8 @@ async def _broadcast_full_state(level: str):
         md = get_mapdiff(level)
         td = get_tilediff(level)
         if md.adds or md.removes:
-            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
+            # Include type 6 here as well for consistency with incremental ops
+            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,6,9) else {})} for k, t in sorted(md.adds.items())] +
                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
         else:
             full_ops = []
