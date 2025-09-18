@@ -621,13 +621,14 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const nx = gx + dx, ny = gy + dy;
         if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
         const neighbor = map[mapIdx(nx,ny)];
-  const connect = (neighbor===TILE.BADFENCE) || (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF) || (neighbor===TILE.NOCLIMB);
+        const connect = (neighbor===TILE.BADFENCE) || (neighbor===TILE.FENCE) || (neighbor===TILE.WALL) || (neighbor===TILE.BAD) || (neighbor===TILE.FILL) || (neighbor===TILE.HALF) || (neighbor===TILE.NOCLIMB);
         if (connect){ railInstances[have*2+0]=gx; railInstances[have*2+1]=gy; have++; }
       }
       if (!have) continue;
       const arr = railInstances.subarray(0, have*2);
       gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
       gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+      // Helper to draw a filtered subset for a given vy
       const drawVy = (vy, filterSet)=>{
         let subset = arr;
         if (filterSet){
@@ -644,26 +645,37 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         gl.colorMask(false, false, false, false);
         gl.depthMask(true);
         gl.depthFunc(gl.LESS);
-        if (dx === 1 && dy === 0){ for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
-        else if (dx === -1 && dy === 0){ for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
-        else if (dx === 0 && dy === -1){ for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
-        else if (dx === 0 && dy === 1){ for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        if (dx === 1 && dy === 0){ // East: from center (2) to edge (4)
+          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        } else if (dx === -1 && dy === 0){ // West: from center (2) to edge (0)
+          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        } else if (dx === 0 && dy === -1){ // North: from center (2) to edge (0)
+          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        } else if (dx === 0 && dy === 1){ // South: from center (2) to edge (4)
+          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        }
         // Color pass
         gl.colorMask(true, true, true, true);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.depthMask(false);
         gl.depthFunc(gl.LEQUAL);
-        if (dx === 1 && dy === 0){ for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
-        else if (dx === -1 && dy === 0){ for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
-        else if (dx === 0 && dy === -1){ for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
-        else if (dx === 0 && dy === 1){ for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); } }
+        if (dx === 1 && dy === 0){
+          for (const vx of [2,3,4]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        } else if (dx === -1 && dy === 0){
+          for (const vx of [0,1,2]){ gl.uniform3f(wall_u_voxOff, vx, vy, 2.0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        } else if (dx === 0 && dy === -1){
+          for (const vz of [0,1,2]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        } else if (dx === 0 && dy === 1){
+          for (const vz of [2,3,4]){ gl.uniform3f(wall_u_voxOff, 2.0, vy, vz); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, subset.length/2); }
+        }
       };
       // Base rail rows
-      for (const vy of [1,2]) drawVy(vy, null);
-      // Ground-level extension rows when adjacent content exists
-      drawVy(0, groundAllB);
-      if (groundTopB.size){ drawVy(3, groundTopB); drawVy(4, groundTopB); }
+      for (const vy of [1,2]){ drawVy(vy, null); }
+      // Extend to ground (bottom row) for all ground fences
+      drawVy(0, groundAll);
+      // Extend to top rows when there is solid/fence above level 1
+      if (groundTop.size){ drawVy(3, groundTop); drawVy(4, groundTop); }
     }
     // Restore defaults for subsequent draws
     gl.uniform1f(wall_u_height, 1.0);
@@ -684,7 +696,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         const gx = parseInt(gxStr, 10)|0, gy = parseInt(gyStr, 10)|0;
         if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
         for (const s of spans){
-          if (!s) continue; const h=(s.h|0); const b=(s.b|0); const t=((s.t|0)||0);
+          if (!s) continue; const h=(s.h|0); const b=(s.b|0); const t=(s.t|0)||0;
           if (h<=0 || (t!==2 && t!==3)) continue; // only fence marker spans (2=normal,3=bad)
           for (let lv=b; lv<b+h; lv++){
             if (lv === 0) continue; // ground-level fence handled by map-based pass above
@@ -809,7 +821,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
               }
             };
             // Base rail rows
-            drawVy(1, null); drawVy(2, null);
+            drawVy(1, null);
+            drawVy(2, null);
             // Extend bottom if needed
             if (needBottom.size) drawVy(0, needBottom);
             // Extend top if needed
@@ -1007,7 +1020,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const eyeTop = (typeof window !== 'undefined' && Array.isArray(window._lastTopEye)) ? window._lastTopEye : null;
   const cx = eyeTop ? eyeTop[0] : (state?.camFollow?.x || 0);
   const cz = eyeTop ? eyeTop[2] : (state?.camFollow?.z || 0);
-  const cy = eyeTop ? eyeTop[1] : ((state?.camFollow?.y || 0) + 2.6);
+  const cy = eyeTop ? eyeTop[1] : ((state?.camFollow?.y || 0) +  2.6);
   gl.uniform2f(wall_u_camXZ, cx, cz);
   gl.uniform1f(wall_u_camY, cy);
   // Increase passthrough sphere radius by 40% (default 3.0 -> 4.2)
@@ -1059,14 +1072,97 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     // Special rendering for Lock spans (t==6): outline-only pastel blue
     if ((g.t|0) === 6){
       const pts = g.pts;
-      const col = [0.65, 0.80, 1.0];
+      const baseCol = [0.65, 0.80, 1.0];
+      // Camera + vertical fade configuration (tweakable at runtime)
+      const cam = (state && state.camera) ? state.camera : {};
+      const camY = (cam.position && cam.position[1]) || cam.y || 0;
+      const camFadeStart = (window.__LOCK_FADE_CAM_START !== undefined) ? window.__LOCK_FADE_CAM_START : 10.0; // camera Y where fade begins
+      const camFadeEnd   = (window.__LOCK_FADE_CAM_END   !== undefined) ? window.__LOCK_FADE_CAM_END   : 40.0; // camera Y where fully faded
+      const levelFadeBand = (window.__LOCK_LEVEL_FADE_BAND !== undefined) ? window.__LOCK_LEVEL_FADE_BAND : 2.0; // extra fade for low levels
+      const alphaBaseRest = (window.__LOCK_WORLD_ALPHA_REST !== undefined) ? window.__LOCK_WORLD_ALPHA_REST : 0.30; // default world lock alpha
+      const alphaBaseHiCam = (window.__LOCK_WORLD_ALPHA_HICAM !== undefined) ? window.__LOCK_WORLD_ALPHA_HICAM : 0.05; // min alpha at/after cam fade end
+      // Pre-pack tile array once
+      const offsPacked = new Float32Array(pts.length * 2);
+      for (let i=0;i<pts.length;i++){ offsPacked[i*2+0]=pts[i][0]; offsPacked[i*2+1]=pts[i][1]; }
+      // For each level in span, compute per-level alpha and send a separate outline batch (cheap: lines only)
       for (let level=0; level<g.h; level++){
         const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
-        const offs2 = new Float32Array(pts.length * 2);
-        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
-        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.02, col);
+        // Bottom view vertical fade (progressive disappearance as player moves away vertically)
+        let bottomFade = 1.0;
+        try {
+          if (state.cameraKindCurrent === 'bottom'){
+            const playerY = state.player ? (state.player.y || 0) : 0;
+            const band = (typeof window.__LOCK_OUTLINE_FADE_BAND === 'number') ? window.__LOCK_OUTLINE_FADE_BAND : 3.0;
+            const minA = (typeof window.__LOCK_OUTLINE_MIN_ALPHA === 'number') ? window.__LOCK_OUTLINE_MIN_ALPHA : 0.0;
+            if (band > 0){
+              // Lock voxel vertical extent is 1.0; compute distance from player to this 1-unit segment
+              const yMin = yCenter - 0.5;
+              const yMax = yCenter + 0.5;
+              let d = 0.0;
+              if (playerY < yMin) d = yMin - playerY; else if (playerY > yMax) d = playerY - yMax; else d = 0.0;
+              let t = Math.min(1.0, Math.max(0.0, d / band));
+              // smoothstep easing
+              t = t*t*(3.0 - 2.0*t);
+              bottomFade = (1.0 - t);
+              if (bottomFade < minA) bottomFade = minA;
+            }
+          }
+        } catch(_){ }
+        // Camera fade factor (0..1) using smoothstep for smoother curve
+        let camT = 0.0;
+        if (camY > camFadeStart){ camT = Math.min(1.0, (camY - camFadeStart) / Math.max(0.0001, camFadeEnd - camFadeStart)); }
+        camT = camT * camT * (3.0 - 2.0 * camT);
+        const alphaCam = alphaBaseRest * (1.0 - camT) + alphaBaseHiCam * camT;
+        // Extra vertical fade for levels near ground when camera is high
+        let levelFade = 1.0;
+        if (level === 0){ levelFade = Math.max(0.0, 1.0 - camT * (1.0 + (levelFadeBand*0.5))); }
+        else if (level === 1){ levelFade = Math.max(0.0, 1.0 - camT * (0.5 + (levelFadeBand*0.25))); }
+        let finalAlpha = alphaCam * levelFade * bottomFade;
+        // New: if camera lock/alt mode engaged, reduce to 10% of computed alpha (90% more transparent)
+        try {
+          const lockModeActive = !!(state && state.camera && (state.camera.isLocked || state.camera.lockMode || state.editor?.pointerLocked));
+          if (lockModeActive){
+            const lockMul = (window.__LOCK_WORLD_LOCKMODE_MUL !== undefined) ? window.__LOCK_WORLD_LOCKMODE_MUL : 0.10; // default 10%
+            finalAlpha *= lockMul;
+          }
+        } catch(_){ }
+        // Global multiplier override
+        if (typeof window.__LOCK_WORLD_ALPHA_MUL === 'number'){ finalAlpha *= window.__LOCK_WORLD_ALPHA_MUL; }
+        if (finalAlpha <= 0.005) continue; // skip near-zero
+        // Temporarily hook drawOutlinesForTileArray with custom alpha via modifying uniforms inline
+        // Save current blend/depth state
+        const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
+        const wasBlend = gl.isEnabled(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.useProgram(trailCubeProgram);
+        gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
+        const tNow_local = state.nowSec || (performance.now()/1000);
+        gl.uniform1f(tc_u_now, tNow_local);
+        gl.uniform1f(tc_u_ttl, 1.0);
+        gl.uniform1i(tc_u_dashMode, 0);
+        gl.uniform3f(tc_u_lineColor, baseCol[0], baseCol[1], baseCol[2]);
+        if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
+        gl.bindVertexArray(trailCubeVAO);
+        const instOne = new Float32Array(offsPacked.length/2 * 4);
+        for (let i=0;i<offsPacked.length/2;i++){
+          const tx = offsPacked[i*2+0]; const ty = offsPacked[i*2+1];
+          const cx = (tx - MAP_W*0.5 + 0.5); const cz = (ty - MAP_H*0.5 + 0.5);
+          instOne[i*4+0]=cx; instOne[i*4+1]=yCenter; instOne[i*4+2]=cz; instOne[i*4+3]=tNow_local;
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
+        if (typeof trailCubeVBO_Corners !== 'undefined'){
+          const zeros = new Float32Array((offsPacked.length/2) * 8 * 3);
+          gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners); gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array((offsPacked.length/2)*3), gl.DYNAMIC_DRAW);
+        gl.depthMask(false);
+        gl.uniform1f(tc_u_mulAlpha, finalAlpha);
+        gl.uniform1f(tc_u_scale, 1.02); gl.drawArraysInstanced(gl.LINES, 0, 24, offsPacked.length/2);
+        gl.uniform1f(tc_u_scale, 1.05); gl.drawArraysInstanced(gl.LINES, 0, 24, offsPacked.length/2);
+        if (!wasBlend) gl.disable(gl.BLEND); gl.depthMask(prevDepthMask);
       }
-      // Rebind wall VAO and program after outlines
+      // Rebind wall VAO and program after custom lock outlines
       gl.bindVertexArray(wallVAO);
       gl.useProgram(wallProgram);
       gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
@@ -1075,8 +1171,8 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
       gl.uniform1f(wall_u_scale, 1.0);
       gl.uniform1f(wall_u_height, 1.0);
-      const wallCol3pL = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
-      gl.uniform3fv(wall_u_color, new Float32Array(wallCol3pL));
+      const wallCol3p = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+      gl.uniform3fv(wall_u_color, new Float32Array(wallCol3p));
       gl.uniform1f(wall_u_alpha, 0.65);
       gl.uniform1i(wall_u_glitterMode, 0);
       gl.uniform3f(wall_u_voxCount, 1,1,1);
@@ -1094,7 +1190,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.uniform1i(wall_u_glitterMode, 1);
       // Depth pre-pass
       gl.disable(gl.BLEND);
-      gl.colorMask(false,false,false,false);
+      gl.colorMask(false, false, false, false);
       gl.depthMask(true);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
@@ -1145,7 +1241,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.uniform1i(wall_u_glitterMode, 1);
       // Depth pre-pass
       gl.disable(gl.BLEND);
-      gl.colorMask(false,false,false,false);
+      gl.colorMask(false, false, false, false);
       gl.depthMask(true);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
@@ -1180,16 +1276,6 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.useProgram(wallProgram);
       gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
       gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-      gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
-      gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
-      gl.uniform1f(wall_u_scale, 1.0);
-      gl.uniform1f(wall_u_height, 1.0);
-      const wallCol3nc = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
-      gl.uniform3fv(wall_u_color, new Float32Array(wallCol3nc));
-      gl.uniform1f(wall_u_alpha, 0.65);
-      gl.uniform1i(wall_u_glitterMode, 0);
-      gl.uniform3f(wall_u_voxCount, 1,1,1);
-      continue;
     }
     // Split pillars by BAD vs normal: prefer span hazard flag; fallback to map for ground-only
     const pillars = g.pts;
@@ -1231,7 +1317,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.uniform1i(wall_u_glitterMode, glitter ? 1 : 0);
       // Depth pre-pass
       gl.disable(gl.BLEND);
-      gl.colorMask(false,false,false,false);
+      gl.colorMask(false, false, false, false);
       gl.depthMask(true);
       gl.depthFunc(gl.LEQUAL);
       for (let level=0; level<g.h; level++){
@@ -1366,7 +1452,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         gl.uniform1f(wall_u_height, g.h);
         // Depth pre-pass
         gl.disable(gl.BLEND);
-        gl.colorMask(false,false,false,false);
+        gl.colorMask(false, false, false, false);
         gl.depthMask(true);
         gl.depthFunc(gl.LEQUAL);
         gl.uniform1f(wall_u_yBase, (g.b * 1.0) + EPS);

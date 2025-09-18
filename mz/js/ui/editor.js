@@ -1022,7 +1022,17 @@
       gl.uniform1f(tc_u_now, state.nowSec || (performance.now()/1000));
       gl.uniform1f(tc_u_ttl, 1.0);
       gl.uniform1i(tc_u_dashMode, 0);
-      gl.uniform1f(tc_u_mulAlpha, 0.9);
+      // Dynamic visor outline alpha using same camera fade logic as preview stacks
+      let visorAlpha = 0.9;
+      try {
+        if (state && state.camera) {
+          const camY = state.camera.position ? state.camera.position[1] : state.camera.y || 0;
+          // Map camera Y (0-64) to fade (1 -> 0.25)
+          const t = Math.min(1, Math.max(0, camY / 64));
+          visorAlpha = 0.9 * (0.25 + 0.75 * (1 - t));
+        }
+      } catch(_){ }
+      gl.uniform1f(tc_u_mulAlpha, visorAlpha);
       gl.uniform3f(tc_u_lineColor, 1.0, 0.9, 0.2);
       if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
       gl.bindVertexArray(trailCubeVAO);
@@ -1043,17 +1053,13 @@
         gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(3), gl.DYNAMIC_DRAW);
       }
-      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); // default additive for visor (not for lock blocks)
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
       const tNow = state.nowSec || (performance.now()/1000);
-      // Multi-pass jitter to fake thicker lines
-      const jitter = [ [0,0,0], [0.01,0,0], [-0.01,0,0], [0,0.01,0], [0,-0.01,0] ];
-      for (let i=0;i<jitter.length;i++){
-        const j = jitter[i];
-        const instOne = new Float32Array([cx + j[0], y + j[1], cz + j[2], tNow]);
-        gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
-        gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
-      }
+      // Single pass for visor (thickness jitter not critical and reduces over-brightness)
+      const instOne = new Float32Array([cx, y, cz, tNow]);
+      gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
+      gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
       // leave blend enabled for previews, restore after
       gl.bindVertexArray(null);
 
@@ -1158,6 +1164,8 @@
       }
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
   const [baseR, baseG, baseB] = (window.getLevelBaseColorRGB ? window.getLevelBaseColorRGB() : [0.2,0.9,0.9]);
+    // Compute camera Y fade factor once: higher camera => lower preview alpha
+    let camFade = 1.0; try { if (state && state.camera){ const camY = state.camera.position ? state.camera.position[1] : state.camera.y || 0; const t = Math.min(1, Math.max(0, camY / 64)); camFade = 0.25 + 0.75 * (1 - t); } } catch(_){ }
   for (const it of prev){
         const cx = (it.gx - MAP_W*0.5 + 0.5);
         const cz = (it.gy - MAP_H*0.5 + 0.5);
@@ -1165,20 +1173,52 @@
           const y = (it.b + level) + 0.5;
           gl.uniform1f(tc_u_scale, 1.0);
           gl.uniform1f(tc_u_ttl, 1.0);
-          gl.uniform1f(tc_u_mulAlpha, 0.8);
-          // If this cell contains a Lock span at this level, use pastel blue for outlines
+          // Determine base alpha; default preview alpha was 0.8. We customize for Lock (t=6) blocks.
+          let alphaMul = 0.8;
+          // If camera lock mode is active (heuristic: state.camera && state.camera.isLocked or pointer lock?), we dim Locks harder
+          let cameraLocked = false;
+          try {
+            cameraLocked = !!(state && state.camera && (state.camera.isLocked || state.camera.lockMode));
+          } catch(_){ }
+          // If this cell contains a Lock span at this level, use pastel blue for outlines and custom alpha
+          let isLockHere = false;
           let col = [baseR, baseG, baseB];
           try {
             const key = `${it.gx},${it.gy}`; const spans = (window.columnSpans && window.columnSpans.get) ? window.columnSpans.get(key) : null;
             if (Array.isArray(spans)){
-              for (const s of spans){ if (!s) continue; const t=((s.t|0)||0), b=(s.b|0), h=(Number(s.h)||0); if (t===6 && h>0 && (it.b+level) >= b && (it.b+level) < b+h){ col = [0.65, 0.80, 1.0]; break; } }
+              for (const s of spans){ if (!s) continue; const t=((s.t|0)||0), b=(s.b|0), h=(Number(s.h)||0); if (t===6 && h>0 && (it.b+level) >= b && (it.b+level) < b+h){ col = [0.65, 0.80, 1.0]; isLockHere = true; break; } }
             }
           } catch(_){ }
+          if (isLockHere){
+            // Further dim per user request: "barely even visible" and allow disappearing toward bottom based on camera.
+            const restAlpha = (window.__LOCK_OUTLINE_ALPHA_REST !== undefined) ? window.__LOCK_OUTLINE_ALPHA_REST : 0.06; // slightly higher than 0.04 for visibility
+            const lockModeAlpha = (window.__LOCK_OUTLINE_ALPHA_LOCK !== undefined) ? window.__LOCK_OUTLINE_ALPHA_LOCK : 0.02;
+            // Vertical fade: blocks near bottom (y relative to camera) fade faster when camera looks down.
+            let verticalFade = 1.0;
+            try {
+              if (state && state.camera){
+                const camY = state.camera.position ? state.camera.position[1] : state.camera.y || 0;
+                const dy = Math.max(0, camY - y); // how far above this block the camera is
+                // Fade if camera is more than 4 units above the block; vanish by 24 units difference.
+                const vf = 1 - Math.min(1, Math.max(0, (dy - 4) / 20));
+                verticalFade *= vf;
+                // Additional fade if block is below some world baseline (e.g., y<2)
+                if (y < 2) verticalFade *= (y / 2);
+              }
+            } catch(_){ }
+            alphaMul = (cameraLocked ? lockModeAlpha : restAlpha) * camFade * verticalFade;
+            col = [0.58, 0.68, 0.82];
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          } else {
+            gl.blendFunc(gl.ONE, gl.ONE);
+            alphaMul = alphaMul * camFade;
+          }
+          gl.uniform1f(tc_u_mulAlpha, alphaMul);
           gl.uniform3f(tc_u_lineColor, col[0], col[1], col[2]);
           gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
           const tNow2 = state.nowSec || (performance.now()/1000);
           // Multi-pass jitter for thickness
-          const jitter2 = [ [0,0,0], [0.01,0,0], [-0.01,0,0], [0,0.01,0], [0,-0.01,0] ];
+          const jitter2 = isLockHere ? [ [0,0,0] ] : [ [0,0,0], [0.01,0,0], [-0.01,0,0], [0,0.01,0], [0,-0.01,0] ];
           for (let i=0;i<jitter2.length;i++){
             const j = jitter2[i];
             const instOne = new Float32Array([cx + j[0], y + j[1], cz + j[2], tNow2]);

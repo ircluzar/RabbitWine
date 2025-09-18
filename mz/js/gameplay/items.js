@@ -280,23 +280,67 @@ function drawItems(mvp){
     for (let s of innerScales){ gl.uniform1f(tc_u_scale, innerBase * s); gl.drawArraysInstanced(gl.LINES, 0, 24, list.length); }
   }
 
-  // Active batches (opaque)
-  drawBatch(activeY, [1.0,0.95,0.2], [1.0,1.0,1.0], 1.0);
-  drawBatch(activeP, [0.72,0.35,1.0], [0.95,0.85,1.0], 1.0);
+  // Bottom view distance fade helper (returns multiplier for a single item)
+  function bottomViewFadeForItem(it){
+    if (state.cameraKindCurrent !== 'bottom') return 1.0;
+    const band = (typeof window.__ITEM_OUTLINE_FADE_BAND === 'number') ? window.__ITEM_OUTLINE_FADE_BAND : 3.0;
+    const minA = (typeof window.__ITEM_OUTLINE_MIN_ALPHA === 'number') ? window.__ITEM_OUTLINE_MIN_ALPHA : 0.0;
+    if (!(band > 0)) return 1.0;
+    const playerY = state.player ? (state.player.y || 0) : 0;
+    // Item vertical extent (approx cube of half 0.24; keep 0.25 for simplicity)
+    const half = 0.25;
+    const yMin = it.y - half;
+    const yMax = it.y + half;
+    let d = 0.0;
+    if (playerY < yMin) d = yMin - playerY; else if (playerY > yMax) d = playerY - yMax; else d = 0.0;
+    let t = Math.min(1.0, Math.max(0.0, d / band));
+    t = t*t*(3.0 - 2.0*t);
+    let fade = 1.0 - t;
+    if (fade < minA) fade = minA;
+    return fade;
+  }
+
+  // Wrapper to apply bottom view fade potentially per-item; keeps batching if all fades==1
+  function drawBatchWithBottomFade(list, outerColor, innerColor, baseAlpha){
+    if (!list.length) return;
+    if (state.cameraKindCurrent !== 'bottom') { drawBatch(list, outerColor, innerColor, baseAlpha); return; }
+    // Compute fades
+    const fades = new Array(list.length);
+    let allOne = true;
+    for (let i=0;i<list.length;i++){ const f = bottomViewFadeForItem(list[i]); fades[i]=f; if (f < 0.999) allOne = false; }
+    if (allOne){ drawBatch(list, outerColor, innerColor, baseAlpha); return; }
+    // Draw per distinct fade buckets to reduce draw calls: group items by rounded fade
+    const buckets = new Map();
+    for (let i=0;i<list.length;i++){
+      const f = fades[i];
+      const key = (Math.round(f*100)/100).toFixed(2); // 0.01 resolution
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(list[i]);
+    }
+    for (const [k, arr] of buckets.entries()){
+      const f = parseFloat(k);
+      drawBatch(arr, outerColor, innerColor, baseAlpha * f);
+    }
+  }
+
+  // Active batches (opaque) with bottom fade
+  drawBatchWithBottomFade(activeY, [1.0,0.95,0.2], [1.0,1.0,1.0], 1.0);
+  drawBatchWithBottomFade(activeP, [0.72,0.35,1.0], [0.95,0.85,1.0], 1.0);
 
   // Enable blending for ghost passes
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  // Stable ghosts (gray, semi-transparent)
-  drawBatch(ghostYStable, [0.5,0.5,0.5], [0.7,0.7,0.7], GHOST_ALPHA);
-  drawBatch(ghostPStable, [0.45,0.45,0.55], [0.65,0.65,0.75], GHOST_ALPHA);
-  // Fading ghosts (draw individually for per-item alpha)
+  // Stable ghosts (gray, semi-transparent) with fade
+  drawBatchWithBottomFade(ghostYStable, [0.5,0.5,0.5], [0.7,0.7,0.7], GHOST_ALPHA);
+  drawBatchWithBottomFade(ghostPStable, [0.45,0.45,0.55], [0.65,0.65,0.75], GHOST_ALPHA);
+  // Fading ghosts (draw individually for per-item alpha) + bottom fade
   function drawFading(list, outerColor, innerColor){
     for (const it of list){
       const age = (tNow - it.fadeInStart);
       const a = Math.min(1, age / GHOST_FADE_DURATION) * GHOST_ALPHA;
-      drawBatch([it], outerColor, innerColor, a);
+      const f = bottomViewFadeForItem(it);
+      drawBatch([it], outerColor, innerColor, a * f);
     }
   }
   drawFading(ghostYFading, [0.5,0.5,0.5], [0.7,0.7,0.7]);
