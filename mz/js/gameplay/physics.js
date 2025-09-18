@@ -338,8 +338,41 @@ function moveAndCollide(dt){
     const was = !!state._inLockNow;
     state._inLockNow = !!inLockNow;
     if (inLockNow && !was){
-      // Entering Lock: force Locked camera mode
+      // Entering Lock: force Locked camera mode and Fixed control scheme
       state.lockedCameraForced = true;
+      state.altBottomControlLocked = true;
+      state.lockCameraYaw = true;
+      try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
+      try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
+      // If entering a Lock on a border cell, auto-face the camera inward if misaligned
+      try {
+        const maxGX = (MAP_W|0) - 1;
+        const maxGZ = (MAP_H|0) - 1;
+        const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
+        if (onBorder){
+          // Face outward: choose the cardinal that points toward the boundary
+          // we are touching (west/east/north/south). This ignores player facing
+          // and uses current yaw only to break ties at corners.
+          const cands = [];
+          // Outward cardinals (radians): 0=N, +PI/2=E, PI=S, -PI/2=W
+          if (gxCam === 0) cands.push(-Math.PI/2);      // west edge -> face west
+          if (gxCam === maxGX) cands.push(Math.PI/2);   // east edge -> face east
+          if (gzCam === 0) cands.push(0.0);             // north edge -> face north
+          if (gzCam === maxGZ) cands.push(Math.PI);     // south edge -> face south
+          const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
+          const cur = state.camYaw || 0.0;
+          // Pick the candidate closest to current yaw to avoid jarring spins at corners
+          let best = cands[0];
+          let bestDiff = Math.abs(norm(best - cur));
+          for (let i=1;i<cands.length;i++){
+            const d = Math.abs(norm(cands[i] - cur));
+            if (d < bestDiff){ best = cands[i]; bestDiff = d; }
+          }
+          // Apply only if sufficiently different
+          const TH = 10 * Math.PI/180; // 10 degrees
+          if (best !== undefined && bestDiff > TH){ state.camYaw = norm(best); }
+        }
+      } catch(_){ }
     } else if (!inLockNow && was){
       // Exiting Lock: revert to Fixed camera mode
       state.lockedCameraForced = false;

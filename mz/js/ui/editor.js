@@ -976,7 +976,7 @@
       }
       const norm = merged
         .filter(s=>s && (s.h|0)>0)
-        .map(s=>{ const tt=((s.t|0)||0); const o={ b:(s.b|0), h:(s.h|0) }; if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===9) o.t=tt; return o; });
+        .map(s=>{ const tt=((s.t|0)||0); const o={ b:(s.b|0), h:(s.h|0) }; if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===6||tt===9) o.t=tt; return o; });
       window.setSpansAt(it.gx, it.gy, norm);
       // Also set ground tile if base==0 to WALL for visibility
       if ((it.b|0) === 0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){

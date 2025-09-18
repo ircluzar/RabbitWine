@@ -59,18 +59,44 @@ const mpMap = { version: 0, adds: new Set(), removes: new Set() };
 // Ground tile overrides (e.g., HALF) replicated by server
 const mpTiles = { version: 0, set: new Map() }; // key: "gx,gy" -> value (tile id)
 window.mpGetMapVersion = ()=> mpMap.version;
+
+// Local type-hint cache for map ops we originate, to upgrade echoed ops when the server omits type flags.
+// key: 'gx,gy,y' -> { t:number, ts:number }
+const __mp_localTypeHints = new Map();
+function __mp_typeAllowed(t){ return (t===1||t===2||t===3||t===4||t===5||t===6||t===9); }
+function __mp_hintGet(key){
+  try {
+    const rec = __mp_localTypeHints.get(key);
+    if (!rec) return 0;
+    const ttlMs = 15000; // 15s window is ample for echo
+    if ((Date.now() - (rec.ts||0)) > ttlMs){ __mp_localTypeHints.delete(key); return 0; }
+    return __mp_typeAllowed(rec.t) ? (rec.t|0) : 0;
+  } catch(_){ return 0; }
+}
+function __mp_hintSet(key, t){
+  try {
+    if (!__mp_typeAllowed(t)) return;
+    __mp_localTypeHints.set(key, { t:(t|0), ts: Date.now() });
+    // Opportunistic prune if too large
+    if (__mp_localTypeHints.size > 4096){
+      let c=0; for (const k of __mp_localTypeHints.keys()){ __mp_localTypeHints.delete(k); if ((++c) > 512) break; }
+    }
+  } catch(_){ }
+}
 function mpApplyFullMap(version, ops){
   mpMap.adds.clear(); mpMap.removes.clear();
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add') {
   // Encode type flag by storing key#N in adds set where N in {1,2,3,4,5,6,9}
-  const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===6||op.t===9) ? op.t|0 : 0;
+  let tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===6||op.t===9) ? op.t|0 : 0;
+      if (!tt){ const hint = __mp_hintGet(op.key); if (hint) tt = hint; }
       if (tt===1) mpMap.adds.add(op.key+'#1');
       else if (tt===2) mpMap.adds.add(op.key+'#2');
       else if (tt===3) mpMap.adds.add(op.key+'#3');
       else if (tt===4) mpMap.adds.add(op.key+'#4');
       else if (tt===5) mpMap.adds.add(op.key+'#5');
+      else if (tt===6) mpMap.adds.add(op.key+'#6');
       else if (tt===9) mpMap.adds.add(op.key+'#9');
       else mpMap.adds.add(op.key);
     }
@@ -94,7 +120,8 @@ function mpApplyOps(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
-  const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===6||op.t===9) ? op.t|0 : 0;
+  let tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===6||op.t===9) ? op.t|0 : 0;
+  if (!tt){ const hint = __mp_hintGet(op.key); if (hint) tt = hint; }
   const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : (tt===6)? (op.key+'#6') : (tt===9)? (op.key+'#9') : op.key;
       if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
     } else if (op.op === 'remove'){
@@ -303,7 +330,7 @@ function __mp_rebuildWorldFromDiff(){
     if (!spans.length) continue;
     const out=[]; 
     for (const s of spans){ 
-      const sb=s.b|0; const sh=(typeof s.h==='number')? s.h : (s.h|0); const tt=(s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===9)?(s.t|0):0;
+      const sb=s.b|0; const sh=(typeof s.h==='number')? s.h : (s.h|0); const tt=(s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===6||s.t===9)?(s.t|0):0;
       const segStart = sb; const segEnd = sb + sh; // [segStart, segEnd)
       const remStart = y; const remEnd = y + 1;       // remove [y, y+1)
       if (remEnd <= segStart || remStart >= segEnd){ out.push(s); continue; }
@@ -1047,7 +1074,11 @@ window.mpSendMapOps = function(ops){
       if (!o || (o.op!=='add' && o.op!=='remove')) continue;
       if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
   const rec = { op:o.op, key:o.key };
-    if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5 || o.t===9)) rec.t = (o.t|0);
+    if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5 || o.t===6 || o.t===9)){
+      rec.t = (o.t|0);
+      // Record a local type hint for this key for a short window, in case the server strips type
+      __mp_hintSet(o.key, rec.t);
+    }
   clean.push(rec);
       if (clean.length >= 512) break; // clamp
     }
