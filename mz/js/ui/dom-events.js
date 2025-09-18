@@ -39,13 +39,34 @@ if (EDITOR_TOGGLE){
 if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
   // Prevent canvas pointer handlers from interfering with the button on desktop
   ALT_LOCK_BTN.addEventListener('pointerdown', (e)=>{
+    // Mark this as a pointer-originated interaction (used to guard the subsequent synthetic click)
+    try { ALT_LOCK_BTN.__lastPointerDownTS = e.timeStamp || performance.now(); } catch(_){ }
     e.stopPropagation();
   }, { passive: true });
   ALT_LOCK_BTN.addEventListener('pointerup', (e)=>{
+    // Treat pointerup as the primary activator for toggling; prevents cases where click may be suppressed
     e.stopPropagation();
-  }, { passive: true });
+    try {
+      if (state && state.lockedCameraForced){
+        e.preventDefault();
+        return;
+      }
+    } catch(_){ }
+    // Prevent the ensuing synthetic click from double-toggling
+    try { ALT_LOCK_BTN.__handledPointerClick = (e.timeStamp || performance.now()); } catch(_){ }
+    e.preventDefault();
+    onToggleAltControlLock(e);
+  }, { passive: false });
   ALT_LOCK_BTN.addEventListener('click', (e)=>{
     e.stopPropagation();
+    // If this click immediately follows a pointerup we already handled, ignore to avoid double toggle
+    try {
+      const tClick = e.timeStamp || performance.now();
+      const tPtr = ALT_LOCK_BTN.__handledPointerClick || 0;
+      if (tPtr && Math.abs(tClick - tPtr) < 500){
+        return;
+      }
+    } catch(_){ }
     // If forced camera lock is active, do nothing
     try {
       if (state && state.lockedCameraForced){
@@ -53,6 +74,7 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
         return;
       }
     } catch(_){ }
+    // Keyboard activation path (Space/Enter) comes here
     onToggleAltControlLock(e);
   });
 }
