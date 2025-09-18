@@ -64,8 +64,8 @@ function mpApplyFullMap(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add') {
-      // Encode type flag by storing key#N in adds set where N in {1,2,3,4,5,9}
-      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===9) ? op.t|0 : 0;
+  // Encode type flag by storing key#N in adds set where N in {1,2,3,4,5,6,9}
+  const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===6||op.t===9) ? op.t|0 : 0;
       if (tt===1) mpMap.adds.add(op.key+'#1');
       else if (tt===2) mpMap.adds.add(op.key+'#2');
       else if (tt===3) mpMap.adds.add(op.key+'#3');
@@ -94,8 +94,8 @@ function mpApplyOps(version, ops){
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
-      const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===9) ? op.t|0 : 0;
-      const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : (tt===9)? (op.key+'#9') : op.key;
+  const tt = (op.t===1||op.t===2||op.t===3||op.t===4||op.t===5||op.t===6||op.t===9) ? op.t|0 : 0;
+  const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : (tt===6)? (op.key+'#6') : (tt===9)? (op.key+'#9') : op.key;
       if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
     } else if (op.op === 'remove'){
       if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key);
@@ -104,7 +104,8 @@ function mpApplyOps(version, ops){
       else if (mpMap.adds.has(op.key+'#3')) mpMap.adds.delete(op.key+'#3');
       else if (mpMap.adds.has(op.key+'#4')) mpMap.adds.delete(op.key+'#4');
       else if (mpMap.adds.has(op.key+'#5')) mpMap.adds.delete(op.key+'#5');
-      else if (mpMap.adds.has(op.key+'#9')) mpMap.adds.delete(op.key+'#9');
+  else if (mpMap.adds.has(op.key+'#6')) mpMap.adds.delete(op.key+'#6');
+  else if (mpMap.adds.has(op.key+'#9')) mpMap.adds.delete(op.key+'#9');
       else mpMap.removes.add(op.key);
     }
   }
@@ -192,8 +193,9 @@ function __mp_rebuildWorldFromDiff(){
   const is3 = rawKey.endsWith('#3');
   const is4 = rawKey.endsWith('#4');
   const is5 = rawKey.endsWith('#5');
+  const is6 = rawKey.endsWith('#6');
   const is9 = rawKey.endsWith('#9');
-  const tt = is1?1 : is2?2 : is3?3 : is4?4 : is5?5 : is9?9 : 0;
+  const tt = is1?1 : is2?2 : is3?3 : is4?4 : is5?5 : is6?6 : is9?9 : 0;
   const key = (tt? rawKey.slice(0,-2) : rawKey);
     const parts = key.split(','); if (parts.length!==3) continue;
     const gx = parseInt(parts[0],10), gy = parseInt(parts[1],10), y = parseInt(parts[2],10);
@@ -243,7 +245,7 @@ function __mp_rebuildWorldFromDiff(){
     const isSolid = (t)=>{ const tt=(t|0)||0; return (tt===0||tt===1||tt===9); };
     const sameType = (a,b)=>(((a|0)||0) === ((b|0)||0));
     // Start from existing spans, normalized by merging same-type overlaps/adjacency
-    let merged = (window.columnSpans.get(cellK) || []).map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===9)?(s.t|0):0) }));
+  let merged = (window.columnSpans.get(cellK) || []).map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===6||s.t===9)?(s.t|0):0) }));
     const mergeSameType = ()=>{
       merged.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
       const out=[];
@@ -259,7 +261,7 @@ function __mp_rebuildWorldFromDiff(){
     };
     mergeSameType();
     // Insert each new span
-    const newSpans = spans.map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===9)?(s.t|0):0) }));
+  const newSpans = spans.map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===6||s.t===9)?(s.t|0):0) }));
     for (const s of newSpans){
       if (!(s.h > 0)) continue;
       const sT=((s.t|0)||0);
@@ -289,7 +291,7 @@ function __mp_rebuildWorldFromDiff(){
       mergeSameType();
     }
     // Final write
-    window.setSpansAt(gx,gy,merged.map(s=>({ b:s.b, h:s.h, ...(s.t===1?{t:1}:(s.t===2?{t:2}:(s.t===3?{t:3}:(s.t===4?{t:4}:(s.t===5?{t:5}:(s.t===9?{t:9}:{})))))) })));
+  window.setSpansAt(gx,gy,merged.map(s=>{ const o = { b:s.b, h:s.h }; if (s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===6||s.t===9) o.t = s.t; return o; }));
   }
   // Apply removals: removing a single voxel from any span.
   for (const key of mpMap.removes){
@@ -409,11 +411,11 @@ async function mpLoadOfflineLevel(levelName){
     // Build ops array compatible with mpApplyFullMap
     const ops = [];
     if (Array.isArray(addsRaw)){
-      for (const e of addsRaw){ if (!e) continue; if (typeof e === 'string'){ ops.push({ op:'add', key:e }); } else if (typeof e.key === 'string'){ const rec = { op:'add', key:e.key }; if (e.t===1||e.t===2||e.t===3||e.t===4||e.t===5||e.t===9) rec.t = (e.t|0); ops.push(rec); } }
+      for (const e of addsRaw){ if (!e) continue; if (typeof e === 'string'){ ops.push({ op:'add', key:e }); } else if (typeof e.key === 'string'){ const rec = { op:'add', key:e.key }; if (e.t===1||e.t===2||e.t===3||e.t===4||e.t===5||e.t===6||e.t===9) rec.t = (e.t|0); ops.push(rec); } }
       try { console.log('[MP][offline] adds: list format', addsRaw.length); } catch(_){ }
     } else if (addsRaw && typeof addsRaw === 'object'){
       // Object mapping { key: type }
-      for (const k in addsRaw){ if (!Object.prototype.hasOwnProperty.call(addsRaw,k)) continue; const v = addsRaw[k]; const rec = { op:'add', key: String(k) }; const t = (v|0); if (t===1||t===2||t===3||t===4||t===5||t===9) rec.t = t; ops.push(rec); }
+  for (const k in addsRaw){ if (!Object.prototype.hasOwnProperty.call(addsRaw,k)) continue; const v = addsRaw[k]; const rec = { op:'add', key: String(k) }; const t = (v|0); if (t===1||t===2||t===3||t===4||t===5||t===6||t===9) rec.t = t; ops.push(rec); }
       try { console.log('[MP][offline] adds: object map with', Object.keys(addsRaw).length, 'keys'); } catch(_){ }
     }
     for (const k of removesList){ if (typeof k === 'string') ops.push({ op:'remove', key:k }); }

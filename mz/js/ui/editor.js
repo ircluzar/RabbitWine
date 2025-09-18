@@ -85,7 +85,7 @@
       .map(s=>{
         const tt = (s.t|0)||0;
         const o = { b: (s.b|0), h: (typeof s.h==='number'? s.h : (s.h|0)) };
-        if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===9) o.t = tt;
+        if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===6||tt===9) o.t = tt;
         return o;
       });
     arr.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
@@ -157,6 +157,27 @@
   function addBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
     const gx=vs.gx, gy=vs.gy, y=vs.base|0; const key=`${gx},${gy}`;
+    const set = (state.editor.blockSet||'A');
+    // In Set B, only slot 1 (Lock) is active; other slots are disabled/no-op
+    if (set === 'B' && (state.editor.blockSlot|0) !== 1){
+      try { if (typeof showTopNotification === 'function') showTopNotification('Set B only has Lock (1)'); } catch(_){ }
+      return false;
+    }
+    // Set B, slot 1: Lock (t:6), non-solid, outline only
+    try {
+      if (set==='B' && (state.editor.blockSlot|0)===1){
+        let spans = __getSpans(gx,gy);
+        const exists = spans.some(s=> s && ((s.t|0)===6) && y >= (s.b|0) && y < ((s.b|0) + (Number(s.h)||0)));
+        if (exists) return false;
+        spans.push({ b: y, h: 1, t: 6 });
+        spans = __normalize(spans);
+        __setSpans(gx,gy,spans);
+        try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+        try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 6 }]); } } catch(_){ }
+        if (typeof showTopNotification === 'function') showTopNotification('Lock placed');
+        return true;
+      }
+    } catch(_){ }
     // LEVELCHANGE placement (slot 8)
     try {
       if ((state.editor.blockSlot|0) === 8){
@@ -312,7 +333,7 @@
         return false;
       }
     } catch(_){ }
-    // Default: BASE/BAD voxel span
+    // Default: BASE/BAD voxel span (Set A; Set B falls back to BASE unless explicitly handled)
     {
       let spans = __getSpans(gx,gy);
       // check if block exists at y
@@ -332,6 +353,35 @@
   function removeBlockAtVisor(){
     const vs = state.editor.visor; if (!vs || vs.gx<0) return false;
     const gx=vs.gx, gy=vs.gy, y=vs.base|0;
+    const set = (state.editor.blockSet||'A');
+    // In Set B, only slot 1 (Lock) is active; other slots are disabled/no-op
+    if (set === 'B' && (state.editor.blockSlot|0) !== 1){
+      try { if (typeof showTopNotification === 'function') showTopNotification('Set B only has Lock (1)'); } catch(_){ }
+      return false;
+    }
+    // Set B, slot 1 removal: Lock (t:6)
+    try {
+      if (set==='B' && (state.editor.blockSlot|0)===1){
+        let spans = __getSpans(gx,gy);
+        let changed=false; const out=[];
+        for (const s of spans){
+          if (!s) continue; const b=(s.b|0), h=(Number(s.h)||0), t=((s.t|0)||0); const top=b+h-1;
+          if (t!==6 || y < b || y > top){ out.push(s); continue; }
+          changed=true;
+          if (h===1){ /* drop */ }
+          else if (y===b){ out.push({ b:b+1, h:h-1, t:6 }); }
+          else if (y===top){ out.push({ b:b, h:h-1, t:6 }); }
+          else { const h1=y-b, h2=top-y; if (h1>0) out.push({ b:b, h:h1, t:6 }); if (h2>0) out.push({ b:y+1, h:h2, t:6 }); }
+        }
+        if (!changed) return false;
+        out.sort((p,q)=>p.b-q.b);
+        __setSpans(gx,gy,out);
+        try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
+        try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 6 }]); } } catch(_){ }
+        if (typeof showTopNotification === 'function') showTopNotification('Lock removed');
+        return true;
+      }
+    } catch(_){ }
     // LEVELCHANGE removal (slot 8)
     try {
       if ((state.editor.blockSlot|0) === 8){
@@ -725,7 +775,9 @@
   // Only allow opening when BASE block type (slot 1) is selected
   try {
     const slot = (state && state.editor) ? ((state.editor.blockSlot|0) || 0) : 0;
-    if (slot !== 1){
+    const set = (state && state.editor) ? (state.editor.blockSet || 'A') : 'A';
+    // Require Set A and slot 1 (BASE). If Set B is active (Lock) or any other slot, block modal.
+    if (slot !== 1 || set !== 'A'){
       if (typeof showTopNotification === 'function') showTopNotification('Structure Builder requires BASE (1) selected');
       // Do not auto re-lock pointer; modal opens only when explicitly requested
       return; // do not open modal
@@ -1114,7 +1166,15 @@
           gl.uniform1f(tc_u_scale, 1.0);
           gl.uniform1f(tc_u_ttl, 1.0);
           gl.uniform1f(tc_u_mulAlpha, 0.8);
-          gl.uniform3f(tc_u_lineColor, baseR, baseG, baseB);
+          // If this cell contains a Lock span at this level, use pastel blue for outlines
+          let col = [baseR, baseG, baseB];
+          try {
+            const key = `${it.gx},${it.gy}`; const spans = (window.columnSpans && window.columnSpans.get) ? window.columnSpans.get(key) : null;
+            if (Array.isArray(spans)){
+              for (const s of spans){ if (!s) continue; const t=((s.t|0)||0), b=(s.b|0), h=(Number(s.h)||0); if (t===6 && h>0 && (it.b+level) >= b && (it.b+level) < b+h){ col = [0.65, 0.80, 1.0]; break; } }
+            }
+          } catch(_){ }
+          gl.uniform3f(tc_u_lineColor, col[0], col[1], col[2]);
           gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
           const tNow2 = state.nowSec || (performance.now()/1000);
           // Multi-pass jitter for thickness
@@ -1192,19 +1252,29 @@
   function updateBlockTypeBar(){
     const bar = document.getElementById('mz-editor-blockbar'); if (!bar) return;
     const active = state.editor.blockSlot|0;
+    const set = state.editor.blockSet || 'A';
     bar.innerHTML='';
     for (let i=1;i<=9;i++){
-      const info = BLOCK_TYPES[i] || BLOCK_TYPES[1];
       const el = document.createElement('div');
-      el.setAttribute('aria-label', 'Slot ' + i + ' ' + (BLOCK_TYPES[i]? info.name : 'BASE'));
       el.style.width='22px';
       el.style.height='22px';
       el.style.boxSizing='border-box';
-      el.style.border='2px solid ' + info.color;
       el.style.borderRadius='4px';
-      el.style.background = (i===active) ? info.color : 'transparent';
-      el.style.opacity = BLOCK_TYPES[i] ? '1' : '0.25';
-      el.style.transition='background 0.15s, opacity 0.15s';
+      el.style.transition='background 0.15s, opacity 0.15s, border-color 0.15s';
+      if (set === 'B'){
+        const lockHex = '#a6c9ff';
+        const isLock = (i===1);
+        el.setAttribute('aria-label', 'Slot ' + i + ' ' + (isLock ? 'Lock' : 'Empty'));
+        el.style.border = '2px solid ' + (isLock ? lockHex : 'rgba(255,255,255,0.25)');
+        el.style.background = (isLock && i===active) ? lockHex : 'transparent';
+        el.style.opacity = isLock ? '1' : '0.25';
+      } else {
+        const info = BLOCK_TYPES[i] || BLOCK_TYPES[1];
+        el.setAttribute('aria-label', 'Slot ' + i + ' ' + (BLOCK_TYPES[i]? info.name : 'BASE'));
+        el.style.border='2px solid ' + info.color;
+        el.style.background = (i===active) ? info.color : 'transparent';
+        el.style.opacity = BLOCK_TYPES[i] ? '1' : '0.25';
+      }
       bar.appendChild(el);
     }
     const label = document.createElement('div');
@@ -1213,7 +1283,10 @@
     label.style.alignItems='center';
     label.style.fontWeight='600';
     label.style.color='#ddd';
-  label.textContent='Slot: ' + (BLOCK_TYPES[active] ? BLOCK_TYPES[active].name : 'BASE');
+    // Label includes set indicator and Lock name when on Set B, slot 1
+    let name = (BLOCK_TYPES[active] ? BLOCK_TYPES[active].name : 'BASE');
+    if (set==='B' && active===1) name = 'Lock';
+    label.textContent='Set '+set+' • Slot '+active+': ' + name;
     bar.appendChild(label);
   }
   window.ensureBlockTypeBar = ensureBlockTypeBar;
@@ -1221,7 +1294,26 @@
   window.addEventListener('keydown', (ev)=>{
     if (state.editor.mode !== 'fps') return;
     if (ev.key >= '1' && ev.key <= '9'){
-      state.editor.blockSlot = parseInt(ev.key,10);
+      const set = state.editor.blockSet || 'A';
+      if (set === 'B'){
+        if (ev.key !== '1'){
+          try { if (typeof showTopNotification === 'function') showTopNotification('Set B only has Lock (1)'); } catch(_){ }
+          // keep slot at 1 in Set B
+          state.editor.blockSlot = 1;
+        } else {
+          state.editor.blockSlot = 1;
+        }
+      } else {
+        state.editor.blockSlot = parseInt(ev.key,10);
+      }
+      updateBlockTypeBar();
+    }
+    // '0' cycles the active set A -> B -> A
+    if (ev.key === '0'){
+      const cur = state.editor.blockSet || 'A';
+      state.editor.blockSet = (cur === 'A') ? 'B' : 'A';
+      // Force slot 1 on switching sets to avoid stale slot carryover
+      state.editor.blockSlot = 1;
       updateBlockTypeBar();
     }
   });

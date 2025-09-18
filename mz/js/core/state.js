@@ -149,6 +149,8 @@ const state = {
   draggingTopCam: false,
   // Selected block type slot (1..9). Slot 1 = BASE (normal), slot 2 = BAD (hazard), others default to BASE for now.
   blockSlot: 1,
+  // Active editor set for slots (A,B, later C). Press '0' to cycle. Default 'A'.
+  blockSet: 'A',
   },
 };
 

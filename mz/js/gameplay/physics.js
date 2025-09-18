@@ -24,12 +24,15 @@ function groundHeightAt(x, z){
           : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
           : null;
   } catch(_){ spans = null; }
-  // Detect if this cell's spans are purely fences (t==2) so synthesized columns should not be treated solid
-  const spansAllFenceGH = Array.isArray(spans) && spans.length>0 && spans.every(s => s && (((s.t|0)||0) === 2 || ((s.t|0)||0) === 3));
+  // Detect if this cell's spans are purely non-solid markers so synthesized columns should not be treated solid
+  const spansAllNonSolidGH = Array.isArray(spans) && spans.length>0 && spans.every(s => {
+    if (!s) return false; const t=((s.t|0)||0);
+    return (t===2 || t===3 || t===5 || t===6);
+  });
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // Remove fence spans (t==2/t==3) and portal spans (t==5) from ground computation; they are non-solid visuals
-  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5)));
+  // Remove fence spans (t==2/t==3), portal spans (t==5), and Lock spans (t==6) from ground computation; they are non-solid visuals
+  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5) && (((s.t|0)||0) !== 6)));
   // Rail-platform candidate from inner voxels (center cross) when within band
   let railGroundCandidate = -Infinity;
   try {
@@ -56,16 +59,16 @@ function groundHeightAt(x, z){
   } catch(_){ }
   // Always also synthesize from columnHeights/bases so default map blocks are respected even with server spans present
   try {
-  // Do not synthesize a full column for fence tiles (FENCE/BADFENCE);
-  // only inner rails should affect collisions/ground
+  // Do not synthesize a full column for fence tiles (FENCE/BADFENCE) or when spans are all non-solid markers
+  // (e.g., only portal/lock/fence spans exist). Only inner rails should affect collisions/ground in such cases.
   const _cvGH = map[mapIdx(gx,gz)];
-  if (_cvGH !== TILE.FENCE && _cvGH !== TILE.BADFENCE && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+  if (_cvGH !== TILE.FENCE && _cvGH !== TILE.BADFENCE && !spansAllNonSolidGH && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
       let b = 0; let h = columnHeights.get(key) || 0;
       try {
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
         else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
       } catch(_){ }
-      if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceGH ? { t: 2 } : {}) });
+      if (h > 0) spanList.push({ b: b|0, h: h|0 });
     }
   } catch(_){ }
   // Always include ground wall/half as span if map tile is WALL/HALF/NOCLIMB (BAD handled via spans)
@@ -102,7 +105,7 @@ function groundHeightAt(x, z){
     return 0.0;
   }
   // Fallbacks when no spans and no column height applicable below player
-  if (map[mapIdx(gx,gz)] !== TILE.FENCE && map[mapIdx(gx,gz)] !== TILE.BADFENCE && columnHeights.has(key) && !spansAllFenceGH){
+  if (map[mapIdx(gx,gz)] !== TILE.FENCE && map[mapIdx(gx,gz)] !== TILE.BADFENCE && columnHeights.has(key) && !spansAllNonSolidGH){
     const h = columnHeights.get(key) || 0.0;
     const b = getBaseFor(key);
     if (py >= b + h - 1e-6) return b + h;
@@ -139,7 +142,8 @@ function landingHeightAt(x, z, py, maxRise){
     if (Array.isArray(spans)){
       for (const s of spans){
         if (!s) continue; const b=(s.b||0), h=(typeof s.h==='number'?s.h:0); const t=((s.t|0)||0);
-        if (h<=0 || t===2) continue;
+        // Skip non-solid visuals
+        if (h<=0 || t===2 || t===3 || t===5 || t===6) continue;
         const top = b + h;
         if (top > py + 1e-6 && (top - py) <= (maxRise + 1e-6)) candidates.push(top);
       }
@@ -199,11 +203,11 @@ function ceilingHeightAt(x, z, py){
           : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
           : null;
   } catch(_){ spans = null; }
-  const spansAllFenceCH = Array.isArray(spans) && spans.length>0 && spans.every(s => s && ((((s.t|0)||0) === 2) || (((s.t|0)||0) === 3)));
+  const spansAllNonSolidCH = Array.isArray(spans) && spans.length>0 && spans.every(s => { if (!s) return false; const t=((s.t|0)||0); return (t===2||t===3||t===5||t===6); });
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // Remove fence spans (t==2/t==3) and portal spans (t==5) from ceiling computation; they are non-solid visuals
-  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5)));
+  // Remove fence spans (t==2/t==3), portal spans (t==5), and Lock spans (t==6) from ceiling computation; they are non-solid visuals
+  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5) && (((s.t|0)||0) !== 6)));
   // Rail-platform ceilings (bottom faces) only if in inner center bands to avoid sudden clips
   let railCeilCandidate = Infinity;
   try {
@@ -229,13 +233,13 @@ function ceilingHeightAt(x, z, py){
   // Always also synthesize from column data so default map blocks are respected
   try {
   const _cvCH = map[mapIdx(gx,gz)];
-  if (_cvCH !== TILE.FENCE && _cvCH !== TILE.BADFENCE && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+  if (_cvCH !== TILE.FENCE && _cvCH !== TILE.BADFENCE && !spansAllNonSolidCH && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
       let b = 0; let h = columnHeights.get(key) || 0;
       try {
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
         else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
       } catch(_){ }
-      if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceCH ? { t: 2 } : {}) });
+      if (h > 0) spanList.push({ b: b|0, h: h|0 });
     }
   } catch(_){ }
   // Include ground wall/half tile as span if present (WALL/HALF). BAD uses spans.
@@ -312,6 +316,39 @@ function moveAndCollide(dt){
     }
   } catch(_){ }
   const oldX = p.x, oldZ = p.z;
+  // Helper: is the player inside a Lock span (t:6) at current grid cell and Y
+  function isInsideLockAt(gx, gz, py){
+    if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return false;
+    const key = `${gx},${gz}`;
+    try {
+      const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+                   : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+                   : null;
+      if (Array.isArray(spans)){
+        for (const s of spans){ if (!s) continue; const t=((s.t|0)||0); if (t!==6) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (py >= b && py <= top - 0.02) return true; }
+      }
+    } catch(_){ }
+    return false;
+  }
+  // Camera: when inside a Lock span, force Locked mode; revert when not
+  try {
+    const gxCam = Math.floor(p.x + MAP_W*0.5);
+    const gzCam = Math.floor(p.z + MAP_H*0.5);
+    const inLockNow = isInsideLockAt(gxCam, gzCam, p.y);
+    const was = !!state._inLockNow;
+    state._inLockNow = !!inLockNow;
+    if (inLockNow && !was){
+      // Entering Lock: force Locked camera mode
+      state.lockedCameraForced = true;
+    } else if (!inLockNow && was){
+      // Exiting Lock: revert to Fixed camera mode
+      state.lockedCameraForced = false;
+      state.altBottomControlLocked = true;
+      state.lockCameraYaw = true;
+      try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
+      try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
+    }
+  } catch(_){ }
   const baseSpeed = 3.0;
   const seamMax = baseSpeed; // seam scaling removed
   const wasDashing = !!p.isDashing;
@@ -410,17 +447,17 @@ function moveAndCollide(dt){
   /** @type {Array<{b:number,h:number,t?:number}>} */
   let spanList = [];
   if (Array.isArray(spans) && spans.length) spanList = spans.slice();
-  const spansAllFenceLW = Array.isArray(spans) && spans.length>0 && spans.every(s => s && ((((s.t|0)||0) === 2) || (((s.t|0)||0) === 3)));
+  const spansAllNonSolidLW = Array.isArray(spans) && spans.length>0 && spans.every(s => { if (!s) return false; const t=((s.t|0)||0); return (t===2||t===3||t===5||t===6); });
     // Always merge in default-map columns (but skip FENCE/BADFENCE tiles; they use inner voxels)
     try {
       const _cvLW = map[mapIdx(gx,gz)];
-      if (_cvLW !== TILE.FENCE && _cvLW !== TILE.BADFENCE && columnHeights.has(key)){
+      if (_cvLW !== TILE.FENCE && _cvLW !== TILE.BADFENCE && !spansAllNonSolidLW && columnHeights.has(key)){
         let b = 0; let h = columnHeights.get(key) || 0;
         try {
           if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
           else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
         } catch(_){ }
-    if (h > 0) spanList.push({ b: b|0, h: h|0, ...(spansAllFenceLW ? { t: 2 } : {}) });
+    if (h > 0) spanList.push({ b: b|0, h: h|0 });
       }
     } catch(_){ }
   // Always include ground-level WALL/HALF/BAD/NOCLIMB tile as solid span so lateral collision matches ground height logic
@@ -437,7 +474,7 @@ function moveAndCollide(dt){
     if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
     const top = b + h; const t = ((s.t|0)||0);
     // Portal spans (t==5) are triggers, not solids; do not block laterally here
-    if (t === 5) { continue; }
+    if (t === 5 || t === 6) { continue; }
     // Solid spans (non-fence) use strict vertical check (unchanged)
   if (t !== 2 && t !== 3){ if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; if (t===9) lastHitNoClimb = true; return true; } else { continue; } }
   // Fence spans (t==2 or t==3): voxel-accurate rails with a small vertical tolerance
@@ -459,7 +496,7 @@ function moveAndCollide(dt){
           const hasSolidAtLevel = (x,y,level)=>{
             const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
             if (Array.isArray(sp)){
-              for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && (tt!==2 && tt!==3) && level>=bb && level<bb+hh) return true; }
+              for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && (tt!==2 && tt!==3 && tt!==5 && tt!==6) && level>=bb && level<bb+hh) return true; }
             }
             return false;
           };
@@ -495,7 +532,7 @@ function moveAndCollide(dt){
       return false;
     }
   // Column with optional raised base (skip for FENCE/BADFENCE tiles)
-  if (map[mapIdx(gx,gz)] !== TILE.FENCE && map[mapIdx(gx,gz)] !== TILE.BADFENCE && columnHeights.has(key) && !spansAllFenceLW){
+  if (map[mapIdx(gx,gz)] !== TILE.FENCE && map[mapIdx(gx,gz)] !== TILE.BADFENCE && columnHeights.has(key) && !spansAllNonSolidLW){
       const h = columnHeights.get(key) || 0.0;
       // Use same safe base lookup as groundHeightAt
       let b = 0.0;
@@ -742,6 +779,14 @@ function moveAndCollide(dt){
       }
       // Only trigger damage/ball mode if we attempted to go outside the grid
       if (outZ){
+        // Suppress boundary damage if currently inside a Lock span
+        try {
+          const gxCell = Math.floor(p.x + MAP_W*0.5);
+          const gzCell = Math.floor(p.z + MAP_H*0.5);
+          if (isInsideLockAt(gxCell, gzCell, p.y)){
+            p.x = oldX; p.z = oldZ; return; // cancel damage and stay within bounds
+          }
+        } catch(_){ }
         // normal points inward (opposite attempted step)
         const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
         enterBallMode(n);
@@ -931,6 +976,14 @@ function moveAndCollide(dt){
       }
       // Only trigger damage/ball mode if we attempted to go outside the grid
       if (outX){
+        // Suppress boundary damage if currently inside a Lock span
+        try {
+          const gxCell = Math.floor(p.x + MAP_W*0.5);
+          const gzCell = Math.floor(p.z + MAP_H*0.5);
+          if (isInsideLockAt(gxCell, gzCell, p.y)){
+            p.x = oldX; p.z = oldZ; return; // cancel damage and stay within bounds
+          }
+        } catch(_){ }
         const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
         enterBallMode(n);
         p.x = oldX; p.z = oldZ;

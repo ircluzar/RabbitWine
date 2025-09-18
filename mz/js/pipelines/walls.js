@@ -229,10 +229,15 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       if (hasSpans){
         const spans = columnSpans.get(key);
         if (Array.isArray(spans)){
-          // If any span at base 0 exists, ground cube is represented by tall columns
-          hideGroundWall = spans.some(s => s && ((s.b|0) === 0) && ((s.h|0) > 0));
-          // If any hazardous span sits at base 0, treat ground cube as BAD even if map isn't BAD
-          if (!isBadTile){ isBadTile = spans.some(s => s && ((s.b|0)===0) && ((s.h|0)>0) && ((s.t|0)===1)); }
+          // Only treat solid spans (t==0,1,9 or undefined) as hiding the ground cube at base 0.
+          // Non-solid markers like portal (t:5) and lock (t:6) should not hide the ground wall.
+          hideGroundWall = spans.some(s => {
+            if (!s) return false; const b=(s.b|0), h=(s.h|0); if (h<=0) return false; const t=((s.t|0)||0);
+            if (t===2 || t===3 || t===5 || t===6) return false; // fence/badfence/portal/lock are non-solid for ground hiding
+            return b === 0;
+          });
+          // If any hazardous solid span sits at base 0, treat ground cube as BAD even if map isn't BAD
+          if (!isBadTile){ isBadTile = spans.some(s => s && ((s.b|0)===0) && ((s.h|0)>0) && (((s.t|0)||0)===1)); }
         }
       } else if (hasHeights && columnHeights.has(key)){
         if (hasBases && columnBases.has(key)){
@@ -1051,6 +1056,32 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   for (const key of keys){
     const g = groups.get(key);
     if (!g || !g.pts || g.pts.length === 0) continue;
+    // Special rendering for Lock spans (t==6): outline-only pastel blue
+    if ((g.t|0) === 6){
+      const pts = g.pts;
+      const col = [0.65, 0.80, 1.0];
+      for (let level=0; level<g.h; level++){
+        const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
+        const offs2 = new Float32Array(pts.length * 2);
+        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
+        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.02, col);
+      }
+      // Rebind wall VAO and program after outlines
+      gl.bindVertexArray(wallVAO);
+      gl.useProgram(wallProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+      gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+      gl.uniform1f(wall_u_scale, 1.0);
+      gl.uniform1f(wall_u_height, 1.0);
+      const wallCol3pL = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+      gl.uniform3fv(wall_u_color, new Float32Array(wallCol3pL));
+      gl.uniform1f(wall_u_alpha, 0.65);
+      gl.uniform1i(wall_u_glitterMode, 0);
+      gl.uniform3f(wall_u_voxCount, 1,1,1);
+      continue;
+    }
     // Special rendering for portal spans (t==5): orange, semi-transparent, glitter
     if ((g.t|0) === 5){
       const pts = g.pts;
@@ -1288,6 +1319,20 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     });
     for (const k of keysF){
       const g = fracGroups.get(k); if (!g || !g.pts || !g.pts.length) continue;
+      // Outline-only for Lock fractional spans (t==6), if ever present
+      if ((g.t|0) === 6){
+        const pts = g.pts;
+        const yCenter = g.b + g.h*0.5;
+        const offs2 = new Float32Array(pts.length * 2);
+        for (let i=0;i<pts.length;i++){ offs2[i*2+0]=pts[i][0]; offs2[i*2+1]=pts[i][1]; }
+        drawOutlinesForTileArray(mvp, offs2, yCenter, 1.02, [0.65,0.80,1.0]);
+        // Restore program/VAO after outlines
+        gl.bindVertexArray(wallVAO);
+        gl.useProgram(wallProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+        continue;
+      }
       // Split into BAD vs normal using t from grouping when spans present
       const normPts = []; const badPts = [];
       for (let i=0;i<g.pts.length;i++){
