@@ -1118,12 +1118,47 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         if (level === 0){ levelFade = Math.max(0.0, 1.0 - camT * (1.0 + (levelFadeBand*0.5))); }
         else if (level === 1){ levelFade = Math.max(0.0, 1.0 - camT * (0.5 + (levelFadeBand*0.25))); }
         let finalAlpha = alphaCam * levelFade * bottomFade;
-        // New: if camera lock/alt mode engaged, reduce to 10% of computed alpha (90% more transparent)
+        // Camera lock effect (TOP SCREEN ONLY): when the game camera is locked, make lock blocks
+        // extremely transparent (target ~5% opacity). We cap (not multiply) their alpha so that
+        // returning from lock restores normal computed alpha. Optional override:
+        //   window.__LOCK_WORLD_LOCKMODE_ALPHA  (absolute alpha cap, default 0.05)
+        // Backwards compat: if legacy multiplier override window.__LOCK_WORLD_LOCKMODE_MUL is present
+        // and no absolute alpha override is defined, we keep the old multiplicative path.
         try {
-          const lockModeActive = !!(state && state.camera && (state.camera.isLocked || state.camera.lockMode || state.editor?.pointerLocked));
-          if (lockModeActive){
-            const lockMul = (window.__LOCK_WORLD_LOCKMODE_MUL !== undefined) ? window.__LOCK_WORLD_LOCKMODE_MUL : 0.10; // default 10%
-            finalAlpha *= lockMul;
+          const lockModeActive = (()=>{
+            try {
+              if (!state) return false;
+              // Existing camera flags
+              if (state.camera && (state.camera.isLocked || state.camera.lockMode)) return true;
+              // Pointer lock (editor / alt mode)
+              if (state.editor?.pointerLocked) return true;
+              // Yaw lock often accompanies lock situations
+              if (state.lockCameraYaw) return true;
+              // Global explicit override for testing
+              if (window.__CAMERA_LOCKED) return true;
+            } catch(_){ }
+            return false;
+          })();
+          if (lockModeActive && state.cameraKindCurrent === 'top'){
+            if (window.__LOCK_WORLD_LOCKMODE_ALPHA !== undefined){
+              const cap = window.__LOCK_WORLD_LOCKMODE_ALPHA;
+              if (finalAlpha > cap) finalAlpha = cap;
+            } else if (window.__LOCK_WORLD_LOCKMODE_MUL !== undefined) {
+              // Legacy behavior: apply user-provided multiplier
+              finalAlpha *= window.__LOCK_WORLD_LOCKMODE_MUL;
+            } else {
+              const cap = 0.05; // default 5% opacity target
+              if (finalAlpha > cap) finalAlpha = cap;
+            }
+            if (window.__DEBUG_LOCK_ALPHA){
+              if (!window.___dbgLockOnce){
+                window.___dbgLockOnce = true;
+                console.log('[lock-blocks] Camera lock detected: applying alpha cap to lock blocks (finalAlpha=', finalAlpha, ')');
+              }
+            } else if (window.___dbgLockOnce){
+              // Reset one-shot if debugging turned off or lock released later
+              try { delete window.___dbgLockOnce; } catch(_){ }
+            }
           }
         } catch(_){ }
         // Global multiplier override
@@ -1276,6 +1311,10 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.useProgram(wallProgram);
       gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
       gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      // IMPORTANT: prevent fall-through into generic pillar rendering logic below.
+      // Missing continue caused NOCLIMB spans (t==9) to be processed a second time
+      // as generic pillars, overriding visuals for elevated NOCLIMB blocks.
+      continue;
     }
     // Split pillars by BAD vs normal: prefer span hazard flag; fallback to map for ground-only
     const pillars = g.pts;

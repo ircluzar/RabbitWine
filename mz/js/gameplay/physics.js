@@ -355,28 +355,114 @@ function moveAndCollide(dt){
         const maxGZ = (MAP_H|0) - 1;
         const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
         if (onBorder){
-          // Face outward: choose the cardinal that points toward the boundary
-          // we are touching (west/east/north/south). This ignores player facing
-          // and uses current yaw only to break ties at corners.
-          const cands = [];
-          // Outward cardinals (radians): 0=N, +PI/2=E, PI=S, -PI/2=W
-          if (gxCam === 0) cands.push(-Math.PI/2);      // west edge -> face west
-          if (gxCam === maxGX) cands.push(Math.PI/2);   // east edge -> face east
-          if (gzCam === 0) cands.push(0.0);             // north edge -> face north
-          if (gzCam === maxGZ) cands.push(Math.PI);     // south edge -> face south
           const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
-          const cur = state.camYaw || 0.0;
-          // Pick the candidate closest to current yaw to avoid jarring spins at corners
-          let best = cands[0];
-          let bestDiff = Math.abs(norm(best - cur));
-          for (let i=1;i<cands.length;i++){
-            const d = Math.abs(norm(cands[i] - cur));
-            if (d < bestDiff){ best = cands[i]; bestDiff = d; }
+          const prevGX = (typeof state._prevGridGX === 'number') ? state._prevGridGX : gxCam;
+          const prevGZ = (typeof state._prevGridGZ === 'number') ? state._prevGridGZ : gzCam;
+          const prevSides = [];
+          if (prevGX === 0) prevSides.push('W'); else if (prevGX === maxGX) prevSides.push('E');
+          if (prevGZ === 0) prevSides.push('N'); else if (prevGZ === maxGZ) prevSides.push('S');
+          const curSides = [];
+          if (gxCam === 0) curSides.push('W'); else if (gxCam === maxGX) curSides.push('E');
+          if (gzCam === 0) curSides.push('N'); else if (gzCam === maxGZ) curSides.push('S');
+          const isCorner = curSides.length === 2;
+          let targetYaw = null;
+          if (isCorner){
+            const cornerKey = gxCam + ',' + gzCam;
+            const prevKey = state._lastCornerKeyEntered;
+            const dGX = gxCam - prevGX;
+            const dGZ = gzCam - prevGZ;
+            // New side difference triggers rotation; allow re-trigger after leaving corner (prevKey different) or if previous sides differ.
+            const newSides = curSides.filter(s => !prevSides.includes(s));
+            const shouldTrigger = (cornerKey !== prevKey) && newSides.length > 0;
+            if (shouldTrigger){
+              const newSide = newSides[0];
+              switch(newSide){
+                case 'W': targetYaw = -Math.PI/2; break;
+                case 'E': targetYaw =  Math.PI/2; break;
+                case 'N': targetYaw = 0.0; break;
+                case 'S': targetYaw =  Math.PI; break;
+              }
+              state._lastCornerKeyEntered = cornerKey;
+              if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner trigger entry key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ,' yaw=',targetYaw); }
+            } else {
+              if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner no-trigger key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ); }
+            }
+          } else {
+            // Clear corner key when leaving a corner so re-entry can trigger again.
+            if (state._lastCornerKeyEntered) delete state._lastCornerKeyEntered;
           }
-          // Apply only if sufficiently different
-          const TH = 10 * Math.PI/180; // 10 degrees
-          if (best !== undefined && bestDiff > TH){ state.camYaw = norm(best); }
+          if (!isCorner){
+            // Single-side border cell: straightforward mapping + reset corner key
+            if (gxCam === 0) targetYaw = -Math.PI/2; else if (gxCam === maxGX) targetYaw = Math.PI/2; else if (gzCam === 0) targetYaw = 0.0; else if (gzCam === maxGZ) targetYaw = Math.PI;
+          }
+          if (targetYaw !== null){
+            const cur = state.camYaw || 0.0;
+            const diff = Math.abs(norm(targetYaw - cur));
+            const TH = 5 * Math.PI/180;
+            if (diff > TH){ state.camYaw = norm(targetYaw); }
+          }
+        } else {
+          // Left border region; nothing special
         }
+        // Persist previous frame grid after processing (always)
+        state._prevGridGX = gxCam; state._prevGridGZ = gzCam;
+      } catch(_){ }
+    } else if (inLockNow && was){
+      // Still in lock; check if we crossed from one boundary wall to another lock block on a different side.
+      try {
+        const maxGX = (MAP_W|0) - 1;
+        const maxGZ = (MAP_H|0) - 1;
+        const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
+        if (onBorder){
+          const prevGX = (typeof state._prevGridGX === 'number') ? state._prevGridGX : gxCam;
+          const prevGZ = (typeof state._prevGridGZ === 'number') ? state._prevGridGZ : gzCam;
+          const prevSides = [];
+          if (prevGX === 0) prevSides.push('W'); else if (prevGX === maxGX) prevSides.push('E');
+          if (prevGZ === 0) prevSides.push('N'); else if (prevGZ === maxGZ) prevSides.push('S');
+          const curSides = [];
+          if (gxCam === 0) curSides.push('W'); else if (gxCam === maxGX) curSides.push('E');
+          if (gzCam === 0) curSides.push('N'); else if (gzCam === maxGZ) curSides.push('S');
+          let chosenSide = null;
+          if (curSides.length === 2){
+            const cornerKey = gxCam + ',' + gzCam;
+            const prevKey = state._lastCornerKeyEntered;
+            const dGX = gxCam - prevGX;
+            const dGZ = gzCam - prevGZ;
+            const newSides = curSides.filter(s => !prevSides.includes(s));
+            const shouldTrigger = (cornerKey !== prevKey) && newSides.length > 0;
+            if (shouldTrigger){
+              chosenSide = newSides[0];
+              state._lastCornerKeyEntered = cornerKey;
+              if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner move trigger key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ,' chosenSide=',chosenSide); }
+            } else if (window.__DEBUG_LOCK_WALL){
+              console.log('[lock-wall] corner move no-trigger key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ); }
+          } else if (curSides.length === 1){
+            chosenSide = curSides[0];
+            if (state._lastCornerKeyEntered) delete state._lastCornerKeyEntered;
+          }
+          const prevSide = state._lockBorderSide || null;
+          if (chosenSide && chosenSide !== prevSide){
+            const yawForSide = (s)=>{ switch(s){ case 'W': return -Math.PI/2; case 'E': return Math.PI/2; case 'N': return 0.0; case 'S': return Math.PI; } return state.camYaw||0.0; };
+            const targetYaw = yawForSide(chosenSide);
+            const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
+            const cur = state.camYaw || 0.0;
+            const diff = Math.abs(norm(targetYaw - cur));
+            const smooth = (window.__LOCK_WALL_SMOOTH !== undefined) ? !!window.__LOCK_WALL_SMOOTH : false;
+            if (!smooth || diff > (2*Math.PI/180)){
+              state.camYaw = norm(targetYaw);
+            } else if (smooth && diff > 0){
+              const step = Math.min(diff, ( (typeof window.__LOCK_WALL_STEP_DEG === 'number'? window.__LOCK_WALL_STEP_DEG:90) * Math.PI/180));
+              state.camYaw = norm(cur + Math.sign(targetYaw - cur)*step);
+            }
+            if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] switched side', prevSide, '->', chosenSide, 'prevSides=',prevSides,'curSides=',curSides,'yaw=', state.camYaw.toFixed(3)); }
+            state._lockBorderSide = chosenSide;
+          }
+        } else {
+          // Not on border; clear side tracking so re-entry triggers orientation again.
+          if (state._lockBorderSide) delete state._lockBorderSide;
+        }
+        // Always update previous grid so repeated corner traversals inside continuous lock work.
+        state._prevGridGX = gxCam; state._prevGridGZ = gzCam;
       } catch(_){ }
     } else if (!inLockNow && was){
       // Exiting Lock: revert to Fixed camera mode
