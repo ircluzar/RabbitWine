@@ -201,8 +201,62 @@ function drawBoundaryGrid(mvp, camEye, isThirdPerson){
   if (!boundaryVAO || boundaryVertexCount <= 0) return;
   gl.useProgram(gridProgram);
   gl.uniformMatrix4fv(grid_u_mvp, false, mvp);
-  // Dim red so additive blending doesn't overpower scene
-  gl.uniform3fv(grid_u_color, new Float32Array([0.95, 0.12, 0.12]));
+  // Determine if camera lock mode is active to swap boundary grid color.
+  // We mirror the detection logic used for lock block alpha capping so visuals stay consistent.
+  let lockModeActive = false;
+  try {
+    if (state) {
+      if (state._inLockNow) lockModeActive = true; // direct flag when inside a lock span
+      else if (state.camera && (state.camera.isLocked || state.camera.lockMode)) lockModeActive = true;
+      else if (state.lockCameraYaw) lockModeActive = true;
+    }
+    if (!lockModeActive && typeof window !== 'undefined') {
+      if (window.__CAMERA_LOCKED) lockModeActive = true; // manual override
+      if (!lockModeActive && state?.editor?.pointerLocked) lockModeActive = true; // pointer lock implies look lock
+    }
+  } catch(_){ }
+
+  // Base colors: default red (rest) and pastel blue (lock outline color)
+  let restCol = [0.95, 0.12, 0.12];
+  let lockCol = [0.65, 0.80, 1.0];
+  // Optional runtime overrides: window.__LOCK_BOUNDARY_COLOR_REST / _LOCK as array [r,g,b] or hex string '#RRGGBB'
+  function parseColorOverride(val, fallback){
+    if (!val) return fallback;
+    if (Array.isArray(val) && val.length >= 3){
+      const r = +val[0], g = +val[1], b = +val[2];
+      if ([r,g,b].every(v => Number.isFinite(v) && v >= 0 && v <= 1)) return [r,g,b];
+      return fallback;
+    }
+    if (typeof val === 'string'){
+      const s = val.trim();
+      if (/^#?[0-9a-fA-F]{6}$/.test(s)){
+        const hex = s.replace('#','');
+        const r = parseInt(hex.slice(0,2),16)/255;
+        const g = parseInt(hex.slice(2,4),16)/255;
+        const b = parseInt(hex.slice(4,6),16)/255;
+        return [r,g,b];
+      }
+    }
+    return fallback;
+  }
+  try {
+    if (typeof window !== 'undefined'){
+      if (window.__LOCK_BOUNDARY_COLOR_REST) restCol = parseColorOverride(window.__LOCK_BOUNDARY_COLOR_REST, restCol);
+      if (window.__LOCK_BOUNDARY_COLOR_LOCK) lockCol = parseColorOverride(window.__LOCK_BOUNDARY_COLOR_LOCK, lockCol);
+    }
+  } catch(_){ }
+
+  const useCol = lockModeActive ? lockCol : restCol;
+  gl.uniform3fv(grid_u_color, new Float32Array(useCol));
+  // One-shot debug logging on transition
+  try {
+    if (typeof window !== 'undefined' && window.__DEBUG_LOCK_BOUNDARY){
+      if (state && state._boundaryWasLockColor !== lockModeActive){
+        console.log('[boundary-grid] mode=', lockModeActive ? 'LOCK' : 'REST', 'color=', useCol);
+      }
+    }
+    if (state) state._boundaryWasLockColor = lockModeActive;
+  } catch(_){ }
   // Enable sphere mask around the player (about 2 blocks radius)
   if (grid_u_useSphereMask) gl.uniform1i(grid_u_useSphereMask, 1);
   const px = (state && state.player) ? (state.player.x || 0) : 0;

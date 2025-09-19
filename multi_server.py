@@ -206,8 +206,14 @@ lock = asyncio.Lock()
 class MapDiff:
     version: int
     # adds maps block key -> type flag
-    # 0 = normal block, 1 = BAD/hazard, 2 = FENCE (rail), 3 = BADFENCE (hazard rail), 4 = HALF-SLAB marker,
-    # 5 = PORTAL marker (visual, non-solid), 9 = NOCLIMB marker (solid, disables walljump)
+    # 0 = normal block
+    # 1 = BAD / hazard solid span
+    # 2 = FENCE (rail) non-solid visual marker
+    # 3 = BADFENCE (hazard rail) non-solid visual marker
+    # 4 = HALF-SLAB marker (0.5 height at integer grid)
+    # 5 = PORTAL marker (visual trigger span, non-solid)
+    # 6 = LOCK block (visual / protected span; previously not persisted -> downgrade bug)
+    # 9 = NOCLIMB marker (solid, disables walljump)
     adds: Dict[str, int]
     removes: Set[str]
 
@@ -314,7 +320,7 @@ def db_load_all():
         try:
             raw_adds = json.loads(adds_json) if adds_json else []
             adds: Dict[str,int] = {}
-            # Backward compatibility: entries either 'key' (normal) or 'key#N' where N in {1,2,3,4,5,9}
+            # Backward compatibility: entries either 'key' (normal) or 'key#N' where N in {1,2,3,4,5,6,9}
             for ent in raw_adds:
                 if not isinstance(ent, str):
                     continue
@@ -328,6 +334,8 @@ def db_load_all():
                     adds[ent[:-2]] = 4
                 elif ent.endswith('#5'):
                     adds[ent[:-2]] = 5
+                elif ent.endswith('#6'):
+                    adds[ent[:-2]] = 6
                 elif ent.endswith('#9'):
                     adds[ent[:-2]] = 9
                 else:
@@ -405,11 +413,18 @@ def db_persist_level(level: str, diff: MapDiff):
     try:
         enc_adds = []
         for k, tt in diff.adds.items():
-            # Persist as 'key' or 'key#N' (N in {1,2,3,4,5,9}) for backward compatibility
-            if tt in (1, 2, 3, 4, 5, 9):
+            # Persist as 'key' or 'key#N' (N in {1,2,3,4,5,6,9}); added 6 to fix Lock block reload downgrades.
+            if tt in (1, 2, 3, 4, 5, 6, 9):
                 enc_adds.append(f"{k}#{tt}")
             else:
                 enc_adds.append(k)
+        # Diagnostic: count locks being persisted
+        try:
+            lock_count = sum(1 for _, tt in diff.adds.items() if tt == 6)
+            if lock_count:
+                print(f"[DB] Persisting level '{level}' v{diff.version} with {lock_count} lock voxels (adds={len(diff.adds)}, removes={len(diff.removes)})")
+        except Exception:
+            pass
         _db_conn.execute(
             "REPLACE INTO map_diffs(level, version, adds, removes, updated) VALUES (?,?,?,?,?)",
             (level, diff.version, json.dumps(sorted(enc_adds)), json.dumps(sorted(diff.removes)), now_ms())
@@ -525,6 +540,12 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
             # Allow 6 (LOCK) now; previously it was stripped to 0 causing reload downgrades.
             if tval not in (1,2,3,4,5,6,9):
                 tval = 0
+            else:
+                if tval == 6:
+                    try:
+                        print(f"[MAP] recv add LOCK key={key} level={level}")
+                    except Exception:
+                        pass
             last[key] = ('add', tval)
         else:
             last[key] = ('remove', 0)
@@ -1123,7 +1144,8 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     md = get_mapdiff(lvl)
                     if have != md.version:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
+                            # NOTE: Added '6' (LOCK) to allowed typed set so Lock Blocks persist across reconnects.
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,6,9) else {})} for k, t in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []
@@ -1296,7 +1318,8 @@ async def handle_client(ws: WebSocketServerProtocol, path: str):
                     # Send full map/tiles/portals/items for the new level
                     try:
                         if md.adds or md.removes:
-                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())] +
+                            # NOTE: Added '6' (LOCK) here as well (level_change path) for consistency.
+                            full_ops = ([{"op": "add", "key": k, **({'t':t} if t in (1,2,3,4,5,6,9) else {})} for k, t in sorted(md.adds.items())] +
                                         [{"op": "remove", "key": k} for k in sorted(md.removes)])
                         else:
                             full_ops = []
@@ -1695,7 +1718,8 @@ def _build_level_json(level: str) -> Dict[str, Any]:
         "level": level,
         "version": int(md.version),
         "map": {
-            "adds": [{"key": k, **({"t": t} if t in (1,2,3,4,5,9) else {})} for k, t in sorted(md.adds.items())],
+            # Include type 6 (LOCK) in export JSON so offline maps retain lock metadata
+            "adds": [{"key": k, **({"t": t} if t in (1,2,3,4,5,6,9) else {})} for k, t in sorted(md.adds.items())],
             "removes": sorted(list(md.removes)),
         },
         "tiles": [{"k": k, "v": int(v)} for (k, v) in td.set.items()],
@@ -1783,7 +1807,7 @@ def _parse_import_json(content: Dict[str, Any], fallback_level: Optional[str]) -
     if isinstance(adds_raw, dict):
         for k, v in adds_raw.items():
             try:
-                adds[str(k)] = int(v) if int(v) in (1,2,3,4,5,9) else 0
+                adds[str(k)] = int(v) if int(v) in (1,2,3,4,5,6,9) else 0
             except Exception:
                 adds[str(k)] = 0
     elif isinstance(adds_raw, list):
@@ -1793,7 +1817,7 @@ def _parse_import_json(content: Dict[str, Any], fallback_level: Optional[str]) -
                     t = int(e.get("t", 0))
                 except Exception:
                     t = 0
-                adds[e["key"]] = t if t in (1,2,3,4,5,9) else 0
+                adds[e["key"]] = t if t in (1,2,3,4,5,6,9) else 0
             elif isinstance(e, str):
                 adds[e] = 0
     removes_raw = map_obj.get("removes")

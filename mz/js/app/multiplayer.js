@@ -279,9 +279,13 @@ function __mp_rebuildWorldFromDiff(){
     arrObjs.sort((a,b)=>a.y-b.y);
     const spans = [];
     if (arrObjs.length){
-      // Separate unit voxels vs half-slabs (t=4). Treat portal markers (t=5) separately so they never color entire solid spans.
-      const solidUnits = arrObjs.filter(o=> { const tt=(o.t|0); return !(tt===2||tt===3||tt===4||tt===5); });
-      const portalUnits = arrObjs.filter(o=> (o.t|0)===5);
+  // Separate unit voxels vs markers:
+  //  - HALF-SLAB (t=4) handled as individual half-height spans
+  //  - PORTAL (t=5) non-solid trigger spans built independently
+  //  - LOCK (t=6) is ALSO non-solid visual; must not merge into solid spans or it downgrades to base
+  const solidUnits = arrObjs.filter(o=> { const tt=(o.t|0); return !(tt===2||tt===3||tt===4||tt===5||tt===6); });
+  const portalUnits = arrObjs.filter(o=> (o.t|0)===5);
+  const lockUnits = arrObjs.filter(o=> (o.t|0)===6);
       const slabs = arrObjs.filter(o=> (o.t|0) === 4);
       // Build contiguous spans for solid units, segmented by type to avoid cross-type infection (0 normal, 1 BAD, 9 NOCLIMB)
       if (solidUnits.length){
@@ -304,6 +308,17 @@ function __mp_rebuildWorldFromDiff(){
           b = y; prev = y;
         }
         spans.push({ b, h:(prev - b + 1), t:5 });
+      }
+      // Build contiguous lock spans independently (non-solid visual, outline-only)
+      if (lockUnits.length){
+        let b = lockUnits[0].y|0; let prev = lockUnits[0].y|0;
+        for (let i=1;i<lockUnits.length;i++){
+          const yObj = lockUnits[i]; const y = yObj.y|0;
+          if (y === prev + 1){ prev = y; continue; }
+          spans.push({ b, h:(prev - b + 1), t:6 });
+          b = y; prev = y;
+        }
+        spans.push({ b, h:(prev - b + 1), t:6 });
       }
       // Add half-slabs individually (b=y, h=0.5)
       for (const s of slabs){ spans.push({ b: s.y|0, h: 0.5 }); }
