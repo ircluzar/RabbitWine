@@ -23,193 +23,191 @@
  * Side effects: Creates multiple VAO/VBO resources, modifies WebGL state
  */
 
-// ============================================================================
-// Wall Rendering Shaders
-// ============================================================================
+// Wall shader resources are loaded via static script import in index.php
+// Dependencies: js/pipelines/walls/shaders.js (loaded before this file)
 
-/**
- * Vertex shader for voxel-based wall rendering with subdivision support
- * Transforms voxel coordinates to world space using instance offsets
- */
-const WALL_VS = `#version 300 es
-layout(location=0) in vec3 a_pos;      // Voxel vertex position within subdivision
-layout(location=1) in vec2 a_off;      // Per-instance position offset (grid coords)
-uniform mat4 u_mvp;                    // Model-View-Projection matrix
-uniform vec2 u_origin;                 // Map origin offset for centering
-uniform float u_scale;                 // Global scale factor
-uniform float u_height;                // Wall height in world units
-uniform vec3 u_voxCount;               // Voxel subdivision counts [X,Y,Z]
-uniform vec3 u_voxOff;                 // Voxel offset within subdivision
-uniform float u_yBase;                 // Base Y coordinate for wall bottom
-out float v_worldY;                    // World Y coordinate for fragment shader
-out vec2 v_worldXZ;                    // World XZ coordinates for effects
-void main(){
-  // Convert voxel coordinates to normalized local space (0..1)
-  float lx = (a_pos.x + u_voxOff.x) / u_voxCount.x;
-  float ly = (a_pos.y + u_voxOff.y) / u_voxCount.y;
-  float lz = (a_pos.z + u_voxOff.z) / u_voxCount.z;
+// ╔════════════════════════════════════════════════════════════╗
+// ║ SEGMENT: walls-shaders                                      ║
+// ║ CONDEMNED: Extracted to pipelines/walls/shaders.js         ║
+// ║ Content: WALL_VS, WALL_FS source + program creation        ║
+// ╚════════════════════════════════════════════════════════════╝
+
+// Wall shaders and program are now provided by shaders.js module
+// Initialize shader resources when gl context is available
+
+// Shader resources initialized from module
+let wallProgram = null;
+let wallUniforms = null;
+let wallBasePosData = null;
+
+// Legacy uniform references for compatibility (initialized after shader loading)
+let wall_u_mvp, wall_u_origin, wall_u_scale, wall_u_height, wall_u_voxCount, wall_u_voxOff, wall_u_yBase;
+let wall_u_useFade, wall_u_playerY, wall_u_fadeBand, wall_u_minAlpha, wall_u_color, wall_u_alpha;
+let wall_u_glitterMode, wall_u_now, wall_u_stippleMode, wall_u_stippleAllow, wall_u_camXZ, wall_u_camY;
+let wall_u_stippleRadius, wall_u_stippleInvert, wall_u_stippleAbove;
+
+let wallCurrPosData = null; // Initialized after base data is loaded
+
+// Initialize VAO/VBO setup and geometry processing after shaders are loaded
+let wallVAO = null;
+let wallVBO_PosBase = null;
+let wallVBO_PosJitter = null;
+let wallVBO_Inst = null;
+let wallWireVAO = null;
+
+function initWallVAOs() {
+  if (!wallBasePosData || !window.gl) return false;
   
-  // Transform to world space using instance offset and scale
-  vec2 xz = (vec2(lx, lz) + a_off + u_origin) * u_scale;
-  float y = ly * u_height + u_yBase;
+  wallCurrPosData = new Float32Array(wallBasePosData);
   
-  // Pass world coordinates to fragment shader for effects
-  v_worldY = y;
-  v_worldXZ = xz;
+  // VAO/VBO setup
+  wallVAO = gl.createVertexArray();
+  gl.bindVertexArray(wallVAO);
+  wallVBO_PosBase = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosBase);
+  gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  wallVBO_PosJitter = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
+  gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.DYNAMIC_DRAW);
+  wallVBO_Inst = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(0), gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+  gl.vertexAttribDivisor(1, 1);
+  gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+  // Wireframe VAO for outlines
+  wallWireVAO = gl.createVertexArray();
   
-  gl_Position = u_mvp * vec4(xz.x, y, xz.y, 1.0);
-}`;
+  return true;
+}
 
-/**
- * Fragment shader for wall rendering with advanced transparency and visual effects
- * Supports fade bands, screendoor patterns, glitter animation, and stippling
- */
-const WALL_FS = `#version 300 es
-precision mediump float;
-uniform vec3 u_color;                  // Base wall color
-uniform float u_alpha;                 // Base alpha value
-uniform int u_useFade;                 // Enable distance-based alpha fading
-uniform float u_playerY;               // Player Y position for fade calculations
-uniform float u_fadeBand;              // Fade band width around player
-uniform float u_minAlpha;              // Minimum alpha when faded
-uniform int u_glitterMode;             // Enable glitter animation effects
-uniform float u_now;                   // Current time for animations
-
-// Screendoor transparency for top-view obstruction management
-uniform int u_stippleMode;             // 0=off, 1=enable screendoor pattern
-uniform float u_stippleAllow;          // Height threshold above player for stippling
-uniform vec2 u_camXZ;                  // Camera world position XZ
-uniform float u_camY;                  // Camera world position Y
-uniform float u_stippleRadius;         // Effect radius around camera
-uniform int u_stippleInvert;           // 0=apply within radius, 1=outside radius
-uniform int u_stippleAbove;            // 1=check above player, 0=below
-
-in float v_worldY;                     // World Y coordinate from vertex shader
-in vec2 v_worldXZ;                     // World XZ coordinates from vertex shader
-out vec4 outColor;
-void main(){
-  float aMul = 1.0;
-  if (u_useFade == 1) {
-    float d = abs(v_worldY - u_playerY);
-    float t = clamp(d / max(0.0001, u_fadeBand), 0.0, 1.0);
-    aMul = mix(1.0, max(0.0, u_minAlpha), t);
+// Enhanced initialization that sets up both shaders and VAOs
+function initWallResources() {
+  if (!window.initWallShaders || !window.createWallGeometry) {
+    console.warn('Wall shaders module not loaded');
+    return false;
   }
-  vec4 col = vec4(u_color, u_alpha * aMul);
-  // Top-view screendoor: if fragment is above the player's head by more than a small allowance,
-  // apply a 50% ordered-dither point pattern within a local radius around the player (not a checkerboard or lines).
-  if (u_stippleMode == 1) {
-    bool heightCond = (u_stippleAbove == 1) ? (v_worldY > (u_playerY + u_stippleAllow))
-                                           : (v_worldY < (u_playerY - u_stippleAllow));
-  float dist3 = distance(vec3(v_worldXZ.x, v_worldY, v_worldXZ.y), vec3(u_camXZ.x, u_camY, u_camXZ.y));
-    bool radialWithin = (dist3 <= u_stippleRadius);
-    bool radialHit = (u_stippleInvert == 1) ? (!radialWithin) : radialWithin;
-    if (heightCond && radialHit) {
-      // Dot lattice: remove every other column and every other row (25% coverage kept)
-      int xi2 = int(mod(floor(gl_FragCoord.x), 2.0));
-      int yi2 = int(mod(floor(gl_FragCoord.y), 2.0));
-      // Keep only when both are odd (1); discard if either is even (0)
-      if (xi2 == 0 || yi2 == 0) { discard; }
-    }
+
+  const shaderResource = window.initWallShaders();
+  if (!shaderResource) {
+    console.error('Failed to initialize wall shaders');
+    return false;
   }
-  if (u_glitterMode == 1) {
-    float n = fract(sin(v_worldY * 47.0 + u_now * 83.0) * 43758.5453);
-    col.rgb += vec3(n) * 0.15;
-    col.a = min(1.0, col.a + n * 0.10);
-  }
-  outColor = col;
-}`;
 
-// ============================================================================
-// WebGL Resources and Initialization
-// ============================================================================
+  wallProgram = shaderResource.program;
+  wallUniforms = shaderResource.uniforms;
+  wallBasePosData = window.createWallGeometry();
+  
+  // Set up legacy uniform references for compatibility
+  wall_u_mvp = wallUniforms.mvp;
+  wall_u_origin = wallUniforms.origin;
+  wall_u_scale = wallUniforms.scale;
+  wall_u_height = wallUniforms.height;
+  wall_u_voxCount = wallUniforms.voxCount;
+  wall_u_voxOff = wallUniforms.voxOff;
+  wall_u_yBase = wallUniforms.yBase;
+  wall_u_useFade = wallUniforms.useFade;
+  wall_u_playerY = wallUniforms.playerY;
+  wall_u_fadeBand = wallUniforms.fadeBand;
+  wall_u_minAlpha = wallUniforms.minAlpha;
+  wall_u_color = wallUniforms.color;
+  wall_u_alpha = wallUniforms.alpha;
+  wall_u_glitterMode = wallUniforms.glitterMode;
+  wall_u_now = wallUniforms.now;
+  wall_u_stippleMode = wallUniforms.stippleMode;
+  wall_u_stippleAllow = wallUniforms.stippleAllow;
+  wall_u_camXZ = wallUniforms.camXZ;
+  wall_u_camY = wallUniforms.camY;
+  wall_u_stippleRadius = wallUniforms.stippleRadius;
+  wall_u_stippleInvert = wallUniforms.stippleInvert;
+  wall_u_stippleAbove = wallUniforms.stippleAbove;
+  
+  // Initialize VAOs after shader setup
+  initWallVAOs();
+  
+  return true;
+}
 
-/** Shader program for wall and column rendering */
-const wallProgram = createProgram(WALL_VS, WALL_FS);
-
-/** Core uniform locations for transform and geometry parameters */
-const wall_u_mvp       = gl.getUniformLocation(wallProgram, 'u_mvp');
-const wall_u_origin    = gl.getUniformLocation(wallProgram, 'u_origin');
-const wall_u_scale     = gl.getUniformLocation(wallProgram, 'u_scale');
-const wall_u_height    = gl.getUniformLocation(wallProgram, 'u_height');
-const wall_u_voxCount  = gl.getUniformLocation(wallProgram, 'u_voxCount');
-const wall_u_voxOff    = gl.getUniformLocation(wallProgram, 'u_voxOff');
-const wall_u_yBase     = gl.getUniformLocation(wallProgram, 'u_yBase');
-
-/** Visual effect uniform locations for transparency and animation */
-const wall_u_useFade   = gl.getUniformLocation(wallProgram, 'u_useFade');
-const wall_u_playerY   = gl.getUniformLocation(wallProgram, 'u_playerY');
-const wall_u_fadeBand  = gl.getUniformLocation(wallProgram, 'u_fadeBand');
-const wall_u_minAlpha  = gl.getUniformLocation(wallProgram, 'u_minAlpha');
-const wall_u_color     = gl.getUniformLocation(wallProgram, 'u_color');
-const wall_u_alpha     = gl.getUniformLocation(wallProgram, 'u_alpha');
-const wall_u_glitterMode = gl.getUniformLocation(wallProgram, 'u_glitterMode');
-const wall_u_now       = gl.getUniformLocation(wallProgram, 'u_now');
-
-/** Screendoor transparency uniform locations for top-view visibility */
-const wall_u_stippleMode = gl.getUniformLocation(wallProgram, 'u_stippleMode');
-const wall_u_stippleAllow = gl.getUniformLocation(wallProgram, 'u_stippleAllow');
-const wall_u_camXZ  = gl.getUniformLocation(wallProgram, 'u_camXZ');
-const wall_u_camY   = gl.getUniformLocation(wallProgram, 'u_camY');
-const wall_u_stippleRadius = gl.getUniformLocation(wallProgram, 'u_stippleRadius');
-const wall_u_stippleInvert = gl.getUniformLocation(wallProgram, 'u_stippleInvert');
-const wall_u_stippleAbove = gl.getUniformLocation(wallProgram, 'u_stippleAbove');
-
-// Geometry: unit cube
-const wallBasePosData = new Float32Array([
-  0,0,1,  1,0,1,  1,1,1,
-  0,0,1,  1,1,1,  0,1,1,
-  1,0,0,  0,0,0,  0,1,0,
-  1,0,0,  0,1,0,  1,1,0,
-  0,0,0,  0,0,1,  0,1,1,
-  0,0,0,  0,1,1,  0,1,0,
-  1,0,1,  1,0,0,  1,1,0,
-  1,0,1,  1,1,0,  1,1,1,
-  0,1,1,  1,1,1,  1,1,0,
-  0,1,1,  1,1,0,  0,1,0,
-  0,0,0,  1,0,0,  1,0,1,
-  0,0,0,  1,0,1,  0,0,1,
-]);
-let wallCurrPosData = new Float32Array(wallBasePosData);
-
-// VAO/VBO setup
-const wallVAO = gl.createVertexArray();
-gl.bindVertexArray(wallVAO);
-const wallVBO_PosBase = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosBase);
-gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.STATIC_DRAW);
-gl.enableVertexAttribArray(0);
-gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-const wallVBO_PosJitter = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
-gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.DYNAMIC_DRAW);
-const wallVBO_Inst = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(0), gl.DYNAMIC_DRAW);
-gl.enableVertexAttribArray(1);
-gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
-gl.vertexAttribDivisor(1, 1);
-gl.bindVertexArray(null);
-gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-// Wireframe VAO for outlines (placeholder - may be defined elsewhere)
-const wallWireVAO = gl.createVertexArray();
-
-// Top-view jitter
+// Top-view jitter - initialized after geometry is loaded
 let wallJitterLastTickSec = 0.0;
 const wallJitterPeriod = 0.016;
 const wallVertexProb = 0.10;
 const wallVertexStep = 0.01;
 const wallVertexMax = 0.03;
-const wallCornerGroups = new Map();
-for (let i=0;i<wallBasePosData.length;i+=3){
-  const x=wallBasePosData[i+0], y=wallBasePosData[i+1], z=wallBasePosData[i+2];
-  const key = `${x}|${y}|${z}`;
-  if (!wallCornerGroups.has(key)) wallCornerGroups.set(key, []);
-  wallCornerGroups.get(key).push(i);
+let wallCornerGroups = null;
+let wallCornerList = null;
+let wallCornerDisp = null;
+
+// ----------------------------------------------------------------------------
+// Deferred Initialization Driver
+// ----------------------------------------------------------------------------
+// Earlier refactor removed the retry loop that ensured shaders + geometry
+// helpers were available before first draw. As a result, drawWalls() skips
+// because wallProgram / VAOs never get created. We restore a lightweight
+// deferred initializer here. It:
+//  - waits for a WebGL context (window.gl)
+//  - waits for wall shader helpers (initWallShaders, createWallGeometry)
+//  - runs only once; subsequent failures stop after max retries
+//  - updates exported globals after successful init
+let __wallInitAttempted = false;
+let __wallInitDone = false;
+(function scheduleWallInit(){
+  if (typeof window === 'undefined') return; // non-browser environment
+  let retries = 0;
+  const MAX_RETRIES = 60; // ~6s @100ms
+  function tick(){
+    if (__wallInitDone) return; // already done
+    const depsReady = (window.gl && window.initWallShaders && window.createWallGeometry);
+    if (depsReady){
+      __wallInitAttempted = true;
+      const ok = initWallResources();
+      if (ok){
+        __wallInitDone = true;
+        // Refresh exported globals now that resources exist
+        try {
+          window.wallProgram = wallProgram;
+          window.wallVAO = wallVAO;
+          window.wallWireVAO = wallWireVAO;
+        } catch(_) {}
+        console.log('[WALLS] Initialized (deferred)');
+        return;
+      }
+    }
+    retries++;
+    if (retries < MAX_RETRIES){
+      setTimeout(tick, 100);
+    } else {
+      console.warn('[WALLS] Initialization gave up after waiting for dependencies.');
+    }
+  }
+  // Delay first tick slightly to allow earlier pipeline scripts to register
+  setTimeout(tick, 50);
+})();
+
+function initWallJitter() {
+  if (!wallBasePosData) return false;
+  
+  wallCornerGroups = new Map();
+  for (let i=0;i<wallBasePosData.length;i+=3){
+    const x=wallBasePosData[i+0], y=wallBasePosData[i+1], z=wallBasePosData[i+2];
+    const key = `${x}|${y}|${z}`;
+    if (!wallCornerGroups.has(key)) wallCornerGroups.set(key, []);
+    wallCornerGroups.get(key).push(i);
+  }
+  wallCornerList = Array.from(wallCornerGroups.values());
+  wallCornerDisp = new Float32Array(wallCornerList.length * 3);
+  
+  return true;
 }
-const wallCornerList = Array.from(wallCornerGroups.values());
-let wallCornerDisp = new Float32Array(wallCornerList.length * 3);
 function ensureWallGeomJitterTick(nowSec){
+  // Skip if wall geometry is not initialized yet
+  if (!wallCornerList) return;
+  
   const now = nowSec || (performance.now()/1000);
   if (now - wallJitterLastTickSec < wallJitterPeriod - 1e-6) return;
   wallJitterLastTickSec = now;
@@ -239,6 +237,10 @@ function ensureWallGeomJitterTick(nowSec){
 }
 
 function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
+  // Late init fallback: if skipped earlier but deps now exist, try once
+  if (!wallProgram && typeof window !== 'undefined' && window.gl && window.initWallShaders && window.createWallGeometry){
+    try { initWallResources(); } catch(_) {}
+  }
   // Update persistent polygon point jitter
     if (state.cameraKindCurrent === 'top' && typeof ensureWallGeomJitterTick === 'function') {
       ensureWallGeomJitterTick(state.nowSec || (performance.now()/1000));
@@ -318,6 +320,13 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   }
   const totalCount = wallsNormal.length + wallsBad.length + wallsHalf.length + wallsFence.length + wallsBadFence.length + wallsLevelChange.length + wallsNoClimb.length;
   if (!totalCount) return;
+  
+  // Ensure wall resources are initialized before drawing
+  if (!wallProgram || !wallVAO) {
+    console.warn('[WALLS] Drawing skipped - resources not initialized');
+    return;
+  }
+  
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
   gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
@@ -948,6 +957,13 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
 function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale, color){
   const count = tileArray.length/2;
   if (count <= 0) return;
+  
+  // Ensure trail cube program is available
+  if (!window.trailCubeProgram) {
+    console.warn('[WALLS] Outline drawing skipped - trailCubeProgram not initialized');
+    return;
+  }
+  
   const tNow = state.nowSec || (performance.now()/1000);
   const inst = new Float32Array(count * 4);
   for (let i=0;i<count;i++){
@@ -957,7 +973,7 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale, color){
     const cz = (ty - MAP_H*0.5 + 0.5);
     inst[i*4+0]=cx; inst[i*4+1]=yCenter; inst[i*4+2]=cz; inst[i*4+3]=tNow;
   }
-  gl.useProgram(trailCubeProgram);
+  gl.useProgram(window.trailCubeProgram);
   gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
   gl.uniform1f(tc_u_now, tNow);
   gl.uniform1f(tc_u_ttl, 1.0);
@@ -1058,6 +1074,12 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   }
   if (groups.size === 0) return;
+
+  // Ensure wall resources are initialized before drawing
+  if (!wallProgram || !wallVAO) {
+    console.warn('[WALLS] Tall columns drawing skipped - resources not initialized');
+    return;
+  }
 
   gl.useProgram(wallProgram);
   gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
@@ -1218,11 +1240,12 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         if (finalAlpha <= 0.005) continue; // skip near-zero
         // Temporarily hook drawOutlinesForTileArray with custom alpha via modifying uniforms inline
         // Save current blend/depth state
+        if (!window.trailCubeProgram) continue; // Skip if trailCubeProgram not available
         const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
         const wasBlend = gl.isEnabled(gl.BLEND);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.useProgram(trailCubeProgram);
+        gl.useProgram(window.trailCubeProgram);
         gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
         const tNow_local = state.nowSec || (performance.now()/1000);
         gl.uniform1f(tc_u_now, tNow_local);

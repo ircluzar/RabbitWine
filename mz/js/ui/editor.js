@@ -28,6 +28,20 @@
  *    - Set B: Currently only LOCK(1) - non-solid outline blocks
  *    - Keyboard 1-9 for slot selection, 0 to cycle sets
  *    - Visual type bar with current selection display
+
+// Import span manipulation utilities
+try {
+  if (typeof document !== 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'js/ui/editor/spans.js';
+    document.head.appendChild(script);
+  }
+} catch(_) {
+  // Fallback for environments without DOM
+  if (typeof importScripts !== 'undefined') {
+    try { importScripts('js/ui/editor/spans.js'); } catch(_) {}
+  }
+}
  *
  * 4. Special Mechanics:
  *    - Portal placement with destination prompts and metadata persistence
@@ -157,34 +171,14 @@
     ev.preventDefault();
   }, { passive: false });
 
-  // Helpers to mutate spans at the visor
-  function __getSpans(gx, gy){
-    const key = `${gx},${gy}`;
-    try { return (window.columnSpans.get(key) || []).slice(); } catch(_){ return []; }
-  }
-  function __setSpans(gx, gy, spans){ try { window.setSpansAt(gx, gy, spans); } catch(_){} }
-  function __normalize(spans){
-    // Normalize spans and merge only same-type overlaps/adjacency to avoid type infection
-    const arr = (Array.isArray(spans)?spans:[])
-      .filter(s=>s && (Number(s.h)||0) > 0)
-      .map(s=>{
-        const tt = (s.t|0)||0;
-        const o = { b: (s.b|0), h: (typeof s.h==='number'? s.h : (s.h|0)) };
-        if (tt===1||tt===2||tt===3||tt===4||tt===5||tt===6||tt===9) o.t = tt;
-        return o;
-      });
-    arr.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
-    const out=[];
-    for (const s of arr){
-      if (!out.length){ out.push({ ...s }); continue; }
-      const t = out[out.length-1];
-      const sT = (s.t|0)||0; const tT = (t.t|0)||0;
-      if (sT===tT && s.b <= t.b + t.h + 1e-6){
-        const top = Math.max(t.b + t.h, s.b + s.h); t.h = top - t.b;
-      } else { out.push({ ...s }); }
-    }
-    return out;
-  }
+  // ╔════════════════════════════════════════════════════════════╗
+  // ║ SEGMENT: editor-spans                                       ║
+  // ║ CONDEMNED: Extracted to ui/editor/spans.js                 ║
+  // ║ Functions: __getSpans, __setSpans, __normalize              ║
+  // ╚════════════════════════════════════════════════════════════╝
+
+  // Span manipulation helpers are now provided by spans.js module
+  // Global exports maintained for compatibility via window object
 
   // World solidity query at (x,z) for a given y-level (treat spans and walls as solid if y is inside)
   function __isSolidAtWorld(x, y, z){

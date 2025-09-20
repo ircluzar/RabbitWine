@@ -115,3 +115,16 @@ function createProgram(vsSrc, fsSrc) {
   
   return prog;
 }
+
+// ----------------------------------------------------------------------------
+// Legacy Global Exports (Non-module environment compatibility)
+// ----------------------------------------------------------------------------
+// Several pipeline scripts (e.g., walls/shaders.js) still probe window.gl and
+// window.createProgram to decide when they can safely build resources. During
+// refactor to core/* we stopped assigning these, causing deferred init loops
+// to stall. We restore lightweight global aliases here.
+if (typeof window !== 'undefined') {
+  if (!window.gl) window.gl = gl;
+  if (!window.createProgram) window.createProgram = createProgram;
+  if (!window.createRenderTarget) window.createRenderTarget = createRenderTarget;
+}

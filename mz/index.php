@@ -84,6 +84,7 @@ function bust($path) {
     <script src="<?php echo bust('./js/pipelines/grid.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/tiles.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/trail.js'); ?>"></script>
+    <script src="<?php echo bust('./js/pipelines/walls/shaders.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/walls.js'); ?>"></script>
   <script src="<?php echo bust('./js/pipelines/remove-debug.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/player.js'); ?>"></script>
@@ -118,6 +119,7 @@ function bust($path) {
   <!-- Multiplayer: use same-origin /update (proxied by update.php) to avoid mixed content on HTTPS pages -->
   <script>window.MP_SERVER = "";</script>
   <!-- Multiplayer client -->
+  <script src="<?php echo bust('./js/app/multiplayer/config.js'); ?>"></script>
   <script src="<?php echo bust('./js/app/multiplayer.js'); ?>"></script>
     <!-- App bootstrap (Milestone 6) -->
     <script src="<?php echo bust('./js/app/bootstrap.js'); ?>"></script>

@@ -373,6 +373,20 @@ function render(now) {
 resizeCanvasToViewport();
 // Initialize camera yaw to player angle to avoid initial snap
 state.camYaw = state.player.angle;
+
+// Proactively initialize wall resources if dependencies are present.
+// (Deferred loop in walls.js will still catch if this runs too early.)
+try {
+  if (typeof window !== 'undefined' && window.gl && window.initWallShaders && window.createWallGeometry) {
+    if (!window.wallProgram) {
+      const ok = (typeof initWallResources === 'function') ? initWallResources() : false;
+      if (ok) {
+        console.log('[BOOT] Wall resources initialized eagerly');
+      }
+    }
+  }
+} catch(e){ console.warn('[BOOT] Early wall init attempt failed:', e); }
+
 requestAnimationFrame(render);
 
 // If a save restored player position, sync camera follow point immediately

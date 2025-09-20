@@ -14,9 +14,28 @@
  * @sideEffects Modifies state.player position, velocity, grounded state, and movement flags
  */
 
-// ============================================================================
-// Terrain Height Calculation System
-// ============================================================================
+// Import terrain height calculation functions
+try {
+  if (typeof document !== 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'js/gameplay/physics/terrain.js';
+    document.head.appendChild(script);
+  }
+} catch(_) {
+  // Fallback for environments without DOM
+  if (typeof importScripts !== 'undefined') {
+    try { importScripts('js/gameplay/physics/terrain.js'); } catch(_) {}
+  }
+}
+
+// ╔════════════════════════════════════════════════════════════╗
+// ║ SEGMENT: physics-terrain                                    ║
+// ║ CONDEMNED: Extracted to gameplay/physics/terrain.js        ║
+// ║ Functions: groundHeightAt, landingHeightAt, ceilingHeightAt ║
+// ╚════════════════════════════════════════════════════════════╝
+
+// Terrain height calculation functions are now provided by terrain.js module
+// Global exports maintained for compatibility via window object
 
 /**
  * Calculate ground height at any world coordinates with support for complex terrain
