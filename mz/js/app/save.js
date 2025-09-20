@@ -1,51 +1,156 @@
+/**
+ * @fileoverview Lightweight persistent save system for MZ game
+ * @description Manages player state persistence, item collection tracking,
+ * level progress, and UI preferences. Supports both legacy and new save formats
+ * with automatic migration and backward compatibility.
+ * 
+ * @author MZ Team
+ * @version 1.0.0
+ * 
+ * @requires None - Standalone save system
+ * @exports {Object} Global save system methods added to window
+ */
+
 "use strict";
-// Lightweight persistent save system: stores player state, unlock flags, UI flags, and collected items.
+
 (function(){
   if (typeof window === 'undefined') return;
+  
+  /** @const {string} LocalStorage key for save data */
   const SAVE_KEY = 'mz-save-v1';
-  // LEGACY (pre-composite) simple collected world-pos keys (x,z) - retained for backward compat
+  
+  // === Legacy Save Data Structures (for backward compatibility) ===
+  /** @type {Set<string>} Legacy collected items by world position (x,z) */
   const collected = new Set();
-  const collectedPayloads = new Set(); // legacy global payloads
-  const purpleCollected = new Map();   // legacy level -> Set(x,z)
-  // NEW: Yellow items keyed by (levelId + '|' + payload)
-  const yellowByLevel = new Map(); // levelId -> Set(payload)
-  // NEW: Purple items keyed by (levelId + '|' + x,y,z) with rounded coords
-  const purple3DByLevel = new Map(); // levelId -> Set("x,y,z")
-  // Totals of purple items per level (persisted)
-  const purpleTotalsByLevel = new Map(); // levelId -> number
-  // Completed levels set (persisted)
+  
+  /** @type {Set<string>} Legacy global payloads collection */
+  const collectedPayloads = new Set();
+  
+  /** @type {Map<string, Set<string>>} Legacy purple items by level -> Set(x,z) */
+  const purpleCollected = new Map();
+  
+  // === New Save Data Structures ===
+  /** @type {Map<string, Set<string>>} Yellow items by levelId -> Set(payload) */
+  const yellowByLevel = new Map();
+  
+  /** @type {Map<string, Set<string>>} Purple items by levelId -> Set("x,y,z") */
+  const purple3DByLevel = new Map();
+  
+  /** @type {Map<string, number>} Purple item totals per level (for statistics) */
+  const purpleTotalsByLevel = new Map();
+  
+  /** @type {Set<string>} Completed levels set */
   const completedLevels = new Set();
+  
+  /** @type {number|null} Autosave timer ID */
   let autosaveId = null;
+  
+  /** @type {boolean} Flag to temporarily disable saving (for bulk operations) */
   let suppressSaving = false;
-  function onBeforeUnloadHandler(){ try { if (!suppressSaving) saveNow(); } catch(_){ } }
+  
+  /**
+   * Browser beforeunload handler to ensure save on page close
+   */
+  function onBeforeUnloadHandler(){ 
+    try { 
+      if (!suppressSaving) saveNow(); 
+    } catch(_){ 
+      // Ignore save errors during unload
+    } 
+  }
 
-  function round2(n){ return Math.round(n * 100) / 100; }
-  // Identify items by x,z only (y may vary slightly or be implicit)
-  function itemKey(x, z){ return `${round2(x)},${round2(z)}`; } // legacy 2D key
-  function xyzKey(x,y,z){ return `${round2(x)},${round2(y)},${round2(z)}`; }
-  // Current level name helper (string like 'ROOT', '1A', etc.)
+  /**
+   * Rounds number to 2 decimal places for consistent coordinate storage
+   * @param {number} n - Number to round
+   * @returns {number} Rounded number
+   */
+  function round2(n){ 
+    return Math.round(n * 100) / 100; 
+  }
+  
+  /**
+   * Creates legacy 2D item key from x,z coordinates
+   * @param {number} x - X coordinate
+   * @param {number} z - Z coordinate  
+   * @returns {string} Item key in format "x,z"
+   */
+  function itemKey(x, z){ 
+    return `${round2(x)},${round2(z)}`; 
+  }
+  
+  /**
+   * Creates 3D item key from x,y,z coordinates
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @param {number} z - Z coordinate
+   * @returns {string} Item key in format "x,y,z"
+   */
+  function xyzKey(x, y, z){ 
+    return `${round2(x)},${round2(y)},${round2(z)}`; 
+  }
+  
+  /**
+   * Gets current level name from global state
+   * @returns {string} Level name (e.g., 'ROOT', '1A', '2-3')
+   */
   function getLevelName(){
-    try { if (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL) return String(window.MP_LEVEL); } catch(_){ }
-    try { if (typeof MP_LEVEL === 'string' && MP_LEVEL) return MP_LEVEL; } catch(_){ }
+    try { 
+      if (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL) {
+        return String(window.MP_LEVEL); 
+      }
+    } catch(_){ }
+    
+    try { 
+      if (typeof MP_LEVEL === 'string' && MP_LEVEL) {
+        return MP_LEVEL; 
+      }
+    } catch(_){ }
+    
     return 'ROOT';
   }
+  
+  /**
+   * Gets current level ID for save scoping
+   * @returns {string} Level identifier
+   */
   function getLevelId(){
-    // Prefer the full level name (e.g., '1A', '2-3', 'ROOT') for per-level scoping
-    try { if (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL) return String(window.MP_LEVEL); } catch(_){ }
-    try { if (typeof MP_LEVEL === 'string' && MP_LEVEL) return MP_LEVEL; } catch(_){ }
+    // Prefer the full level name for per-level scoping
+    try { 
+      if (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL) {
+        return String(window.MP_LEVEL); 
+      }
+    } catch(_){ }
+    
+    try { 
+      if (typeof MP_LEVEL === 'string' && MP_LEVEL) {
+        return MP_LEVEL; 
+      }
+    } catch(_){ }
+    
     // Fallback to numeric group id if name is unavailable
-    try { if (state && state.level && state.level.id != null) return String(state.level.id); } catch(_){ }
+    try { 
+      if (state && state.level && state.level.id != null) {
+        return String(state.level.id); 
+      }
+    } catch(_){ }
+    
     return 'ROOT';
   }
 
+  /**
+   * Builds save payload from current game state
+   * @returns {Object} Save data object with all persistent game state
+   */
   function buildPayload(){
     const p = state.player || {};
     const payload = {
-      v: 1,
-      t: Date.now(),
+      v: 1, // Save format version
+      t: Date.now(), // Timestamp
       levelName: getLevelName(),
       player: {
-        x: p.x || 0, y: p.y || 0, z: p.z || 0,
+        x: p.x || 0, 
+        y: p.y || 0, 
+        z: p.z || 0,
         angle: p.angle || 0,
         speed: p.speed || 0,
         movementMode: p.movementMode || 'stationary'

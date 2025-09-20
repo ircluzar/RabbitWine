@@ -1,53 +1,117 @@
+/**
+ * @fileoverview Simple, reliable looping music player for MZ game
+ * @description Provides a single-instance HTML5 audio player with Web Audio API
+ * filtering support. Designed for mobile-friendly music playback with explicit
+ * user gesture unlock requirements and pitch-preserving playback rate control.
+ * 
+ * @author MZ Team
+ * @version 1.0.0
+ * 
+ * @requires None - Standalone audio system
+ * @exports {Object} Global music system methods added to window
+ */
+
 "use strict";
-// Simple, reliable looping music player modeled after sfx.js behavior.
-// - Single HTMLAudioElement instance
-// - Explicit unlock gated by a user gesture (mobile-friendly)
-// - No muted/unmute hacks; play is attempted directly within/until after the gesture
-// - Minimal API compatibility with prior music.js
+
 (function(){
   if (typeof window === 'undefined') return;
 
+  // === Private State Variables ===
+  /** @type {HTMLAudioElement|null} Single audio element for music playback */
   let _audio = null;
-  let _volume = 0.20; // default 50%
+  
+  /** @type {number} Master volume level (0.0 - 1.0) */
+  let _volume = 0.20; // Default 20% volume
+  
+  /** @type {string} Currently loaded audio source URL */
   let _currentSrc = "";
+  
+  /** @type {boolean} Whether audio context has been unlocked by user gesture */
   let _unlocked = false;
+  
+  /** @type {string} Audio source pending unlock */
   let _pendingSrc = "";
-  // Optional Web Audio for filtering during first acceleration
-  let _ctx = null; // AudioContext
-  let _srcNode = null; // MediaElementSourceNode
-  let _filterNode = null; // BiquadFilterNode (lowpass)
-  let _wired = false; // whether the graph is connected
+  
+  // === Web Audio API Components (for filtering) ===
+  /** @type {AudioContext|null} Web Audio context for advanced processing */
+  let _ctx = null;
+  
+  /** @type {MediaElementSourceNode|null} Source node connecting HTML audio to Web Audio */
+  let _srcNode = null;
+  
+  /** @type {BiquadFilterNode|null} Lowpass filter for acceleration effects */
+  let _filterNode = null;
+  
+  /** @type {boolean} Whether Web Audio graph is connected */
+  let _wired = false;
 
-  function clamp01(v){ return Math.max(0, Math.min(1, Number(v)||0)); }
+  /**
+   * Clamps value to 0-1 range
+   * @param {number} v - Value to clamp
+   * @returns {number} Clamped value between 0 and 1
+   */
+  function clamp01(v){ 
+    return Math.max(0, Math.min(1, Number(v) || 0)); 
+  }
 
-  function _resolve(src){ return String(src || ""); }
+  /**
+   * Resolves and validates audio source URL
+   * @param {string} src - Audio source URL
+   * @returns {string} Validated source string
+   */
+  function _resolve(src){ 
+    return String(src || ""); 
+  }
 
+  /**
+   * Initializes the HTML5 audio element with optimal settings
+   * Configures cross-origin, mobile playback, and pitch preservation settings.
+   * 
+   * @returns {HTMLAudioElement|null} Initialized audio element or null on failure
+   */
   function init(){
     if (_audio) return _audio;
+    
     try {
       _audio = new Audio();
       _audio.loop = true;
       _audio.preload = 'auto';
       _audio.volume = _volume;
-      // Match sfx.js behavior for consistency
+      
+      // Cross-origin settings for compatibility with sfx.js
       _audio.crossOrigin = 'anonymous';
-      // iOS inline playback hint
+      
+      // Mobile-friendly playback settings
       _audio.playsInline = true;
       _audio.autoplay = false;
-      // Default: allow pitch to change with playbackRate
+      
+      // Configure pitch preservation for playback rate changes
       try {
         if ('preservesPitch' in _audio) _audio.preservesPitch = false;
         if ('mozPreservesPitch' in _audio) _audio.mozPreservesPitch = false;
         if ('webkitPreservesPitch' in _audio) _audio.webkitPreservesPitch = false;
-      } catch(_){}
-    } catch(_){ /* ignore */ }
+      } catch(_){
+        // Ignore pitch preservation errors on unsupported browsers
+      }
+    } catch(_){ 
+      // Audio element creation failed
+    }
+    
     return _audio;
   }
 
+  /**
+   * Sets master volume level for music playback
+   * @param {number} v - Volume level (0.0 - 1.0)
+   */
   function setVolume(v){
     _volume = clamp01(v);
     if (_audio) {
-      try { _audio.volume = _volume; } catch(_){}
+      try { 
+        _audio.volume = _volume; 
+      } catch(_){
+        // Volume setting failed
+      }
     }
   }
   function getVolume(){ return _volume; }

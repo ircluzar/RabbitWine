@@ -1,52 +1,121 @@
 /**
- * Main render loop and application bootstrap for the MZ game.
- * TODO: Remove this duplicate file and update imports to use js/bootstrap.js instead.
- * Dependencies: All core modules, state management, WebGL pipelines. Side effects: Modifies WebGL state, calls requestAnimationFrame.
+ * @fileoverview Main application bootstrap and render loop for MZ game
+ * @description Handles the core application lifecycle including initialization,
+ * frame rendering, viewport management, and coordinate transformations.
+ * Provides the main game loop and manages WebGL rendering pipeline.
+ * 
+ * @author MZ Team
+ * @version 1.0.0
+ * 
+ * @requires config.js - Application state and configuration
+ * @requires gl.js - WebGL context and utilities
+ * @requires All rendering pipeline modules
+ * @exports {Function} render - Main render loop function
+ * @exports {Function} window.isWorldPointVisibleAny - Global visibility helper
  */
 
-// Global visibility helper that checks both top and bottom MVPs (and last fallback)
+/**
+ * Global world point visibility checker
+ * Tests if a 3D world point is visible in any of the active camera views.
+ * Performs clip space transformation and frustum testing against all MVPs.
+ */
 if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'function'){
-  window.isWorldPointVisibleAny = function(x,y,z){
+  /**
+   * Checks if a world point is visible in any active camera viewport
+   * @param {number} x - World X coordinate
+   * @param {number} y - World Y coordinate  
+   * @param {number} z - World Z coordinate
+   * @returns {boolean} True if point is visible in any viewport
+   */
+  window.isWorldPointVisibleAny = function(x, y, z){
     try {
-      const vis = (m)=>{
+      /**
+       * Tests visibility against a specific MVP matrix
+       * @param {Float32Array} m - Model-view-projection matrix
+       * @returns {boolean} True if point is visible in this view
+       */
+      const vis = (m) => {
         if (!m) return false;
-        const v = [x,y,z,1];
-        const clipX = v[0]*m[0] + v[1]*m[4] + v[2]*m[8]  + v[3]*m[12];
-        const clipY = v[0]*m[1] + v[1]*m[5] + v[2]*m[9]  + v[3]*m[13];
-        const clipZ = v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14];
-        const clipW = v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15];
+        
+        // Transform world point to clip space
+        const v = [x, y, z, 1];
+        const clipX = v[0] * m[0] + v[1] * m[4] + v[2] * m[8]  + v[3] * m[12];
+        const clipY = v[0] * m[1] + v[1] * m[5] + v[2] * m[9]  + v[3] * m[13];
+        const clipZ = v[0] * m[2] + v[1] * m[6] + v[2] * m[10] + v[3] * m[14];
+        const clipW = v[0] * m[3] + v[1] * m[7] + v[2] * m[11] + v[3] * m[15];
+        
         if (clipW === 0) return false;
-        const nx = clipX/clipW, ny = clipY/clipW, nz = clipZ/clipW;
-        return nx>=-1 && nx<=1 && ny>=-1 && ny<=1 && nz>=-1 && nz<=1;
+        
+        // Perspective divide to normalized device coordinates
+        const nx = clipX / clipW;
+        const ny = clipY / clipW; 
+        const nz = clipZ / clipW;
+        
+        // Test against NDC cube bounds [-1, 1]
+        return nx >= -1 && nx <= 1 && 
+               ny >= -1 && ny <= 1 && 
+               nz >= -1 && nz <= 1;
       };
-      return vis(window._mvpBottom) || vis(window._mvpTop) || vis(window._lastMVP);
-    } catch(_){ return false; }
+      
+      // Test against all available viewport matrices
+      return vis(window._mvpBottom) || 
+             vis(window._mvpTop) || 
+             vis(window._lastMVP);
+             
+    } catch(_){ 
+      return false; 
+    }
   };
 }
 
 /**
- * Main render function called every frame
- * @param {number} now - Current timestamp from requestAnimationFrame
+ * Main render function called every frame by requestAnimationFrame
+ * Handles game state updates, camera management, and the complete rendering pipeline.
+ * 
+ * @param {number} now - Current timestamp in milliseconds from requestAnimationFrame
  */
 function render(now) {
+  // Update frame counter and calculate delta time
   state.frames++;
   const dt = Math.min(0.05, Math.max(0, (now - state.timePrev) / 1000));
   state.timePrev = now;
   state.nowSec = now / 1000;
+  
+  // Update game logic and physics
   stepGame(dt);
-  // Smooth bottom camera vertical follow toward player Y (lag a little)
+  
+  // === Camera Management ===
+  // Smooth bottom camera vertical follow with exponential lag
   try {
-    if (!Number.isFinite(state.bottomCamY)) state.bottomCamY = state.camFollow.y;
-    const k = (typeof state.bottomCamLagK === 'number' && state.bottomCamLagK > 0) ? state.bottomCamLagK : 8.0;
+    if (!Number.isFinite(state.bottomCamY)) {
+      state.bottomCamY = state.camFollow.y;
+    }
+    
+    const k = (typeof state.bottomCamLagK === 'number' && state.bottomCamLagK > 0) 
+      ? state.bottomCamLagK 
+      : 8.0;
     const a = 1 - Math.exp(-k * dt);
     state.bottomCamY += (state.camFollow.y - state.bottomCamY) * a;
-  } catch(_) {}
-  // Multiplayer net tick + ghost interpolation
-  try { if (typeof __mp_onFrame === 'function') __mp_onFrame(dt, now); } catch(_){}
-  // 1) Render into offscreen low-res target (480x720)
+  } catch(_) {
+    // Fallback: direct camera assignment if lag calculation fails
+  }
+  
+  // === Multiplayer Updates ===
+  // Handle multiplayer networking and ghost interpolation
+  try { 
+    if (typeof __mp_onFrame === 'function') {
+      __mp_onFrame(dt, now); 
+    }
+  } catch(_) {
+    // Ignore multiplayer errors if system not available
+  }
+  
+  // === Offscreen Rendering Pass ===
+  // Render scene to low-resolution offscreen target (480x720)
   gl.bindFramebuffer(gl.FRAMEBUFFER, offscreen.fbo);
   gl.viewport(0, 0, offscreen.w, offscreen.h);
-  // Clear offscreen
+  
+  // Clear offscreen buffer
   gl.disable(gl.SCISSOR_TEST);
   // Offscreen base clear: darkened base color
   try {

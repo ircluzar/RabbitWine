@@ -17,82 +17,130 @@ function handleSwipeTurns(){
 
 /**
  * Render player character and movement trail
- * @param {Float32Array} mvp - Model-view-projection matrix
+ * Handles both trail visualization and player model rendering with proper depth testing
+ * and blending modes.
+ * 
+ * @param {Float32Array} mvp - Model-view-projection matrix for rendering
  */
 function drawPlayerAndTrail(mvp){
   if (state._hidePlayer){
-    // Still draw preview/visor if hooked from bootstrap
-  } else {
-  // Trail as instanced wireframe cubes
+    // Player hidden mode - preview/visor rendering handled elsewhere
+    return;
+  }
+  
+  // === Trail Rendering ===
+  // Render movement trail as instanced wireframe cubes
   const pts = state.trail.points;
   if (pts.length >= 1){
+    // Prepare instance data: [x, y, z, birth_time] for each trail point
     const inst = new Float32Array(pts.length * 4);
-    for (let i=0;i<pts.length;i++){ 
-      const p=pts[i]; 
-      inst[i*4+0]=p[0]; inst[i*4+1]=p[1]; inst[i*4+2]=p[2]; inst[i*4+3]=p[3]; 
+    for (let i = 0; i < pts.length; i++){ 
+      const p = pts[i]; 
+      inst[i * 4 + 0] = p[0]; // x
+      inst[i * 4 + 1] = p[1]; // y  
+      inst[i * 4 + 2] = p[2]; // z
+      inst[i * 4 + 3] = p[3]; // birth time
     }
-  // Persisted edge jitter update (~16ms bucket)
-  if (typeof ensureTrailEdgeJitterTick === 'function') ensureTrailEdgeJitterTick(state.nowSec || (performance.now()/1000));
-  gl.useProgram(trailCubeProgram);
+    
+    // Update trail edge jitter animation (16ms intervals)
+    if (typeof ensureTrailEdgeJitterTick === 'function') {
+      ensureTrailEdgeJitterTick(state.nowSec || (performance.now() / 1000));
+    }
+    
+    // Configure trail cube shader
+    gl.useProgram(trailCubeProgram);
     gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
     gl.uniform1f(tc_u_scale, 0.12);
-    gl.uniform1f(tc_u_now, state.nowSec || (performance.now()/1000));
+    gl.uniform1f(tc_u_now, state.nowSec || (performance.now() / 1000));
     gl.uniform1f(tc_u_ttl, state.trail.ttl);
     gl.uniform1i(tc_u_dashMode, 0);
     gl.uniform1f(tc_u_mulAlpha, 1.0);
     gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
-  // Shader jitter disabled; we mutate VBO persistently instead
-  if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
+    
+    // Disable shader-based animation (using persistent VBO mutation instead)
+    if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) {
+      gl.uniform1i(tc_u_useAnim, 0);
+    }
+    
+    // Upload instance data
     gl.bindVertexArray(trailCubeVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
-  // Upload per-instance corner offsets only for top view; zeros for bottom
-  if (typeof trailCubeVBO_Corners !== 'undefined'){
-    if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
-      const now = state.nowSec || (performance.now()/1000);
-      const keys = new Array(pts.length);
-      for (let i=0;i<pts.length;i++){ const p=pts[i]; keys[i] = `trail@${p[3]||0}`; }
-      const packed = getTrailCornerOffsetsBuffer(keys, now);
-      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-      gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
-    } else {
-      // Bottom view: zero offsets
-      const zeros = new Float32Array(pts.length * 8 * 3);
-      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-      gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+    
+    // Handle per-instance corner offsets for different camera views
+    if (typeof trailCubeVBO_Corners !== 'undefined'){
+      if (state.cameraKindCurrent === 'top' && typeof getTrailCornerOffsetsBuffer === 'function'){
+        // Top view: apply dynamic corner offsets for animation
+        const now = state.nowSec || (performance.now() / 1000);
+        const keys = new Array(pts.length);
+        for (let i = 0; i < pts.length; i++){ 
+          const p = pts[i]; 
+          keys[i] = `trail@${p[3] || 0}`; 
+        }
+        const packed = getTrailCornerOffsetsBuffer(keys, now);
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+        gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+      } else {
+        // Bottom view: use zero offsets (no animation)
+        const zeros = new Float32Array(pts.length * 8 * 3);
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+        gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+      }
     }
-    }
-    // Satisfy a_axis per-instance attrib (layout=3) with zeros; u_useAnim=0 makes it unused
+    
+    // Upload axis data for per-instance attribute (unused when u_useAnim=0)
     if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts.length * 3), gl.DYNAMIC_DRAW);
     }
+    
+    // Render trail with alpha blending
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.depthMask(false);
+    gl.depthMask(false); // Don't write to depth buffer
     gl.drawArraysInstanced(gl.LINES, 0, 24, pts.length);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
   }
-  // Player arrow
+  
+  // === Player Character Rendering ===
   const p = state.player;
-  let model = mat4Multiply(mat4Translate(p.x, p.y+0.25, p.z), mat4RotateY(p.angle));
-  model = mat4Multiply(model, mat4Scale(1,1,1));
-  const nowSec = state.nowSec || (performance.now()/1000);
+  
+  // Calculate player model transformation matrix
+  let model = mat4Multiply(
+    mat4Translate(p.x, p.y + 0.25, p.z), 
+    mat4RotateY(p.angle)
+  );
+  model = mat4Multiply(model, mat4Scale(1, 1, 1));
+  
+  const nowSec = state.nowSec || (performance.now() / 1000);
   const inBall = !!p.isBallMode;
   const flash = inBall && nowSec <= (p._ballFlashUntilSec || 0);
+  
   if (!inBall || flash){
-    // First pass: draw only the visible (not occluded) parts, write depth
+    // === First Pass: Visible Player Geometry ===
+    // Draw only the visible (not occluded) parts, write to depth buffer
     gl.useProgram(playerProgram);
     gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
     gl.uniformMatrix4fv(pl_u_model, false, model);
+    
+    // Bind player texture array
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
     if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-    // Force white usually while frozen; override to RED for one-frame flash on ball enter
-    if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
-    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 0);
+    
+    // Configure color effects: white when frozen, red flash on ball mode enter
+    if (pl_u_forceWhite) {
+      gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
+    }
+    
+    // Disable stipple pattern for first pass
+    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) {
+      gl.uniform1i(pl_u_stipple, 0);
+    }
+    
+    // Render with depth testing and writing
     gl.bindVertexArray(playerVAO);
     gl.depthFunc(gl.LEQUAL);
     gl.depthMask(true);
@@ -101,42 +149,66 @@ function drawPlayerAndTrail(mvp){
     gl.bindVertexArray(null);
   }
 
-  // Second pass: draw only occluded fragments with checkerboard stipple
+  // === Second Pass: Occluded Player Geometry ===
+  // Draw occluded fragments with checkerboard stipple pattern
   if (!inBall || flash){
     gl.useProgram(playerProgram);
     gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
     gl.uniformMatrix4fv(pl_u_model, false, model);
+    
+    // Bind player texture array
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
     if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-    if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
-    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 1);
+    
+    // Configure color effects
+    if (pl_u_forceWhite) {
+      gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
+    }
+    
+    // Enable stipple pattern for occluded parts
+    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) {
+      gl.uniform1i(pl_u_stipple, 1);
+    }
+    
+    // Render only occluded fragments with alpha blending
     gl.bindVertexArray(playerVAO);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.depthFunc(gl.GREATER); // Only draw where player is behind existing depth (occluded)
-    gl.depthMask(false);      // Don't disturb depth buffer
+    gl.depthFunc(gl.GREATER); // Only draw where player is behind existing geometry
+    gl.depthMask(false);      // Don't modify depth buffer
     gl.drawArrays(gl.TRIANGLES, 0, 36);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
-    gl.depthFunc(gl.LESS);
+    gl.depthFunc(gl.LESS);    // Restore normal depth testing
     gl.bindVertexArray(null);
   }
 
-  // White wireframe contour slightly larger than the cube, floating around it
-  // Persisted edge jitter update (~16ms bucket)
-  if (typeof ensureTrailEdgeJitterTick === 'function') ensureTrailEdgeJitterTick(state.nowSec || (performance.now()/1000));
+  // === Player Wireframe Contour ===
+  // White wireframe outline slightly larger than the cube
+  if (typeof ensureTrailEdgeJitterTick === 'function') {
+    ensureTrailEdgeJitterTick(state.nowSec || (performance.now() / 1000));
+  }
+  
   gl.useProgram(trailCubeProgram);
   gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
-  gl.uniform1f(tc_u_scale, 0.54);
+  gl.uniform1f(tc_u_scale, 0.54); // Slightly larger than player cube for outline effect
   gl.uniform1f(tc_u_now, nowSec);
   gl.uniform1f(tc_u_ttl, 1.0);
-  gl.uniform1i(tc_u_dashMode, 1);
-  gl.uniform1f(tc_u_mulAlpha, 0.85);
-  // Normal: white; Ball mode: red
-  if (inBall && !flash) gl.uniform3f(tc_u_lineColor, 1.0, 0.2, 0.2); else gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0);
-  // Shader jitter disabled; VBO already carries persistent jitter
-  if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
+  gl.uniform1i(tc_u_dashMode, 1); // Dashed outline
+  gl.uniform1f(tc_u_mulAlpha, 0.85); // Semi-transparent
+  
+  // Color coding: white for normal mode, red for ball mode
+  if (inBall && !flash) {
+    gl.uniform3f(tc_u_lineColor, 1.0, 0.2, 0.2); // Red in ball mode
+  } else {
+    gl.uniform3f(tc_u_lineColor, 1.0, 1.0, 1.0); // White in normal mode
+  }
+  
+  // Disable shader-based jitter (using persistent VBO mutation instead)
+  if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) {
+    gl.uniform1i(tc_u_useAnim, 0);
+  }
   gl.bindVertexArray(trailCubeVAO);
   // Per-instance corners for the player's outline (single instance)
   if (typeof trailCubeVBO_Corners !== 'undefined'){
