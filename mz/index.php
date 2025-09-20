@@ -85,6 +85,7 @@ function bust($path) {
     <script src="<?php echo bust('./js/pipelines/tiles.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/trail.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/walls/shaders.js'); ?>"></script>
+    <script src="<?php echo bust('./js/pipelines/walls/buffers.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/walls.js'); ?>"></script>
   <script src="<?php echo bust('./js/pipelines/remove-debug.js'); ?>"></script>
     <script src="<?php echo bust('./js/pipelines/player.js'); ?>"></script>
@@ -98,6 +99,7 @@ function bust($path) {
     <script src="<?php echo bust('./js/ui/input-keyboard.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/seam.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/toggle.js'); ?>"></script>
+  <script src="<?php echo bust('./js/ui/editor/spans.js'); ?>"></script>
   <script src="<?php echo bust('./js/ui/editor.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/dom-events.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/start-modal.js'); ?>"></script>
@@ -123,6 +125,8 @@ function bust($path) {
   <script>window.MP_SERVER = "";</script>
   <!-- Multiplayer client -->
   <script src="<?php echo bust('./js/app/multiplayer/config.js'); ?>"></script>
+  <script src="<?php echo bust('./js/app/multiplayer/connection.js'); ?>"></script>
+  <script src="<?php echo bust('./js/app/multiplayer/mapDiff.js'); ?>"></script>
   <script src="<?php echo bust('./js/app/multiplayer.js'); ?>"></script>
     <!-- App bootstrap (Milestone 6) -->
     <script src="<?php echo bust('./js/app/bootstrap.js'); ?>"></script>

@@ -48,42 +48,16 @@ let wall_u_stippleRadius, wall_u_stippleInvert, wall_u_stippleAbove;
 
 let wallCurrPosData = null; // Initialized after base data is loaded
 
-// Initialize VAO/VBO setup and geometry processing after shaders are loaded
-let wallVAO = null;
-let wallVBO_PosBase = null;
-let wallVBO_PosJitter = null;
-let wallVBO_Inst = null;
-let wallWireVAO = null;
+// ╔════════════════════════════════════════════════════════════╗
+// ║ SEGMENT: walls-buffers (delegated)                          ║
+// ║ CONDEMNED: Logic lives in pipelines/walls/buffers.js       ║
+// ║ This file now only references exported buffers             ║
+// ╚════════════════════════════════════════════════════════════╝
 
-function initWallVAOs() {
-  if (!wallBasePosData || !window.gl) return false;
-  
-  wallCurrPosData = new Float32Array(wallBasePosData);
-  
-  // VAO/VBO setup
-  wallVAO = gl.createVertexArray();
-  gl.bindVertexArray(wallVAO);
-  wallVBO_PosBase = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosBase);
-  gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-  wallVBO_PosJitter = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_PosJitter);
-  gl.bufferData(gl.ARRAY_BUFFER, wallBasePosData, gl.DYNAMIC_DRAW);
-  wallVBO_Inst = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(0), gl.DYNAMIC_DRAW);
-  gl.enableVertexAttribArray(1);
-  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
-  gl.vertexAttribDivisor(1, 1);
-  gl.bindVertexArray(null);
-  gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-  // Wireframe VAO for outlines
-  wallWireVAO = gl.createVertexArray();
-  
-  return true;
+// Accessors to buffer objects now come from buffers.js
+function __wall_getBuffers(){
+  try { if (window.getWallBuffers) return window.getWallBuffers(); } catch(_){ }
+  return { wallVAO:null, wallVBO_PosBase:null, wallVBO_PosJitter:null, wallVBO_Inst:null, wallWireVAO:null };
 }
 
 // Enhanced initialization that sets up both shaders and VAOs
@@ -322,6 +296,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   if (!totalCount) return;
   
   // Ensure wall resources are initialized before drawing
+  const { wallVAO } = __wall_getBuffers();
   if (!wallProgram || !wallVAO) {
     console.warn('[WALLS] Drawing skipped - resources not initialized');
     return;
@@ -373,6 +348,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   };
   const voxX=2, voxY=2, voxZ=2;
   gl.uniform3f(wall_u_voxCount, voxX, voxY, voxZ);
+  const { wallVBO_PosJitter, wallVBO_PosBase, wallVBO_Inst } = __wall_getBuffers();
   gl.bindVertexArray(wallVAO);
   // Point attribute 0 to the appropriate buffer per view (top=jitter, bottom=base)
   gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
@@ -456,7 +432,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   }
   // Second: half-step walls (half height)
   if (wallsHalf.length && !__isFullyFaded(0.0, 0.5)){
-    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+  const { wallVBO_Inst } = __wall_getBuffers();
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsHalf, gl.DYNAMIC_DRAW);
     const wallCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
     gl.uniform3fv(wall_u_color, new Float32Array(wallCol));
@@ -497,7 +474,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   // Fences (post + rails) with brightened level color and adjacency-based rails
   if (wallsFence.length && !__isFullyFaded(0.0, 1.5)){
     // Instance buffer holds (x,y) grid coords
-    gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+  const { wallVBO_Inst } = __wall_getBuffers();
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
     gl.bufferData(gl.ARRAY_BUFFER, wallsFence, gl.DYNAMIC_DRAW);
     // Color
     let baseCol = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
@@ -548,7 +526,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       }
       if (!have) continue;
       const arr = railInstances.subarray(0, have*2);
-      gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
+  const { wallVBO_Inst } = __wall_getBuffers();
+  gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst);
       gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
       // Helper to draw a filtered subset for a given vy
       const drawVy = (vy, filterSet)=>{
@@ -560,6 +539,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
             const gx = arr[i*2+0]|0, gy = arr[i*2+1]|0; if (filterSet.has(`${gx},${gy}`)){ tmp[h2*2+0]=gx; tmp[h2*2+1]=gy; h2++; }
           }
           if (!h2) return; subset = tmp.subarray(0, h2*2);
+          const { wallVBO_Inst } = __wall_getBuffers();
           gl.bindBuffer(gl.ARRAY_BUFFER, wallVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, subset, gl.DYNAMIC_DRAW);
         }
         // Depth pre-pass
