@@ -1,23 +1,39 @@
 /**
  * Global application state for the MZ game engine.
- * Centralized state object containing player data, camera settings, input state, and rendering config.
- * Exports: state object for read/write access by all modules.
- * Dependencies: BASE_WIDTH, BASE_HEIGHT from constants.js. Side effects: Accesses window.devicePixelRatio and performance.now().
+ * Centralized state object containing player data, camera settings, input state, rendering config,
+ * and level progression. This module provides the single source of truth for all game state
+ * and includes level management, color palette system, and utility functions.
+ * 
+ * @fileoverview Central game state management and level configuration
+ * @exports state - Global game state object
+ * @exports setLevel() - Level switching with palette updates
+ * @exports parseLevelGroupId() - Level name parsing utilities
+ * @exports getLevelBaseColor() - Color system getters
+ * @dependencies BASE_WIDTH, BASE_HEIGHT from constants.js
+ * @sideEffects Accesses window.devicePixelRatio and performance.now(), initializes default level
  */
 
-// Level base colors & style flags (extend / tweak as more levels are added)
-// coloredOutlines = true -> use derived wall color for cube outlines; false -> force black outlines
-// coloredBg = true -> tint scene & viewport clears with darkened base color; false -> use black background
+/**
+ * Level-specific visual configuration including base colors and style flags
+ * Each level has a unique palette that affects UI, background, and outline rendering
+ * @const {Object<number, Object>}
+ */
 const LEVEL_BASE_COLORS = {
-  1: { color: '#0fd5db', coloredOutlines: false, coloredBg: false },
-  2: { color: '#ed92ff', coloredOutlines: true,  coloredBg: true },
-  3: { color: '#db8b0f', coloredOutlines: true,  coloredBg: false },
-  4: { color: '#82ff5d', coloredOutlines: false, coloredBg: true },
-  5: { color: '#ff4be7', coloredOutlines: true, coloredBg: true },
-  6: { color: '#c2bc9d', coloredOutlines: false, coloredBg: false },
-  7: { color: '#ff6a6a', coloredOutlines: true, coloredBg: true },
+  1: { color: '#0fd5db', coloredOutlines: false, coloredBg: false }, // Teal - clean minimal style
+  2: { color: '#ed92ff', coloredOutlines: true,  coloredBg: true },  // Purple - vibrant style
+  3: { color: '#db8b0f', coloredOutlines: true,  coloredBg: false }, // Orange - warm style
+  4: { color: '#82ff5d', coloredOutlines: false, coloredBg: true },  // Green - natural style
+  5: { color: '#ff4be7', coloredOutlines: true, coloredBg: true },   // Pink - energetic style
+  6: { color: '#c2bc9d', coloredOutlines: false, coloredBg: false }, // Beige - neutral style
+  7: { color: '#ff6a6a', coloredOutlines: true, coloredBg: true },   // Red - intense style
 };
 
+/**
+ * Converts hex color string to normalized RGB array for WebGL usage
+ * Handles both 3-digit (#rgb) and 6-digit (#rrggbb) hex formats
+ * @param {string} hex - Hex color string (with or without #)
+ * @returns {Array<number>} RGB values in [0,1] range, defaults to white on error
+ */
 function hexToRgb01(hex){
   if (!hex) return [1,1,1];
   const h = hex.replace('#','');
@@ -31,73 +47,117 @@ function hexToRgb01(hex){
   return [r/255,g/255,b/255];
 }
 
-// Global state (moved from config.js)
+/**
+ * Central game state object containing all mutable application data
+ * This object serves as the single source of truth for game state across all modules
+ * @const {Object}
+ */
 const state = {
+  /** Device pixel ratio clamped to reasonable maximum for performance */
   dpr: Math.min(window.devicePixelRatio || 1, 3),
+  /** Logical rendering dimensions (internal resolution) */
   logicalWidth: BASE_WIDTH,
   logicalHeight: BASE_HEIGHT,
+  /** Application start timestamp for timing calculations */
   timeStart: performance.now(),
-  // Active level & palette (baseColor propagates to UI / rendering elements formerly hard-coded to teal)
+  
+  /** Current level configuration and visual palette */
   level: {
+    /** Current level identifier */
     id: 1,
+    /** Base hex color for this level's palette */
     baseColor: (typeof LEVEL_BASE_COLORS[1] === 'string') ? LEVEL_BASE_COLORS[1] : LEVEL_BASE_COLORS[1].color,
+    /** Base color as normalized RGB array for WebGL */
     baseColorRGB: hexToRgb01((typeof LEVEL_BASE_COLORS[1] === 'string') ? LEVEL_BASE_COLORS[1] : LEVEL_BASE_COLORS[1].color),
-  outlineColored: (typeof LEVEL_BASE_COLORS[1] === 'object' && !!LEVEL_BASE_COLORS[1].coloredOutlines) || false,
-  backgroundColored: (typeof LEVEL_BASE_COLORS[1] === 'object' && !!LEVEL_BASE_COLORS[1].coloredBg) || false,
-    palette: { wallRGB: [0,0,0], gridRGB: [0,0,0] }, // temp, filled below
+    /** Whether to use colored outlines (vs black) */
+    outlineColored: (typeof LEVEL_BASE_COLORS[1] === 'object' && !!LEVEL_BASE_COLORS[1].coloredOutlines) || false,
+    /** Whether to tint background with level color */
+    backgroundColored: (typeof LEVEL_BASE_COLORS[1] === 'object' && !!LEVEL_BASE_COLORS[1].coloredBg) || false,
+    /** Derived colors for rendering (computed from base color) */
+    palette: { wallRGB: [0,0,0], gridRGB: [0,0,0] }, // Filled by setLevel()
   },
+  
+  /** Input state tracking for all input devices */
   inputs: {
+    /** Map of active pointer/touch inputs by ID */
     pointers: new Map(), // id -> {x,y,dx,dy,startX,startY,lastT}
+    /** Set of currently pressed keyboard keys */
     keys: new Set(),
+    /** Array of connected gamepad states */
     gamepads: [],
   },
-  seamRatio: 0.5, // 0..1 of canvas height where seam lies (center of handle)
+  
+  /** Viewport split seam position (0=bottom full, 1=top full) */
+  seamRatio: 0.5,
+  
+  /** Performance monitoring */
   fps: 0,
   frames: 0,
   lastFpsT: performance.now(),
+  
+  /** Current letterboxing dimensions for viewport scaling */
   letterboxCss: { x: 0, y: 0, w: 0, h: 0 },
+  
+  /** Previous frame timestamp for delta time calculations */
   timePrev: performance.now(),
-  fillViewport: true, // true = scale to fit viewport, false = 1x native centered
-  debugVisible: false, // HUD visibility controlled by Debug button
+  
+  /** Display mode: true=scale to fit viewport, false=1x native centered */
+  fillViewport: true,
+  
+  /** Debug HUD visibility (controlled by Debug button) */
+  debugVisible: false,
+  /** Player character state and physics */
   player: {
+    /** World position coordinates */
     x: 0, z: 0, y: 0.0,
+    /** Vertical velocity for jumping/falling physics */
     vy: 0.0,
+    /** Whether player is standing on solid ground */
     grounded: true,
+    /** Wall jump ability cooldown timer */
     wallJumpCooldown: 0.0,
+    /** Y position when jump started (for jump height calculation) */
     jumpStartY: 0.0,
-    angle: 0, // radians, 0 faces -Z
-  speed: 0,
-  // Movement mode: 'stationary' (decelerate/hold 0) or 'accelerate' (accelerate toward seam max)
-  movementMode: 'stationary',
+    /** Player facing direction in radians (0 faces -Z) */
+    angle: 0,
+    /** Current movement speed */
+    speed: 0,
+    /** Movement behavior: 'stationary' (decelerate) or 'accelerate' (toward seam max) */
+    movementMode: 'stationary',
+    /** Player collision radius */
     radius: 0.3,
-  // Damage/ball mode
-  isBallMode: false,
-  _ballVX: 0.0,
-  _ballVZ: 0.0,
-  _ballBouncesLeft: 0,
-  _ballStartSec: 0,
-  _ballFlashUntilSec: 0,
-  _ballSpinAxisX: 0,
-  _ballSpinAxisY: 1,
-  _ballSpinAxisZ: 0,
-  _ballSpinSpeed: 0.0,
-  // Ability flags (unlockable during gameplay)
-  canBack: false,      // press down to stop/go backwards (ABILITY_BACK)
-  canTurn: false,      // turning locked until unlocked by an ability
-  canJump: false,      // press jump (ABILITY_JUMP)
-  canWallJump: false,  // wall jump (ABILITY_WALLJUMP)
-  canDash: false,      // freeze and dash system (ABILITY_DASH)
-  // Dash powerup ownership
-  hasDash: false,
-  dashUsed: false,
-  isFrozen: false,
-  isDashing: false,
-  dashTime: 0.0,
-  // Saved values when frozen/dashing
-  _savedSpeed: 0.0,
-  _savedVy: 0.0,
-  _savedMode: 'stationary',
-  _resumeVy: 0.0,
+    
+    /** Ball mode transformation state (damage/special ability) */
+    isBallMode: false,
+    _ballVX: 0.0,              // Ball velocity X component
+    _ballVZ: 0.0,              // Ball velocity Z component  
+    _ballBouncesLeft: 0,       // Remaining bounces in ball mode
+    _ballStartSec: 0,          // Ball mode start timestamp
+    _ballFlashUntilSec: 0,     // Flash effect end timestamp
+    _ballSpinAxisX: 0,         // Ball rotation axis X
+    _ballSpinAxisY: 1,         // Ball rotation axis Y
+    _ballSpinAxisZ: 0,         // Ball rotation axis Z
+    _ballSpinSpeed: 0.0,       // Ball rotation speed
+    
+    /** Progressive ability unlocks (gained through gameplay) */
+    canBack: false,            // ABILITY_BACK: press down to stop/reverse
+    canTurn: false,            // Turning locked until unlocked by ability
+    canJump: false,            // ABILITY_JUMP: jump button enabled
+    canWallJump: false,        // ABILITY_WALLJUMP: wall jump enabled
+    canDash: false,            // ABILITY_DASH: freeze and dash system
+    
+    /** Dash powerup state management */
+    hasDash: false,            // Player owns dash powerup
+    dashUsed: false,           // Dash has been consumed this segment
+    isFrozen: false,           // Player frozen during dash targeting
+    isDashing: false,          // Player currently executing dash
+    dashTime: 0.0,             // Dash execution timer
+    
+    /** Saved state during freeze/dash (for restoration) */
+    _savedSpeed: 0.0,          // Speed before freeze
+    _savedVy: 0.0,             // Vertical velocity before freeze
+    _savedMode: 'stationary',  // Movement mode before freeze
+    _resumeVy: 0.0,            // Vertical velocity to restore after dash
   },
   trail: {
     points: [], // array of [x,y,z,bornSec]
@@ -154,7 +214,11 @@ const state = {
   },
 };
 
-// Public helpers to update level & propagate derived color
+/**
+ * Updates the current level and recalculates all derived colors and palette values
+ * This function ensures visual consistency across the entire game when switching levels
+ * @param {number} levelId - Level identifier (1-7, falls back to 1 if invalid)
+ */
 window.setLevel = function(levelId){
   if (!LEVEL_BASE_COLORS[levelId]) {
     console.warn('[MZ] setLevel: unknown level', levelId, 'falling back to 1');
@@ -167,7 +231,8 @@ window.setLevel = function(levelId){
   state.level.baseColorRGB = hexToRgb01(baseHex);
   state.level.outlineColored = (typeof def === 'object' && !!def.coloredOutlines) || false;
   state.level.backgroundColored = (typeof def === 'object' && !!def.coloredBg) || false;
-  // Derive palette variants from base
+  
+  // Derive palette variants from base color for consistent theming
   try {
     const [r,g,b] = state.level.baseColorRGB;
     function clamp01(x){ return Math.min(1, Math.max(0, x)); }
@@ -178,8 +243,12 @@ window.setLevel = function(levelId){
   } catch(e){ console.warn('Palette derivation failed', e); }
 };
 
-// Parse a level name/string into a palette group id.
-// Rules: 'ROOT' -> 1; strings starting with a number (e.g., '1A', '1-1', '2B', '10Shell') -> that number; default -> 1.
+/**
+ * Parses level name/string into a numeric palette group identifier
+ * Handles various naming conventions: 'ROOT'->1, '1A'->1, '2B'->2, '10Shell'->10, etc.
+ * @param {string} name - Level name to parse
+ * @returns {number} Palette group ID (1-7, defaults to 1)
+ */
 window.parseLevelGroupId = function(name){
   try {
     if (typeof name !== 'string' || !name.trim()) return 1;
@@ -194,28 +263,52 @@ window.parseLevelGroupId = function(name){
   return 1;
 };
 
+// Color system getter functions for consistent access across modules
+
+/** @returns {string} Current level's base hex color */
 window.getLevelBaseColor = function(){ return state.level.baseColor; };
+
+/** @returns {Array<number>} Current level's base RGB color in [0,1] range */
 window.getLevelBaseColorRGB = function(){ return state.level.baseColorRGB; };
+
+/** @returns {Array<number>} Current level's wall RGB color in [0,1] range */
 window.getLevelWallColorRGB = function(){ return (state.level && state.level.palette && state.level.palette.wallRGB) || [0.06,0.45,0.48]; };
+
+/** @returns {Array<number>} Current level's grid RGB color in [0,1] range */
 window.getLevelGridColorRGB = function(){ return (state.level && state.level.palette && state.level.palette.gridRGB) || [0.05,0.35,0.33]; };
+
+/** @returns {boolean} Whether outlines should use level color (vs black) */
 window.getLevelOutlineColored = function(){ return !!(state.level && state.level.outlineColored); };
+
+/** @returns {Array<number>} Outline RGB color - either level color or black */
 window.getLevelOutlineColorRGB = function(){ return window.getLevelOutlineColored() ? window.getLevelWallColorRGB() : [0,0,0]; };
+
+/** @returns {boolean} Whether background should be tinted with level color */
 window.getLevelBackgroundColored = function(){ return !!(state.level && state.level.backgroundColored); };
 
-// NOCLIMB color helpers (single source of truth for both ground and elevated spans)
+/**
+ * NOCLIMB terrain color system (for special non-climbable surfaces)
+ * Provides consistent neutral gray coloring for NOCLIMB blocks that stands out from level palettes
+ * @returns {Array<number>} RGB color in [0,1] range for NOCLIMB terrain
+ */
 window.getLevelNoClimbColorRGB = function(){
   try {
     // Allow level palette override via state.level.palette.noClimbRGB if present
     const c = state?.level?.palette?.noClimbRGB;
     if (Array.isArray(c) && c.length >= 3) return [c[0], c[1], c[2]];
   } catch(_){}
-  // Default neutral gray
+  // Default neutral gray that contrasts with all level palettes
   return [0.3, 0.3, 0.3];
 };
+
+/**
+ * NOCLIMB terrain outline color (slightly brighter than base for definition)
+ * @returns {Array<number>} RGB color in [0,1] range for NOCLIMB terrain outlines
+ */
 window.getLevelNoClimbOutlineColorRGB = function(){
   try {
     const base = window.getLevelNoClimbColorRGB();
-    // Slightly brighten for outlines
+    // Slightly brighten for outlines to provide edge definition
     const r = Math.min(1, base[0] * 1.1);
     const g = Math.min(1, base[1] * 1.1);
     const b = Math.min(1, base[2] * 1.1);
@@ -225,6 +318,6 @@ window.getLevelNoClimbOutlineColorRGB = function(){
   }
 };
 
-// Initialize palette immediately for initial level without requiring explicit setLevel call
+// Initialize level palette immediately for initial level without requiring explicit setLevel call
 try { window.setLevel(state.level.id); } catch(_){ }
 
