@@ -1,8 +1,24 @@
 /**
- * DOM element references for the MZ game UI.
- * Provides cached DOM element lookups for game canvas, HUD, and UI controls.
- * Exports: CANVAS, HUD, SEAM, SEAM_HANDLE, GLOW_L, GLOW_R, DEBUG_TOGGLE constants.
- * Dependencies: None. Side effects: Queries DOM elements by ID at module load time.
+ * Centralized DOM element reference cache for UI components.
+ *
+ * Purpose:
+ *  - Avoid repeated document.getElementById lookups across disparate scripts.
+ *  - Provide a single place to augment / rename element IDs.
+ *  - Expose references on window for the legacy non-module environment and debugging.
+ *
+ * Exported Globals (window):
+ *  - CANVAS, HUD, SEAM, SEAM_HANDLE
+ *  - GLOW_L, GLOW_R (swipe feedback assets)
+ *  - DEBUG_TOGGLE, ALT_LOCK_BTN, CAMERA_STATUS
+ *  - SETTINGS_BTN (settings modal launcher)
+ *  - STATS_* (stats HUD elements: materials, purple, rooms)
+ *
+ * Accessibility Notes:
+ *  - Interactive elements referenced here should own appropriate aria-* attributes in their markup / runtime scripts.
+ *  - Scripts manipulating visibility should prefer aria-hidden + data-hidden for styling hooks.
+ *
+ * Side Effects:
+ *  - Performs DOM queries at load time; acceptable because page structure is static post-initialization.
  */
 
 // DOM element lookups (moved from config.js)

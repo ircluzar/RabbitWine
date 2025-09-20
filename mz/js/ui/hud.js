@@ -1,8 +1,26 @@
 /**
- * HUD updates and visual feedback for player interactions.
- * Manages swipe glow effects, FPS display, and other UI feedback elements.
- * Exports: showSwipeGlow(), updateHUD() functions.
- * Dependencies: state.fps and timing from state.js, GLOW_L/GLOW_R from dom.js. Side effects: Modifies DOM element classes and text content.
+ * Heads-Up Display (HUD) + swipe glow feedback system.
+ *
+ * Responsibilities:
+ *  - Transient swipe direction glow (left / right / up / down) with simple timers.
+ *  - Periodic debug / diagnostic text (FPS, time, DPR, canvas size, player world + grid position,
+ *    active pointer summaries, pressed keys, seam ratio, letterbox metrics).
+ *  - Respect the global debug visibility flag (state.debugVisible) and hide when disabled.
+ *
+ * Data Sources (read):
+ *  - state: timing (timeStart, lastFpsT, frames, dpr), debugVisible, inputs (pointers, keys),
+ *    player (x,y,z, angle, speed, movementMode), letterboxCss, seamRatio.
+ *  - MAP_W / MAP_H for converting player world coords to grid coords.
+ *  - CANVAS, HUD, GLOW_L, GLOW_R (DOM elements – see dom.js for definitions).
+ *
+ * Side Effects (write):
+ *  - Mutates HUD.textContent with multiline debug text (\n separated).
+ *  - Adds / removes the 'show' CSS class on glow elements and directional glow DOM nodes.
+ *  - Sets HUD aria-hidden attribute to reflect debug visibility.
+ *
+ * Exported API (attached to window for non-module environment):
+ *  - showSwipeGlow(dir: 'left'|'right'|'up'|'down')
+ *  - updateHUD(now: DOMHighResTimeStamp)
  */
 
 // HUD updates and swipe glow feedback
@@ -37,6 +55,7 @@ function showSwipeGlow(dir){
  * @param {number} now - Current timestamp
  */
 function updateHUD(now) {
+  if (!HUD) return; // If HUD element missing, silently skip
   const elapsed = (now - state.timeStart) / 1000;
   // Respect debug visibility: hide when off
   if (!state.debugVisible){
@@ -89,3 +108,11 @@ function updateHUD(now) {
   if (GU && nowMs > glowTimerU) GU.classList.remove('show');
   if (GD && nowMs > glowTimerD) GD.classList.remove('show');
 }
+
+// Global export (non-module environment)
+try {
+  if (typeof window !== 'undefined'){
+    window.showSwipeGlow = showSwipeGlow;
+    window.updateHUD = updateHUD;
+  }
+} catch(_){ }

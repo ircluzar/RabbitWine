@@ -1,8 +1,20 @@
 /**
- * Keyboard input handling for game controls.
- * Manages keyboard state tracking by adding/removing keys from the global input state.
- * Exports: onKey() event handler function.
- * Dependencies: state.inputs from state.js. Side effects: Modifies state.inputs.keys Set.
+ * Keyboard input handling.
+ *
+ * Responsibilities:
+ *  - Normalize browser key identifiers to a small stable token set (e.g. 'ArrowLeft', 'a', 'ShiftLeft').
+ *  - Maintain a dual representation in state.inputs.keys: both raw event.key and normalized token.
+ *  - Provide a single onKey handler (keydown + keyup) for dom-events.js to bind.
+ *
+ * Data Sources (read):
+ *  - state.editor (to avoid capturing gameplay keys while editor modal / FPS mode has focus).
+ *
+ * Side Effects (write):
+ *  - Mutates state.inputs.keys (a Set) adding/removing raw + normalized tokens.
+ *
+ * Exported API (window):
+ *  - onKey(e: KeyboardEvent)
+ *  - normalizeKeyToken(k: string)
  */
 
 // Keyboard input
@@ -44,3 +56,11 @@ function onKey(e) {
 function __mzClearAllKeys(){ try { state.inputs.keys.clear(); } catch(_){} }
 window.addEventListener('blur', __mzClearAllKeys);
 document.addEventListener('visibilitychange', ()=>{ if (document.hidden) __mzClearAllKeys(); });
+
+// Global exports
+try {
+  if (typeof window !== 'undefined'){
+    window.onKey = onKey;
+    window.normalizeKeyToken = normalizeKeyToken;
+  }
+} catch(_){ }

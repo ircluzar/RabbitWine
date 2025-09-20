@@ -1,8 +1,25 @@
 /**
- * Pointer and touch input handling with swipe gesture detection.
- * Manages mouse and touch events, tracks pointer state, and detects left/right swipe gestures for player control.
- * Exports: normalizeEventPosition(), onPointerDown(), onPointerMove(), onPointerUp() functions.
- * Dependencies: CANVAS from dom.js, state.inputs from state.js, turnLeft/turnRight from controls.js. Side effects: Modifies state.inputs.pointers Map.
+ * Pointer + touch input handling (mouse, touch, pen) with gesture detection.
+ *
+ * Responsibilities:
+ *  - Maintain a Map of active pointer states (position, deltas, gesture start data, time stamps).
+ *  - Detect swipe gestures (horizontal: turn/dash; vertical: movement/dash/jump) based on displacement thresholds.
+ *  - Distinguish alternate control mode (state.snapBottomFull || state.altBottomControlLocked) which switches
+ *    swipe semantics to cardinal movement (maybeStopOrMoveCardinal / dashHeadingCardinal) instead of rotations.
+ *  - Support short-press / small-move tap-to-jump fallback.
+ *
+ * Data Sources (read):
+ *  - state.editor (to suppress gameplay pointer handling in FPS editor mode).
+ *  - state.player (dash availability, frozen status, movement flags, alt control lock flags).
+ *
+ * Side Effects (write):
+ *  - Mutates state.inputs.pointers (Map pointerId -> pointerState object).
+ *
+ * Exported API (window):
+ *  - normalizeEventPosition(e)
+ *  - onPointerDown(e)
+ *  - onPointerMove(e)
+ *  - onPointerUpOrCancel(e)
  */
 
 // Pointer input and swipe detection
@@ -12,6 +29,7 @@
  * @returns {Object} Normalized position {x, y} relative to canvas
  */
 function normalizeEventPosition(e) {
+  if (!CANVAS || !CANVAS.getBoundingClientRect){ return { x:0, y:0 }; }
   const rect = CANVAS.getBoundingClientRect();
   return { x: (e.clientX - rect.left), y: (e.clientY - rect.top) };
 }
@@ -24,7 +42,7 @@ function onPointerDown(e) {
   if (state && state.editor && state.editor.mode === 'fps') return; // editor handles
   // Avoid stealing focus when interacting with UI controls like the lock button
   if (!(e.target && (e.target.id === 'alt-control-lock' || e.target.closest && e.target.closest('#alt-control-lock')))){
-    CANVAS.focus();
+    try { if (CANVAS && CANVAS.focus) CANVAS.focus(); } catch(_){ }
   }
   const pos = normalizeEventPosition(e);
   const id = e.pointerId || 0;
@@ -161,3 +179,13 @@ function onPointerUpOrCancel(e) {
   }
   state.inputs.pointers.delete(id);
 }
+
+// Global exports
+try {
+  if (typeof window !== 'undefined'){
+    window.normalizeEventPosition = normalizeEventPosition;
+    window.onPointerDown = onPointerDown;
+    window.onPointerMove = onPointerMove;
+    window.onPointerUpOrCancel = onPointerUpOrCancel;
+  }
+} catch(_){ }

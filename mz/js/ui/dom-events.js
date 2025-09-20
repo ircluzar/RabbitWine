@@ -1,18 +1,45 @@
 /**
- * Centralized DOM event binding and management.
- * Sets up all event listeners for input handling, resize events, and UI interactions.
- * Exports: None (side effects only). Registers event handlers at module load time.
- * Dependencies: Event handler functions from input modules, DOM elements from dom.js. Side effects: Registers global event listeners.
+ * Global DOM event wiring / lifecycle hooks.
+ *
+ * Responsibilities:
+ *  - Attach core input handlers (pointer, keyboard) defined in input-* scripts.
+ *  - Manage resize + orientation events and forward to resizeCanvasToViewport.
+ *  - Provide UI control bindings (debug toggle, editor mode toggle, alt control lock button, seam drag, settings modal, stats updater).
+ *  - Maintain lightweight rAF loops for UI components requiring per-frame sync (alt lock button + camera status, stats box numbers).
+ *  - Initialize settings + confirm reset modal logic (created lazily upon first click).
+ *
+ * Event Overview (non-exhaustive):
+ *  - Pointer: pointerdown @CANVAS, pointermove/up/cancel @window for robust tracking.
+ *  - Keyboard: keydown/keyup @window -> onKey.
+ *  - Resize / orientationchange -> resizeCanvasToViewport.
+ *  - contextmenu suppression (window + CANVAS) to keep right-click free for editor.
+ *  - pointerlockchange -> onPointerLockChange (editor pointer lock state sync).
+ *  - rAF loops: syncAltLockBtn(), statsUpdater().
+ *
+ * Side Effects:
+ *  - Mutates DOM element attributes (aria-hidden, aria-pressed, aria-disabled, dataset.hidden).
+ *  - Injects SVG markup into SETTINGS_BTN.
+ *  - Creates / removes overlay DOM nodes for settings + confirm reset dialogs.
+ *  - Persists / restores volume sliders via localStorage.
+ *
+ * Export Pattern:
+ *  - No explicit exports; relies on globally available handler functions and constants populated earlier.
+ *
+ * Defensive Notes:
+ *  - All optional elements (buttons, stats spans) are existence-checked before binding/usage.
+ *  - CANVAS access guarded—script becomes a no-op subset if missing to avoid hard crash.
  */
 
 // Centralized DOM event bindings
 // Context menu prevention
 window.addEventListener('contextmenu', (e) => e.preventDefault(), { passive: false });
 
-// Pointer events
-CANVAS.addEventListener('pointerdown', onPointerDown);
-// Prevent default context menu on right-click so editor can use it
-CANVAS.addEventListener('contextmenu', (e)=>{ e.preventDefault(); }, { passive:false });
+// Pointer events (guard in case CANVAS not yet present)
+if (typeof CANVAS !== 'undefined' && CANVAS){
+  CANVAS.addEventListener('pointerdown', onPointerDown);
+  // Prevent default context menu on right-click so editor can use it
+  CANVAS.addEventListener('contextmenu', (e)=>{ e.preventDefault(); }, { passive:false });
+}
 window.addEventListener('pointermove', onPointerMove);
 window.addEventListener('pointerup', onPointerUpOrCancel);
 window.addEventListener('pointercancel', onPointerUpOrCancel);

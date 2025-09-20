@@ -3,7 +3,7 @@
 This document provides a comprehensive checklist for cleaning up all JavaScript files in the MZ project. Each file should be reviewed for code quality, documentation, and removal of obsolete comments.
 
 ## Status Update - Major Progress! 🚀
-**Current Progress: 28/86 files completed (33%)**
+**Current Progress: 33/86 files completed (38%)**
 
 **COMPLETED DIRECTORIES ✅**:
 - **Root Level (3 files)** - Enhanced with comprehensive documentation
@@ -12,7 +12,15 @@ This document provides a comprehensive checklist for cleaning up all JavaScript 
 - **Core Directory (5 files)** - WebGL2, math utilities, game state management
 - **Gameplay Directory (8 files)** - Player controls, physics, camera, effects, trails
 - **Map Directory (4 files)** - 3D world building, column systems, tile rendering
-- **Pipelines Directory (6 files)** - Advanced WebGL2 rendering pipelines ✨ **JUST COMPLETED!**
+- **Pipelines Directory (6 files)** - Advanced WebGL2 rendering pipelines
+
+**UI DIRECTORY PROGRESS (5 files completed so far)**:
+- ✅ `dom.js` (centralized element cache + accessibility notes)
+- ✅ `dom-events.js` (comprehensive event binding documentation + defensive guards)
+- ✅ `hud.js` (HUD system + swipe glow refactor, global exports)
+- ✅ `input-keyboard.js` (normalized key handling + dual token storage)
+- ✅ `input-pointer.js` (gesture detection, alt control mode, global exports)
+  Remaining UI targets: `editor.js`, `notification-modal.js`, `resize.js`, `seam.js`, `start-modal.js`, `toggle.js`
 
 **RECENTLY COMPLETED - PIPELINES DIRECTORY**:
 - ✅ `grid.js` - Grid overlay rendering with distance-based fading and boundary visualization
@@ -410,115 +418,39 @@ This document provides a comprehensive checklist for cleaning up all JavaScript 
 
 ---
 
-## Pipelines Directory (/pipelines)
+## Pipelines Directory (/pipelines) ✅ COMPLETED
 
-### grid.js
-- [ ] **Code Review**
-  - [ ] Remove outdated grid rendering comments
-  - [ ] Review grid optimization techniques
-  - [ ] Document grid coordinate system
-- [ ] **Documentation**
-  - [ ] Add JSDoc for grid functions
-  - [ ] Document grid structure and properties
-  - [ ] Add comments for rendering optimizations
-- [ ] **Cleanup**
-  - [ ] Remove unused grid features
-  - [ ] Optimize grid rendering
-
-### player.js
-- [ ] **Code Review**
-  - [ ] Remove outdated player rendering comments
-  - [ ] Review player animation system
-  - [ ] Document player state visualization
-- [ ] **Documentation**
-  - [ ] Add JSDoc for player functions
-  - [ ] Document player rendering pipeline
-  - [ ] Add comments for animation timing
-- [ ] **Cleanup**
-  - [ ] Remove unused player features
-  - [ ] Optimize player rendering
-
-### remove-debug.js
-- [ ] **Code Review**
-  - [ ] Remove outdated debug removal comments
-  - [ ] Review debug code identification
-  - [ ] Document debug removal process
-- [ ] **Documentation**
-  - [ ] Add JSDoc for debug functions
-  - [ ] Document debug markers and patterns
-  - [ ] Add comments for build optimization
-- [ ] **Cleanup**
-  - [ ] Remove unused debug utilities
-  - [ ] Optimize debug removal
-
-### tiles.js
-- [ ] **Code Review**
-  - [ ] Remove outdated tile rendering comments
-  - [ ] Review tile batching algorithms
-  - [ ] Document tile coordinate system
-- [ ] **Documentation**
-  - [ ] Add JSDoc for tile functions
-  - [ ] Document tile properties and behaviors
-  - [ ] Add comments for batching optimizations
-- [ ] **Cleanup**
-  - [ ] Remove unused tile types
-  - [ ] Optimize tile rendering
-
-### trail.js
-- [ ] **Code Review**
-  - [ ] Remove outdated trail rendering comments
-  - [ ] Review trail visualization algorithms
-  - [ ] Document trail rendering pipeline
-- [ ] **Documentation**
-  - [ ] Add JSDoc for trail functions
-  - [ ] Document trail visual properties
-  - [ ] Add comments for performance optimizations
-- [ ] **Cleanup**
-  - [ ] Remove unused trail features
-  - [ ] Optimize trail rendering
-
-### walls.js
-- [ ] **Code Review**
-  - [ ] Remove outdated wall rendering comments
-  - [ ] Review wall collision visualization
-  - [ ] Document wall rendering system
-- [ ] **Documentation**
-  - [ ] Add JSDoc for wall functions
-  - [ ] Document wall properties and behaviors
-  - [ ] Add comments for rendering optimizations
-- [ ] **Cleanup**
-  - [ ] Remove unused wall features
-  - [ ] Optimize wall rendering
+All six pipeline files fully refactored and documented previously (see "Recently Completed - Pipelines Directory" summary above). Individual task checklists collapsed to reduce noise.
 
 ---
 
 ## UI Directory (/ui)
 
-### dom-events.js
-- [ ] **Code Review**
-  - [ ] Remove outdated DOM event comments
-  - [ ] Review event handling patterns
-  - [ ] Document event delegation
-- [ ] **Documentation**
-  - [ ] Add JSDoc for event functions
-  - [ ] Document event types and handlers
-  - [ ] Add comments for cross-browser compatibility
-- [ ] **Cleanup**
-  - [ ] Remove unused event handlers
-  - [ ] Optimize event processing
+### dom-events.js ✅ COMPLETED
+- [x] **Code Review**
+  - [x] Remove outdated DOM event comments
+  - [x] Review event handling patterns
+  - [x] Document event delegation (expanded header overview)
+- [x] **Documentation**
+  - [x] Add JSDoc / descriptive file header
+  - [x] Document event types and handlers (in header)
+  - [x] Add cross-browser/defensive notes
+- [x] **Cleanup**
+  - [x] Remove unused event handlers (none extraneous)
+  - [x] Optimize event processing (defensive CANVAS guards)
 
-### dom.js
-- [ ] **Code Review**
-  - [ ] Remove outdated DOM manipulation comments
-  - [ ] Review DOM utilities
-  - [ ] Document DOM abstraction layer
-- [ ] **Documentation**
-  - [ ] Add JSDoc for DOM functions
-  - [ ] Document DOM utility purposes
-  - [ ] Add comments for browser compatibility
-- [ ] **Cleanup**
-  - [ ] Remove unused DOM utilities
-  - [ ] Optimize DOM operations
+### dom.js ✅ COMPLETED
+- [x] **Code Review**
+  - [x] Remove outdated DOM manipulation comments
+  - [x] Review DOM utilities (centralized cache)
+  - [x] Document DOM abstraction layer
+- [x] **Documentation**
+  - [x] Add JSDoc-style descriptive header
+  - [x] Document DOM utility purposes
+  - [x] Add accessibility notes
+- [x] **Cleanup**
+  - [x] Remove unused DOM utilities (none found)
+  - [x] Optimize DOM operations (single-pass queries)
 
 ### editor.js
 - [ ] **Code Review**
@@ -533,44 +465,44 @@ This document provides a comprehensive checklist for cleaning up all JavaScript 
   - [ ] Remove unused editor features
   - [ ] Optimize editor performance
 
-### hud.js
-- [ ] **Code Review**
-  - [ ] Remove outdated HUD refactor comments
-  - [ ] Review HUD element management
-  - [ ] Document HUD layout system
-- [ ] **Documentation**
-  - [ ] Add JSDoc for HUD functions
-  - [ ] Document HUD elements and properties
-  - [ ] Add comments for responsive design
-- [ ] **Cleanup**
-  - [ ] Remove unused HUD elements
-  - [ ] Optimize HUD rendering
+### hud.js ✅ COMPLETED
+- [x] **Code Review**
+  - [x] Remove outdated HUD refactor comments
+  - [x] Review HUD element management
+  - [x] Document HUD responsibilities (timers, diagnostics)
+- [x] **Documentation**
+  - [x] Add detailed header (data sources, side effects)
+  - [x] Document exported functions
+  - [x] Note accessibility (aria-hidden toggle)
+- [x] **Cleanup**
+  - [x] Remove unused HUD elements (none extraneous)
+  - [x] Add defensive null guards
 
-### input-keyboard.js
-- [ ] **Code Review**
-  - [ ] Remove outdated keyboard input comments
-  - [ ] Review key mapping system
-  - [ ] Document keyboard event handling
-- [ ] **Documentation**
-  - [ ] Add JSDoc for keyboard functions
-  - [ ] Document key mappings and shortcuts
-  - [ ] Add comments for input validation
-- [ ] **Cleanup**
-  - [ ] Remove unused keyboard handlers
-  - [ ] Optimize input processing
+### input-keyboard.js ✅ COMPLETED
+- [x] **Code Review**
+  - [x] Remove outdated keyboard input comments
+  - [x] Review key mapping / normalization system
+  - [x] Document event handling
+- [x] **Documentation**
+  - [x] Add header describing normalization + dual token storage
+  - [x] Document key normalization strategy
+  - [x] Add validation notes
+- [x] **Cleanup**
+  - [x] Remove unused handlers (none extraneous)
+  - [x] Optimize: unified onKey logic
 
-### input-pointer.js
-- [ ] **Code Review**
-  - [ ] Remove outdated pointer input comments
-  - [ ] Review pointer event handling
-  - [ ] Document touch/mouse abstraction
-- [ ] **Documentation**
-  - [ ] Add JSDoc for pointer functions
-  - [ ] Document pointer event types
-  - [ ] Add comments for gesture recognition
-- [ ] **Cleanup**
-  - [ ] Remove unused pointer handlers
-  - [ ] Optimize pointer processing
+### input-pointer.js ✅ COMPLETED
+- [x] **Code Review**
+  - [x] Remove outdated pointer input comments
+  - [x] Review pointer event handling + gesture thresholds
+  - [x] Document alt control mode branching
+- [x] **Documentation**
+  - [x] Add comprehensive header (responsibilities, side effects)
+  - [x] Document swipe vs tap decision logic
+  - [x] Note defensive CANVAS guards
+- [x] **Cleanup**
+  - [x] Remove unused handlers (none extraneous)
+  - [x] Optimize: early returns for editor mode, consolidated branching
 
 ### notification-modal.js
 - [ ] **Code Review**
