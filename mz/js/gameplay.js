@@ -283,9 +283,15 @@ function drawPlayerAndTrail(mvp){
       gl.depthMask(false);
       gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
     }
+    
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
   }
-  }
+}
+
+// Export functions to global scope for use by other modules
+if (typeof window !== 'undefined') {
+  window.handleSwipeTurns = handleSwipeTurns;
+  window.drawPlayerAndTrail = drawPlayerAndTrail;
 }

@@ -91,3 +91,15 @@ function mat4RotateY(rad){
 function mat4Scale(sx,sy,sz){
   const m = mat4Identity(); m[0]=sx; m[5]=sy; m[10]=sz; return m;
 }
+
+// Export all matrix functions to global scope for cross-module access
+window.mat4Identity = mat4Identity;
+window.mat4Multiply = mat4Multiply;
+window.mat4Perspective = mat4Perspective;
+window.mat4LookAt = mat4LookAt;
+window.deg2rad = deg2rad;
+window.smoothstep = smoothstep;
+window.normalizeAngle = normalizeAngle;
+window.mat4Translate = mat4Translate;
+window.mat4RotateY = mat4RotateY;
+window.mat4Scale = mat4Scale;
