@@ -1,31 +1,72 @@
 "use strict";
 /**
- * Item system: spawn from map data, animate floating rotating yellow wireframe cubes, pickup on collision.
- * Public API:
- *  - initItemsFromBuilder(items: Array<{x:number,y:number,payload:string}>): world positions from grid
- *  - spawnItemWorld(x:number,y:number,z:number,payload:string)
- *  - drawItems(mvp): render all active items
- *  - updateItems(dt): update animation state and handle pickups
+ * Item collection system with floating animated collectibles and ghost state management.
+ * Handles item spawning from map data, 3D wireframe cube animations, collision detection,
+ * pickup processing with action dispatch, and persistent collection state tracking.
+ * 
+ * Items appear as rotating wireframe cubes that float in the world. When collected,
+ * they trigger actions (typically ability unlocks) and transition to "ghost" state
+ * for visual feedback while maintaining save state persistence.
+ * 
+ * @fileoverview Complete item collection system with animation and persistence
+ * @exports initItemsFromBuilder() - Initialize items from map builder data
+ * @exports spawnItemWorld() - Create individual items at world coordinates
+ * @exports drawItems() - Render all active items with animations
+ * @exports updateItems() - Update animations and handle collision detection
+ * @dependencies MAP_W, MAP_H from map constants, state.player, gameSave system, dispatchAction()
+ * @sideEffects Modifies global items arrays, triggers save state updates, dispatches ability unlock actions
  */
 
-// Internal store
+// ============================================================================
+// Item Storage and Constants
+// ============================================================================
+
+/**
+ * Primary item storage for yellow collectible items
+ * @type {Array<Object>}
+ */
 const items = [];
+
+/**
+ * Special purple item storage (future expansion/different item types)
+ * @type {Array<Object>}
+ */
 const purpleItems = [];
 
-// Ghost (picked-up) presentation constants
-const GHOST_ALPHA = 0.25;              // target alpha for ghost items (editor shows full color regardless)
-const GHOST_FADE_DURATION = 0.8;       // seconds for fade-in
-const GHOST_RESPAWN_DELAY = 3.0;       // seconds after pickup to reappear as ghost
-// Default visual float height for items without explicit Y
+// Visual constants for ghost (collected) item presentation
+/** @const {number} Target alpha transparency for ghost items */
+const GHOST_ALPHA = 0.25;
+
+/** @const {number} Duration in seconds for ghost item fade-in animation */
+const GHOST_FADE_DURATION = 0.8;
+
+/** @const {number} Delay in seconds before collected items reappear as ghosts */
+const GHOST_RESPAWN_DELAY = 3.0;
+
+/** @const {number} Default floating height for items without explicit Y coordinate */
 const ITEM_DEFAULT_FLOAT_Y = 0.75;
 
-// Editor mode detection: in editor we always show items as uncollected for visibility
+// ============================================================================
+// Environment Detection and Utilities
+// ============================================================================
+
+/**
+ * Detect if running in editor mode where items should always appear uncollected
+ * Editor mode disables ghost state for better visibility during level design
+ * @returns {boolean} True if in editor environment
+ */
 function isEditorMode(){
   try { if (window.IS_MZ_EDITOR === true) return true; } catch(_){ }
   try { if (typeof location !== 'undefined' && /\/editor\//i.test(location.pathname)) return true; } catch(_){ }
   return false;
 }
 
+/**
+ * Convert grid coordinates to world space coordinates
+ * @param {number} gx - Grid X coordinate
+ * @param {number} gy - Grid Y coordinate  
+ * @returns {{x: number, z: number}} World coordinates with proper centering
+ */
 function gridToWorld(gx, gy){
   return {
     x: (gx + 0.5) - MAP_W * 0.5,
@@ -33,29 +74,56 @@ function gridToWorld(gx, gy){
   };
 }
 
+// ============================================================================
+// Item Initialization and Spawning
+// ============================================================================
+
+/**
+ * Initialize all items from map builder data array
+ * Clears existing items and creates new ones from level data
+ * @param {Array<{x: number, y: number, payload?: string, yWorld?: number}>} list - Item definitions from map
+ */
 function initItemsFromBuilder(list){
   items.length = 0; purpleItems.length = 0;
   if (!Array.isArray(list)) return;
+  
   for (const it of list){
     if (!it || typeof it.x !== 'number' || typeof it.y !== 'number') continue;
+    
     const w = gridToWorld(it.x, it.y);
+    
+    // Determine Y coordinate from various possible sources
     const iyOpt = (typeof it.yWorld === 'number') ? it.yWorld
                : (typeof it.yBase === 'number') ? it.yBase
                : (typeof it.y0 === 'number') ? it.y0
                : ITEM_DEFAULT_FLOAT_Y;
+    
     spawnItemWorld(w.x, iyOpt, w.z, it.payload||'');
   }
 }
 
+/**
+ * Spawn a single item at world coordinates with optional configuration
+ * Handles ghost state determination based on save data and editor mode
+ * @param {number} x - World X coordinate
+ * @param {number} y - World Y coordinate (height)
+ * @param {number} z - World Z coordinate
+ * @param {string} payload - Action key to dispatch on collection
+ * @param {Object} opts - Optional configuration {ghost: boolean, fadeIn: boolean}
+ */
 function spawnItemWorld(x, y, z, payload, opts){
   let ghost = false, fadeIn = false;
+  
   try {
     if (!isEditorMode()){
+      // Determine ghost state based on save data
       if (opts && typeof opts.ghost === 'boolean') ghost = opts.ghost;
       else if (window.gameSave && payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(payload)) ghost = true;
       else if (window.gameSave && !payload && gameSave.isItemCollected && gameSave.isItemCollected(x, z)) ghost = true; // legacy fallback
+      
       if (opts && opts.fadeIn) fadeIn = true;
     } else {
+      // Editor mode: always show items as uncollected for visibility
       ghost = false; fadeIn = false;
     }
   } catch(_){ }

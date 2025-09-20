@@ -1,62 +1,165 @@
 "use strict";
+
 /**
- * MapBuilder - Fluent helper for constructing tile-based maps.
- *
- * Design goals:
- *  - Keep raw map array & constants external (no hidden allocation)
- *  - Provide expressive, chainable primitives (border, rect, fill, lines, pillars)
- *  - Normalize and clamp coordinates to map bounds to avoid silent errors
- *  - Small & dependency-free (intentionally no fancy BSP etc. here)
- *
- * Usage example:
- *   const b = new MapBuilder(MAP_W, MAP_H, map, TILE);
- *   b.clear(TILE.OPEN)
- *    .border(TILE.WALL, 3.0)
- *    .rect(6,6,17,17,TILE.WALL)
- *    .pillars([[10,10],[13,10],[10,13],[13,13]], TILE.WALL);
- *
- * All drawing operations write directly into the provided map Uint8Array.
+ * MapBuilder - Comprehensive fluent API for constructing complex tile-based 3D maps.
+ * Provides an expressive, chainable interface for building game levels with walls, platforms,
+ * columns, hazards, spawn points, and item placement. Supports both 2D tile layouts and
+ * full 3D column geometries with variable heights, elevations, and multi-span structures.
+ * 
+ * Key Features:
+ * - Chainable method calls for readable map construction code
+ * - 3D column system with variable heights and base elevations
+ * - Multi-span columns (platforms at different elevations on same tile)
+ * - Hazard/safety flagging for gameplay mechanics
+ * - Spawn point and item placement tracking
+ * - Coordinate normalization and bounds checking
+ * - Memory-efficient direct array manipulation
+ * 
+ * @fileoverview Advanced tile-based map construction with 3D column support
+ * @exports MapBuilder class - Main map building interface
+ * @dependencies None (intentionally standalone for maximum portability)
+ * @sideEffects Directly modifies provided map array, maintains internal geometry data structures
+ * 
+ * @example
+ * ```javascript
+ * const b = new MapBuilder(MAP_W, MAP_H, map, TILE);
+ * b.clear(TILE.OPEN)
+ *  .border(TILE.WALL, 3.0)                    // 3-unit tall outer walls
+ *  .rect(6,6,17,17,TILE.WALL)                 // Inner room walls  
+ *  .platform(10,10,13,13, 2.0)               // Raised platform
+ *  .pillars([[10,10],[13,13]], TILE.WALL, 4.0) // Tall support pillars
+ *  .spawn(8, 8, 'N')                          // Player spawn facing north
+ *  .items([[12,12,'key'], [15,15,'powerup']]) // Place collectibles
+ *  .applyHeightData();                        // Finalize geometry
+ * ```
+ */
+
+/**
+ * MapBuilder class for fluent tile-based map construction with advanced 3D geometry support
+ * Provides comprehensive toolset for creating complex game levels with platforms, columns,
+ * hazards, spawn points, and item placement while maintaining efficient memory usage.
  */
 class MapBuilder {
   /**
-   * @param {number} w Map width
-   * @param {number} h Map height
-   * @param {Uint8Array|Array<number>} mapArray Backing map array length = w*h
-   * @param {Object} TILE_ENUM Reference to tile constants (e.g., {OPEN:0,WALL:1})
+   * Initialize a new map builder with dimensions, backing storage, and tile constants
+   * Sets up internal data structures for tracking 3D geometry, spawn points, and items
+   * 
+   * @param {number} w - Map width in tiles (must be positive integer)
+   * @param {number} h - Map height in tiles (must be positive integer)  
+   * @param {Uint8Array|Array<number>} mapArray - Backing tile storage array (length = w*h)
+   * @param {Object} TILE_ENUM - Tile type constants object (e.g., {OPEN:0, WALL:1, HAZARD:2})
    */
   constructor(w, h, mapArray, TILE_ENUM){
-    this.w = w; this.h = h; this.map = mapArray; this.TILE = TILE_ENUM;
-    // Initialize height tracking system for 3D column support
-    this.extraColumns = []; // Array of {x,y,h} objects for tall columns
-    this.columnHeights = new Map(); // Fast lookup: "x,y" -> height
-  // Phase 2: multi-span registry per tile: Map key "x,y" -> Array of {b:int,h:number}
-  this.columnSpans = new Map();
-  // Debug/remove tracking: record carve directives so we can visualize in debug
-  /** @type {Array<{x:number,y:number,b:number,h:number}>} */
-  this.removals = [];
-  // Note: base elevation is carried in extraColumns entries via property `b` and
-  // later propagated to columnBases by applyHeightData().
-  // Optional spawn metadata (grid coords + facing angle in radians)
-  this._spawn = null; // { x:number, y:number, angle:number }
-  // Items to spawn: array of {x:number,y:number,payload:string}
-  this._items = [];
+    // ========================================================================
+    // Core Map Dimensions and Storage
+    // ========================================================================
+    
+    /** @type {number} Map width in tiles */
+    this.w = w; 
+    /** @type {number} Map height in tiles */
+    this.h = h; 
+    /** @type {Uint8Array|Array<number>} Direct reference to map tile data */
+    this.map = mapArray; 
+    /** @type {Object} Tile type enumeration constants */
+    this.TILE = TILE_ENUM;
+    
+    // ========================================================================
+    // 3D Column Geometry Systems  
+    // ========================================================================
+    
+    /** @type {Array<Object>} Legacy single-span column storage: {x,y,h,b} objects */
+    this.extraColumns = []; 
+    /** @type {Map<string,number>} Fast height lookup: "x,y" -> height value */
+    this.columnHeights = new Map(); 
+    /** @type {Map<string,Array>} Multi-span column registry: "x,y" -> [{b,h,t}] array */
+    this.columnSpans = new Map();
+    
+    // ========================================================================
+    // Construction History and Debug Support
+    // ========================================================================
+    
+    /** @type {Array<Object>} Removal operation history for debug visualization */
+    this.removals = [];
+    
+    // ========================================================================
+    // Gameplay Metadata Storage
+    // ========================================================================
+    
+    /** @type {Object|null} Player spawn point: {x,y,angle} or null if unset */
+    this._spawn = null; 
+    /** @type {Array<Object>} Item placement list: [{x,y,payload}] for level setup */
+    this._items = [];
   }
-  /** Convert (x,y) to linear index */
-  idx(x,y){ return y * this.w + x; }
-  /** Internal clamp */
-  _clamp(v,min,max){ return v < min ? min : v > max ? max : v; }
-  /** Normalize coordinate pair ordering so x1<=x2, y1<=y2 */
-  _norm(x1,y1,x2,y2){ if (x1>x2) [x1,x2]=[x2,x1]; if (y1>y2) [y1,y2]=[y2,y1]; return [x1,y1,x2,y2]; }
-  /** Bounds check (soft) */
-  _inBounds(x,y){ return x>=0 && y>=0 && x<this.w && y<this.h; }
+  
+  // ========================================================================
+  // Core Utility Methods for Coordinate and Bounds Management
+  // ========================================================================
+  
+  /**
+   * Convert 2D grid coordinates to linear array index for efficient array access
+   * @param {number} x - Grid X coordinate (column)
+   * @param {number} y - Grid Y coordinate (row)  
+   * @returns {number} Linear index into map array
+   */
+  idx(x,y){ 
+    return y * this.w + x; 
+  }
+  
+  /**
+   * Clamp numeric value to specified range for safe coordinate handling
+   * @param {number} v - Value to clamp
+   * @param {number} min - Minimum allowed value (inclusive)
+   * @param {number} max - Maximum allowed value (inclusive)
+   * @returns {number} Clamped value guaranteed to be in [min,max] range
+   */
+  _clamp(v,min,max){ 
+    return v < min ? min : v > max ? max : v; 
+  }
+  
+  /**
+   * Normalize coordinate pair ordering to ensure consistent rectangle bounds
+   * Swaps coordinates if needed so that x1<=x2 and y1<=y2 for proper rect operations
+   * @param {number} x1,y1,x2,y2 - Input coordinates (potentially unordered)
+   * @returns {Array<number>} Normalized coordinates [x1,y1,x2,y2] with x1<=x2, y1<=y2
+   */
+  _norm(x1,y1,x2,y2){ 
+    if (x1>x2) [x1,x2]=[x2,x1]; 
+    if (y1>y2) [y1,y2]=[y2,y1]; 
+    return [x1,y1,x2,y2]; 
+  }
+  
+  /**
+   * Check if coordinates are within map boundaries (soft bounds checking)
+   * @param {number} x - Grid X coordinate to test
+   * @param {number} y - Grid Y coordinate to test
+   * @returns {boolean} True if coordinates are valid, false if out of bounds
+   */
+  _inBounds(x,y){ 
+    return x>=0 && y>=0 && x<this.w && y<this.h; 
+  }
 
-  /** Internal: Set span for a coordinate (height w/ optional base and hazard flag) */
+  // ========================================================================
+  // 3D Column Height and Span Management System
+  // ========================================================================
+  
+  /**
+   * Set or update column span data for a specific grid coordinate with advanced geometry support
+   * Manages multi-span columns (multiple platforms at different elevations on same tile),
+   * hazard flagging, and maintains both legacy single-span and modern multi-span data structures
+   * 
+   * @param {number} x - Grid X coordinate
+   * @param {number} y - Grid Y coordinate  
+   * @param {number} height - Column height in world units (must be positive)
+   * @param {number} base - Base elevation offset in world units (default: 0)
+   * @param {boolean} isBad - Hazard flag: true for dangerous/damaging columns (default: false)
+   */
   _setHeight(x,y,height, base=0, isBad=false){
-    if (!this._inBounds(x,y)) return;
+    if (!this._inBounds(x,y)) return; // Skip out-of-bounds coordinates
+    
     const key = `${x},${y}`;
-    const newBase = (typeof base === 'number') ? (base|0) : 0;
-    const newH = Math.max(0, +height);
-    const newT = isBad ? 1 : 0; // 0 = normal, 1 = hazardous (BAD)
+    const newBase = (typeof base === 'number') ? (base|0) : 0;  // Integer base elevation
+    const newH = Math.max(0, +height);                          // Positive height only
+    const newT = isBad ? 1 : 0;                                 // Type: 0=normal, 1=hazardous
 
     // Update multi-span registry
     let spans = this.columnSpans.get(key);
@@ -95,29 +198,56 @@ class MapBuilder {
     }
   }
 
-  /** Fill entire map with a tile value */
-  clear(tile){ this.map.fill(tile); return this; }
+  // ========================================================================
+  // Fundamental Map Drawing Operations
+  // ========================================================================
+  
+  /**
+   * Fill entire map with a single tile type for initialization or reset
+   * Clears all existing tile data but preserves 3D geometry and metadata
+   * @param {number} tile - Tile type constant to fill map with (e.g., TILE.OPEN)
+   * @returns {MapBuilder} This instance for method chaining
+   */
+  clear(tile){ 
+    this.map.fill(tile); 
+    return this; 
+  }
 
   /**
-   * Draw outer border (1 tile thick) with optional height for tall columns.
-   * @param {number} tile - tile value to place on the border (e.g., TILE.WALL)
-   * @param {number} [height=1.0] - column height in units; >1 registers tall columns
+   * Draw outer border walls around map perimeter with optional 3D column heights
+   * Creates a complete perimeter barrier with configurable thickness and elevation
+   * 
+   * @param {number} tile - Tile value to place on border (e.g., TILE.WALL)
+   * @param {number|Object} [height=1.0] - Column height in units, or options object
+   * @param {Object} [opts] - Additional options for border customization
+   * @param {number} [opts.height=1.0] - Column height when height param is options object
+   * @param {number} [opts.y=0] - Base elevation for border columns
+   * @returns {MapBuilder} This instance for method chaining
    */
   border(tile, height=1.0, opts){
-    // Overload support: border(tile, opts)
-    if (typeof height === 'object' && height){ opts = height; height = (opts.height!=null ? +opts.height : 1.0); }
+    // Support overloaded call signature: border(tile, opts)
+    if (typeof height === 'object' && height){ 
+      opts = height; 
+      height = (opts.height!=null ? +opts.height : 1.0); 
+    }
     opts = opts || {};
-    const baseY = (opts.y!=null ? (opts.y|0) : 0);
-    const w=this.w,h=this.h,m=this.map;
-    for(let x=0;x<w;x++){
-      if (baseY === 0) m[this.idx(x,0)] = tile;
-      if (baseY === 0) m[this.idx(x,h-1)] = tile;
+    const baseY = (opts.y!=null ? (opts.y|0) : 0);  // Base elevation offset
+    const w=this.w, h=this.h, m=this.map;
+    
+    // Draw horizontal borders (top and bottom edges)
+    for(let x=0; x<w; x++){
+      if (baseY === 0) m[this.idx(x,0)] = tile;      // Top edge
+      if (baseY === 0) m[this.idx(x,h-1)] = tile;    // Bottom edge
+      
+      // Add 3D column data for tall or elevated borders
       if (height > 1.0 || baseY > 0){
-        this._setHeight(x, 0, height, baseY);
-        this._setHeight(x, h-1, height, baseY);
+        this._setHeight(x, 0, height, baseY);         // Top edge columns
+        this._setHeight(x, h-1, height, baseY);       // Bottom edge columns
       }
     }
-    for(let y=0;y<h;y++){
+    
+    // Draw vertical borders (left and right edges)
+    for(let y=0; y<h; y++){
       if (baseY === 0) m[this.idx(0,y)] = tile;
       if (baseY === 0) m[this.idx(w-1,y)] = tile;
       if (height > 1.0 || baseY > 0){
@@ -454,6 +584,13 @@ class MapBuilder {
   }
 }
 
-// Expose globally (no module system assumed)
+// ============================================================================
+// Global Export for Cross-Module Integration
+// ============================================================================
+
+/**
+ * Export MapBuilder class to global scope for maximum compatibility
+ * Supports both browser window and Node.js globalThis contexts
+ */
 if (typeof window !== 'undefined') window.MapBuilder = MapBuilder;
 else if (typeof globalThis !== 'undefined') globalThis.MapBuilder = MapBuilder;

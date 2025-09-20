@@ -1,83 +1,139 @@
 /**
- * Physics and collision detection for player movement and world interaction.
- * Handles ground height calculation, wall collision, and player movement with physics integration.
- * Exports: groundHeightAt(), moveAndCollide() functions for use by gameplay loop.
- * Dependencies: MAP_W, MAP_H, TILE, columnHeights, columnBases, map, mapIdx from map data. Side effects: Modifies state.player position and velocity.
+ * Physics and collision detection system for player movement and world interaction.
+ * Handles comprehensive 3D collision detection, ground height calculation, player movement
+ * with physics integration, and wall collision responses. This is the core physics engine
+ * that drives all player-world interactions including jumping, wall-jumping, and movement.
+ * 
+ * The system supports complex terrain including variable height columns, rail platforms,
+ * fence objects, and multiple tile types with different collision behaviors.
+ * 
+ * @fileoverview Core physics engine for player movement and world collision
+ * @exports groundHeightAt() - Terrain height sampling for any world coordinate
+ * @exports moveAndCollide() - Complete player movement integration with collision response
+ * @dependencies MAP_W, MAP_H, TILE constants, columnHeights, columnBases, map data from map system
+ * @sideEffects Modifies state.player position, velocity, grounded state, and movement flags
  */
 
-// Physics and collision
+// ============================================================================
+// Terrain Height Calculation System
+// ============================================================================
+
 /**
- * Calculate ground height at world coordinates
+ * Calculate ground height at any world coordinates with support for complex terrain
+ * Handles multiple terrain types including solid blocks, half-blocks, columns, rail platforms,
+ * and fence objects. Returns the highest walkable surface at the given position.
+ * 
  * @param {number} x - World X coordinate
- * @param {number} z - World Z coordinate
- * @returns {number} Ground height (0.0 for empty, 1.0 for wall, or custom column height)
+ * @param {number} z - World Z coordinate  
+ * @returns {number} Ground height (0.0 for empty space, 1.0+ for elevated surfaces)
  */
 function groundHeightAt(x, z){
+  // Convert world coordinates to grid coordinates
   const gx = Math.floor(x + MAP_W*0.5);
   const gz = Math.floor(z + MAP_H*0.5);
+  
+  // Early bounds check - outside map is considered empty space
   if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return 0.0;
+  
   const key = `${gx},${gz}`;
-  // Prefer spans if available; otherwise derive spans from columnHeights/columnBases and map wall tile.
+  
+  // ============================================================================
+  // Span-Based Terrain System (Advanced Terrain)
+  // ============================================================================
+  
+  /** @type {Array<{b:number,h:number,t?:number}>|null} */
   let spans = null;
   try {
     spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
           : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
           : null;
   } catch(_){ spans = null; }
-  // Detect if this cell's spans are purely non-solid markers so synthesized columns should not be treated solid
+  
+  // Detect if this cell contains only non-solid decorative spans
   const spansAllNonSolidGH = Array.isArray(spans) && spans.length>0 && spans.every(s => {
-    if (!s) return false; const t=((s.t|0)||0);
-    return (t===2 || t===3 || t===5 || t===6);
+    if (!s) return false; 
+    const t=((s.t|0)||0);
+    return (t===2 || t===3 || t===5 || t===6); // fence, portal, lock types
   });
+  
   /** @type {Array<{b:number,h:number}>} */
   let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // Remove fence spans (t==2/t==3), portal spans (t==5), and Lock spans (t==6) from ground computation; they are non-solid visuals
+  
+  // Filter out non-solid decorative spans (fences, portals, locks) from ground computation
   spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5) && (((s.t|0)||0) !== 6)));
-  // Rail-platform candidate from inner voxels (center cross) when within band
+  
+  // ============================================================================
+  // Rail Platform System (Special Narrow Walkways)
+  // ============================================================================
+  
   let railGroundCandidate = -Infinity;
   try {
-    const RAIL_HW = 0.11;
+    const RAIL_HW = 0.11; // Rail half-width for collision detection
     const cellMinX = gx - MAP_W*0.5;
     const cellMinZ = gz - MAP_H*0.5;
-    const lx = x - cellMinX;
-    const lz = z - cellMinZ;
+    const lx = x - cellMinX; // Local X within cell [0,1]
+    const lz = z - cellMinZ; // Local Z within cell [0,1]
+    
+    // Check if position is within rail band (center cross pattern)
     const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
     const centerHit = (inBand(lz,0.5,RAIL_HW) || inBand(lx,0.5,RAIL_HW));
-  if (centerHit && Array.isArray(spans)){
+    
+    if (centerHit && Array.isArray(spans)){
       const py = (state && state.player) ? state.player.y : 0.0;
       for (const s of spans){
-    if (!s) continue; const t=((s.t|0)||0); if (!(t===2||t===3)) continue; const b=(s.b|0), h=(s.h|0); if (h<=0) continue;
-        // Consider top faces of each voxel within this fence span
+        if (!s) continue; 
+        const t=((s.t|0)||0); 
+        if (!(t===2||t===3)) continue; // Only fence types create rail platforms
+        const b=(s.b|0), h=(s.h|0); 
+        if (h<=0) continue;
+        
+        // Consider top faces of each voxel within this fence span as potential rail platforms
         const topMost = b + h; // exclusive top
         const maxLv = topMost - 1;
         for (let lv=b; lv<=maxLv; lv++){
-          const top = lv + 1; // top face
+          const top = lv + 1; // top face height
           if (top <= py + 1e-6 && top > railGroundCandidate) railGroundCandidate = top;
         }
       }
     }
   } catch(_){ }
-  // Always also synthesize from columnHeights/bases so default map blocks are respected even with server spans present
+  
+  // ============================================================================
+  // Column Height System (Standard Terrain)
+  // ============================================================================
+  
   try {
-  // Do not synthesize a full column for fence tiles (FENCE/BADFENCE) or when spans are all non-solid markers
-  // (e.g., only portal/lock/fence spans exist). Only inner rails should affect collisions/ground in such cases.
-  const _cvGH = map[mapIdx(gx,gz)];
-  if (_cvGH !== TILE.FENCE && _cvGH !== TILE.BADFENCE && !spansAllNonSolidGH && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
-      let b = 0; let h = columnHeights.get(key) || 0;
+    // Skip synthesis for fence tiles or cells with only decorative spans
+    const _cvGH = map[mapIdx(gx,gz)];
+    if (_cvGH !== TILE.FENCE && _cvGH !== TILE.BADFENCE && !spansAllNonSolidGH && typeof columnHeights !== 'undefined' && columnHeights && columnHeights.has(key)){
+      let b = 0; // Base height
+      let h = columnHeights.get(key) || 0; // Column height
+      
+      // Get base height from columnBases if available
       try {
         if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
         else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
       } catch(_){ }
+      
       if (h > 0) spanList.push({ b: b|0, h: h|0 });
     }
   } catch(_){ }
-  // Always include ground wall/half as span if map tile is WALL/HALF/NOCLIMB (BAD handled via spans)
+  
+  // ============================================================================
+  // Basic Tile System (Fallback for Simple Terrain)
+  // ============================================================================
+  
   const cellValGH = map[mapIdx(gx,gz)];
   const isGroundWall = (cellValGH === TILE.WALL) || (cellValGH === TILE.NOCLIMB);
   const isGroundHalf = (cellValGH === TILE.HALF);
   const isGroundFence = (cellValGH === TILE.FENCE) || (cellValGH === TILE.BADFENCE);
-  if (isGroundWall){ spanList.push({ b: 0, h: 1 }); }
-  else if (isGroundHalf){ spanList.push({ b: 0, h: 0.5 }); }
+  
+  // Add basic terrain spans for standard tile types
+  if (isGroundWall){ 
+    spanList.push({ b: 0, h: 1 }); // Full-height wall
+  } else if (isGroundHalf){ 
+    spanList.push({ b: 0, h: 0.5 }); // Half-height platform
+  }
   else if (isGroundFence){ /* fences are thin; do not affect ground height */ }
   const py = state.player ? state.player.y : 0.0;
   if (spanList.length){

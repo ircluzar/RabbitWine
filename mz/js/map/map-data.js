@@ -1,83 +1,146 @@
 /**
- * Tilemap data structure and sample map generation.
- * Defines the game world grid with walls and open spaces, provides map indexing utilities.
- * Exports: TILE enum, MAP_W, MAP_H constants, map array, mapIdx(), buildSampleMap() functions.
- * Dependencies: None. Side effects: Initializes global map array when buildSampleMap() is called.
+ * Core tile-based map data structure and sample level generation system.
+ * Defines the primary game world grid with comprehensive tile types for walls, hazards,
+ * interactive elements, and special mechanics. Provides map indexing utilities and 
+ * a complete sample map builder that demonstrates all major gameplay features.
+ * 
+ * Key Features:
+ * - Comprehensive tile type system supporting walls, hazards, fences, triggers
+ * - 24x24 grid-based world structure with efficient array storage
+ * - Sample map demonstrating vertical platforming, ability gates, and item placement
+ * - Integration with 3D column system for multi-level geometry
+ * - Player spawn point and item initialization system
+ * - Level switching support for multiplayer environments
+ * 
+ * @fileoverview Core map data structures and sample level generation
+ * @exports TILE enum - All tile type constants for map construction
+ * @exports MAP_W, MAP_H - World grid dimensions (24x24)
+ * @exports map array - Primary tile storage (Uint8Array)
+ * @exports mapIdx() - 2D to 1D coordinate conversion utility
+ * @exports buildSampleMap() - Complete sample level generator function
+ * @dependencies MapBuilder class, column system integration, item system integration
+ * @sideEffects Initializes global map array, applies height data, sets player spawn, places items
  */
 
-// Tilemap representation (moved from scene.js)
-// BAD: hazardous tile that damages on contact
-// HALF: half-height base block (0.5 tall) used for step-ups
-// FENCE: connectable fence post + rails (visual + collision), brightened level color
-// BADFENCE: like FENCE but hazardous on contact with inner rails and rendered red
-// LEVELCHANGE: non-solid trigger block that switches to another level when entered
-const TILE = { OPEN: 0, WALL: 1, FILL: 2, REMOVE: 3, BAD: 4, HALF: 5, FENCE: 6, BADFENCE: 7, LEVELCHANGE: 8, NOCLIMB: 9 };
-const MAP_W = 24, MAP_H = 24;
+// ============================================================================
+// Core Tile Type System and World Dimensions
+// ============================================================================
+
+/**
+ * Comprehensive tile type enumeration for all map elements and gameplay mechanics
+ * Each tile type represents different collision, visual, and interactive behaviors
+ */
+const TILE = { 
+  OPEN: 0,        // Walkable open space (default ground terrain)
+  WALL: 1,        // Solid wall blocks (standard collision geometry)
+  FILL: 2,        // Solid fill blocks (platforms and elevated terrain)
+  REMOVE: 3,      // Carved space markers (holes and gaps in structures)
+  BAD: 4,         // Hazardous tiles (damage player on contact, render red)
+  HALF: 5,        // Half-height blocks (0.5 unit tall, step-up platforms)
+  FENCE: 6,       // Connectable fence posts with rails (climbable, brightened)
+  BADFENCE: 7,    // Hazardous fences (damage on rail contact, render red)
+  LEVELCHANGE: 8, // Non-solid level transition triggers (teleport zones)
+  NOCLIMB: 9      // Solid walls that prevent climbing mechanics
+};
+
+/** World grid width in tiles (creates 24x24 game area) */
+const MAP_W = 24;
+/** World grid height in tiles (creates 24x24 game area) */
+const MAP_H = 24;
+
+/** Primary tile storage array - each byte represents one tile type */
 const map = new Uint8Array(MAP_W * MAP_H);
 
 /**
- * Convert 2D map coordinates to 1D array index
- * @param {number} x - Grid X coordinate (0 to MAP_W-1)
- * @param {number} y - Grid Y coordinate (0 to MAP_H-1)
- * @returns {number} Array index for the map data
+ * Convert 2D grid coordinates to linear array index for efficient map access
+ * Essential utility for all map operations and collision detection systems
+ * @param {number} x - Grid X coordinate (0 to MAP_W-1, left to right)
+ * @param {number} y - Grid Y coordinate (0 to MAP_H-1, top to bottom)
+ * @returns {number} Linear array index for direct map array access
  */
-function mapIdx(x,y){ return y*MAP_W + x; }
+function mapIdx(x,y){ 
+  return y*MAP_W + x; 
+}
 
-// Expose authoritative bindings on window so runtime systems (multiplayer/tile ops/level clear)
-// operate on the same map/size/index that physics & collision use.
+// ============================================================================
+// Global Export Integration for Cross-System Access
+// ============================================================================
+
+/**
+ * Export core map data structures to global scope for universal access
+ * Enables physics, rendering, collision, and gameplay systems to share map state
+ */
 try {
   if (typeof window !== 'undefined'){
-    window.TILE = TILE;
-    window.MAP_W = MAP_W;
-    window.MAP_H = MAP_H;
-    window.map = map;
-    window.mapIdx = mapIdx;
+    window.TILE = TILE;        // Tile type constants
+    window.MAP_W = MAP_W;      // World width
+    window.MAP_H = MAP_H;      // World height  
+    window.map = map;          // Primary tile data
+    window.mapIdx = mapIdx;    // Coordinate conversion utility
   }
 } catch(_){}
 
+// ============================================================================
+// Sample Map Generation and Level Design Showcase
+// ============================================================================
+
 /**
- * Generate a sample map with border walls and interior rooms.
- * Creates a structured dungeon-like layout with:
- * - Outer perimeter walls (boundary containment)
- * - Central rectangular room outline
- * - Four decorative pillar obstacles within the room
+ * Generate comprehensive sample map demonstrating all major gameplay systems
+ * Creates a structured test level featuring:
+ * - Perimeter containment walls and interior room layouts
+ * - Multi-level vertical platforming with variable column heights  
+ * - Strategic pillar placement for wall-jumping and navigation
+ * - Ability-gated progression requiring specific movement skills
+ * - Item placement system with spawn point configuration
+ * - Integration with 3D column geometry and physics systems
  * 
- * Layout dimensions: 24x24 grid
- * Interior room: 12x12 area (coordinates 6,6 to 17,17)
- * Pillar positions: Symmetrical 2x2 pattern within room center
+ * Map Structure:
+ * - Total dimensions: 24x24 tiles
+ * - Central room: 12x12 area (coordinates 6,6 to 17,17)  
+ * - Height variation: Ground to 23 units elevation
+ * - Spawn point: Southwest area (3,12) facing south
+ * - Sky platform: High-altitude rest area at elevation 21
  */
 function buildSampleMap(){
-  // Initialize MapBuilder instance for structured map construction
-  // Targets: 24x24 grid, writes to global 'map' Uint8Array, uses TILE enum
+  // ========================================================================
+  // MapBuilder Initialization and Base Terrain
+  // ========================================================================
+  
   const builder = new MapBuilder(MAP_W, MAP_H, map, TILE);
+  
+  // Establish foundation: fill entire grid with walkable open terrain
+  builder.clear(TILE.OPEN);
 
-  builder.clear(TILE.OPEN);  // Establish base terrain - Fill entire grid with open walkable space
+  // ========================================================================
+  // Core Level Architecture and Room Structure  
+  // ========================================================================
+  
+  // Create impermeable outer boundary for player containment
+  builder.border(TILE.WALL, 1.0); 
+  
+  // Central fortress: large rectangular room with tall walls (5 units high)
+  builder.rect(6, 6, 17, 17, TILE.WALL, 5.0); 
+  
+  // Auxiliary structures: entrance areas and corner fill
+  builder.rect(6, 1, 6, 5, TILE.WALL, 1.0);      // Northern entrance bump
+  builder.rect(17, 17, 24, 24, TILE.FILL, 1.0);  // Southeast corner fill
+  
+  // Strategic entrance: doorway gap in central wall for access
+  builder.rect(11, 6, 12, 6, TILE.REMOVE, 2.0);  // 2-wide entrance opening
 
-
-
-
-  //---------------------------------
-  builder.border(TILE.WALL,1.0); // Create outer boundary walls for map containment
-
-  builder.rect(6, 6, 17, 17, TILE.WALL, 5.0); // central wall
-
-  builder.rect(6, 1, 6, 5, TILE.WALL, 1.0); // bump at top
-  builder.rect(17, 17, 24,24, TILE.FILL, 1.0); // fill bottom-right corner
-
-  builder.rect(11, 6, 12,6, TILE.REMOVE, 2.0); // hole in central wall
-
-  builder.pillars([10, 10], TILE.WALL, 1.0 ); // Northwest pillar - ground level (height 1.0)
-  builder.pillars([13, 10], TILE.WALL, 2.0 ); // Northeast pillar - low elevation (height 2.0)
-  builder.pillars([10, 13], TILE.WALL, 3.0 ); // Southwest pillar - medium elevation (height 3.0)
-  builder.pillars([13, 13], TILE.WALL, 4.0 ); // Southeast pillar - high elevation (height 4.0)
-
-  // Elevated example: a short floating slab above ground (y=3, 1 unit thick)
-  // This should render as a floating segment and be collidable only when player Y is within (3..4)
-  //builder.rect(8, 8, 9, 8, TILE.FILL, 1.0, { y: 3 });
-
-  // Verticality: climbing path above the spawn (3,12)
-  // Step pads ascending to the east and north
-  // builder.rect(4, 12, 4, 12, TILE.FILL, 1.0, { y: 1 });
+  // ========================================================================
+  // Vertical Platforming Elements with Progressive Difficulty
+  // ========================================================================
+  
+  // Training pillars: height progression for wall-jumping skill development
+  builder.pillars([10, 10], TILE.WALL, 1.0); // Northwest: ground level reference
+  builder.pillars([13, 10], TILE.WALL, 2.0); // Northeast: basic elevation  
+  builder.pillars([10, 13], TILE.WALL, 3.0); // Southwest: medium challenge
+  builder.pillars([13, 13], TILE.WALL, 4.0); // Southeast: advanced height
+  
+  // ========================================================================
+  // Advanced Vertical Architecture - Sky Platform System
+  // ========================================================================
   // builder.rect(5, 12, 5, 12, TILE.FILL, 1.0, { y: 2 });
   // builder.rect(6, 12, 6, 12, TILE.FILL, 1.0, { y: 3 });
   // builder.rect(6, 11, 6, 11, TILE.FILL, 1.0, { y: 4 });
@@ -108,65 +171,78 @@ function buildSampleMap(){
   //    if (lvl === 16) builder.rect(11, 1, 13, 3, TILE.FILL, 1.0, { y: lvl }); // rest pad
   //  }
   // Segment C: sky platform as a large rest area at high altitude
-   builder.rect(12, 2, 16, 6, TILE.FILL, 1.0, { y: 21 });
-  // // Decorative high supports at corners (elevated only, to not block the path below)
-   builder.pillars([[12,2],[16,2],[12,6],[16,6]], TILE.WALL, 3.0, { y: 21 });
+  
+  // High-altitude sky platform: ultimate challenge reward area at elevation 21
+  builder.rect(12, 2, 16, 6, TILE.FILL, 1.0, { y: 21 });
+  
+  // Architectural supports: corner pillars for visual interest and stability
+  builder.pillars([[12,2],[16,2],[12,6],[16,6]], TILE.WALL, 3.0, { y: 21 });
 
-  // Hazard test: one BAD block at (12,12) elevated at Y:5 (1 unit thick)
-  // Represented in map as TILE.BAD so it renders red and damages on contact
-  //builder.rect(12, 12, 13, 13, TILE.BAD, 2.0, { y: 5 });
+  // ========================================================================
+  // Gameplay Progression System - Spawn and Ability Items
+  // ========================================================================
+  
+  // Player spawn: safe starting area in southwest with southern facing
+  builder.spawn(3, 12, 'S');
+  
+  // Strategic ability placement for gated progression design:
+  builder.item(3, 19, 'ABILITY_BACK');      // Basic backward movement
+  builder.item(3, 3, 'ABILITY_MOVE');       // Forward movement unlock  
+  builder.item(14, 20, 'ABILITY_JUMP');     // Vertical movement capability
+  builder.item(12, 10, 'ABILITY_WALLJUMP'); // Advanced wall interaction
+  builder.item(14, 4, 'ABILITY_DASH', { y: 23 }); // High-skill dash at extreme elevation
 
-
-
-
-
-
-
-  builder.spawn(3,12, 'S'); //Player Spawn
-
-  builder.item(3, 19, 'ABILITY_BACK');
-  builder.item(3, 3, 'ABILITY_MOVE');
-  builder.item(14, 20, 'ABILITY_JUMP');
-  builder.item(12, 10, 'ABILITY_WALLJUMP');
-  builder.item(14, 4, 'ABILITY_DASH', { y: 23 });
-
-//---------------------------------
-
-
-  // Step 6: Export & apply height data (defer if applyHeightData not yet loaded)
+  // ========================================================================
+  // World Integration and System Activation
+  // ========================================================================
+  
+  // Export 3D geometry data to column registry system
   const heightData = builder.getHeightData();
   if (typeof applyHeightData === 'function') {
     applyHeightData(heightData, true);
   } else if (typeof window !== 'undefined') {
     window._pendingMapHeights = heightData;
   }
-  // Refresh instance buffers if system is loaded so removed objects disappear
+  
+  // Refresh rendering instances to reflect geometry changes
   if (typeof rebuildInstances === 'function') rebuildInstances();
 
-  // Step 7: Apply spawn to player state if available
-  const sp = builder.getSpawn && builder.getSpawn();
-  if (sp && typeof state !== 'undefined' && state.player){
-    // Grid -> world: center of cell, origin at map center
-    state.player.x = (sp.x + 0.5) - MAP_W * 0.5;
-    state.player.z = (sp.y + 0.5) - MAP_H * 0.5;
-    state.player.angle = sp.angle || 0.0; // 0 faces -Z
-    // Leave y=0 so vertical physics will settle to ground height on first frame
+  // Apply spawn point to player state for game initialization
+  const spawnData = builder.getSpawn && builder.getSpawn();
+  if (spawnData && typeof state !== 'undefined' && state.player){
+    // Convert grid coordinates to world space (centered at map origin)
+    state.player.x = (spawnData.x + 0.5) - MAP_W * 0.5;
+    state.player.z = (spawnData.y + 0.5) - MAP_H * 0.5;
+    state.player.angle = spawnData.angle || 0.0; // 0 radians faces -Z direction
+    // Y coordinate handled by physics system on first frame
   }
 
-  // Initialize items into gameplay system
+  // Initialize item collection system with placed items
   const itemList = builder.getItems && builder.getItems();
   if (itemList && itemList.length){
     if (typeof initItemsFromBuilder === 'function') initItemsFromBuilder(itemList);
     else if (typeof window !== 'undefined') window._pendingItems = itemList;
   }
-
-
 }
-// Only auto-build the sample map when playing ROOT; otherwise leave blank and wait for server data
-try {
-  const lvl = (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string') ? window.MP_LEVEL : 'ROOT';
-  if (lvl === 'ROOT') buildSampleMap();
-} catch(_){ buildSampleMap(); }
 
-// Expose builder for runtime level switches (e.g., when returning to ROOT)
-try { if (typeof window !== 'undefined') window.buildSampleMap = buildSampleMap; } catch(_){ }
+// ============================================================================
+// Conditional Map Initialization and Global Export
+// ============================================================================
+
+/**
+ * Auto-build sample map for ROOT level, preserve blank state for multiplayer levels
+ * Allows level-specific initialization while maintaining consistent map structure
+ */
+try {
+  const currentLevel = (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string') ? window.MP_LEVEL : 'ROOT';
+  if (currentLevel === 'ROOT') buildSampleMap();
+} catch(_){ 
+  buildSampleMap(); // Fallback to sample map on any initialization error
+}
+
+/**
+ * Export map builder function for runtime level switching and dynamic content
+ */
+try { 
+  if (typeof window !== 'undefined') window.buildSampleMap = buildSampleMap; 
+} catch(_){ }

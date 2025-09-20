@@ -1,123 +1,185 @@
 /**
- * Player control functions for movement and input handling.
- * Provides turn controls, keyboard input processing, and jump mechanics.
- * Exports: turnLeft(), turnRight(), handleKeyboard(), doJump(), startDash() functions.
- * Dependencies: state.player and state.inputs from state.js, showSwipeGlow() from UI. Side effects: Modifies player angle, velocity, and input state.
+ * Player control functions for movement, input handling, and advanced mechanics.
+ * Provides comprehensive input processing including directional movement, jumping, dashing,
+ * keyboard input handling, and audio-visual feedback for player actions.
+ * 
+ * This module handles the complete player control system from basic movement to advanced
+ * abilities like freeze-dash mechanics, with integrated music management and sound effects.
+ * All controls respect the progressive ability unlock system managed by action-distributor.
+ * 
+ * @fileoverview Complete player input and control system with ability progression
+ * @exports turnLeft() - 90-degree left turn with visual/audio feedback
+ * @exports turnRight() - 90-degree right turn with visual/audio feedback  
+ * @exports swipeUp() - Forward acceleration with music startup
+ * @exports swipeDown() - Deceleration/reverse with dash cancellation
+ * @exports doJump() - Jump mechanics with wall-jump integration
+ * @exports startDash() - Freeze-and-dash system initiation
+ * @exports handleKeyboard() - Comprehensive keyboard input processing
+ * @dependencies state.player, state.inputs from state.js, showSwipeGlow() from UI, music/sfx systems
+ * @sideEffects Modifies player state, triggers audio, displays visual feedback, manages music playback
  */
 
-// Start background music once, on first movement-related action
+// ============================================================================
+// Music Integration System
+// ============================================================================
+
+/**
+ * Music startup flag to ensure background music only starts once per session
+ * @type {boolean}
+ */
 let __mzMusicStarted = false;
+
+/**
+ * Initialize background music on first movement-related action
+ * Handles volume persistence, audio unlocking, and multiplayer music synchronization.
+ * Only starts music once per session to avoid multiple overlapping tracks.
+ */
 function startMusicOnce(){
   if (__mzMusicStarted) return;
   __mzMusicStarted = true;
   try {
     if (window.music){
-      // Respect persisted volume if present; only set default if no saved value.
+      // Respect persisted volume preference, only set default if no saved value exists
       try {
         const saved = localStorage.getItem('mz_music_vol');
         if (!saved) {
-          // Only apply default if volume is at its module initial value (<= ~0.21) to avoid clobbering early adjustments
+          // Only apply default volume if currently at module initial value to avoid clobbering user adjustments
           if (typeof music.volume === 'number' && music.volume <= 0.21) {
             music.volume = 0.5;
           }
         }
       } catch(_) {}
-  const src = './music/vrun64.mp3';
-  if (!music.isUnlocked) music.unlock(src);
-  else music.play(src);
-  // After starting local playback, request server music position and seek
-  try {
-    if (typeof window.mpRequestMusicPos === 'function'){
-      window.mpRequestMusicPos((resp)=>{
-        try {
-          if (!resp || typeof resp.posMs !== 'number') return;
-          const posSec = Math.max(0, (resp.posMs|0) / 1000);
-          if (window.music && typeof music.setCurrentTimeSeconds === 'function'){
-            music.setCurrentTimeSeconds(posSec);
-          }
-        } catch(_){ }
-      });
-    }
-  } catch(_){ }
+      
+      const src = './music/vrun64.mp3';
+      // Handle audio context unlocking (required by many browsers)
+      if (!music.isUnlocked) music.unlock(src);
+      else music.play(src);
+      
+      // Synchronize with multiplayer server music position if available
+      try {
+        if (typeof window.mpRequestMusicPos === 'function'){
+          window.mpRequestMusicPos((resp)=>{
+            try {
+              if (!resp || typeof resp.posMs !== 'number') return;
+              const posSec = Math.max(0, (resp.posMs|0) / 1000);
+              if (window.music && typeof music.setCurrentTimeSeconds === 'function'){
+                music.setCurrentTimeSeconds(posSec);
+              }
+            } catch(_){ }
+          });
+        }
+      } catch(_){ }
     }
   } catch(_){}
 }
 
-// Controls: turns, keyboard, jump, and dash
+// ============================================================================
+// Basic Directional Controls
+// ============================================================================
+
 /**
- * Turn player 90 degrees to the left
+ * Turn player 90 degrees counterclockwise (left turn)
+ * Respects ball mode and ability unlock restrictions, provides audio-visual feedback
  */
 function turnLeft(){ 
-  if (state.player.isBallMode) return;
-  if (!state.player.canTurn) return;
-  state.player.angle -= Math.PI/2; 
-  showSwipeGlow('left'); 
-  // SFX: turn left (35%)
+  if (state.player.isBallMode) return; // No turning in ball mode
+  if (!state.player.canTurn) return;   // Respect ability lock
+  
+  state.player.angle -= Math.PI/2;     // 90-degree left rotation
+  showSwipeGlow('left');               // Visual feedback 
+  
+  // Audio feedback: turn left (35% volume)
   try { if (window.sfx) sfx.play('./sfx/Menu_Move.mp3', { volume: 0.35 }); } catch(_){}
 }
 
 /**
- * Turn player 90 degrees to the right
+ * Turn player 90 degrees clockwise (right turn)
+ * Respects ball mode and ability unlock restrictions, provides audio-visual feedback
  */
 function turnRight(){ 
-  if (state.player.isBallMode) return;
-  if (!state.player.canTurn) return;
-  state.player.angle += Math.PI/2; 
-  showSwipeGlow('right'); 
-  // SFX: turn right (35%)
+  if (state.player.isBallMode) return; // No turning in ball mode
+  if (!state.player.canTurn) return;   // Respect ability lock
+  
+  state.player.angle += Math.PI/2;     // 90-degree right rotation
+  showSwipeGlow('right');              // Visual feedback
+  
+  // Audio feedback: turn right (35% volume)
   try { if (window.sfx) sfx.play('./sfx/Menu_Move.mp3', { volume: 0.35 }); } catch(_){}
 }
 
+// ============================================================================
+// Movement Mode Controls  
+// ============================================================================
+
 /**
- * Engage acceleration mode (swipe up)
+ * Engage acceleration mode (forward movement initiation)
+ * Triggered by swipe up or forward input, starts background music on first use
  */
 function swipeUp(){
-  if (state.player.isBallMode) return;
-  state.player.movementMode = 'accelerate';
-  // First movement: start music
-  startMusicOnce();
+  if (state.player.isBallMode) return; // No movement changes in ball mode
+  
+  state.player.movementMode = 'accelerate'; // Switch to forward acceleration
+  startMusicOnce();                         // Initialize background music
+  
+  // Provide visual and audio feedback
   if (typeof showSwipeGlow === 'function') showSwipeGlow('up');
-  // SFX: move forward (35%)
   try { if (window.sfx) sfx.play('./sfx/Menu_Select.mp3', { volume: 0.35 }); } catch(_){}
 }
 
 /**
- * Engage deceleration/stop or 180-flip when stationary (swipe down)
+ * Engage deceleration/stop mode or execute 180-degree flip when stationary
+ * Triggered by swipe down or backward input, includes dash cancellation logic.
+ * Behavior depends on current movement state and unlocked abilities.
  */
 function swipeDown(){
-  if (state.player.isBallMode) return;
+  if (state.player.isBallMode) return; // No movement changes in ball mode
+  
   const p = state.player;
-  // If currently dashing, cancel immediately regardless of back ability
+  
+  // Priority: Cancel dash immediately if currently dashing (regardless of back ability)
   if (p.isDashing){
     p.isDashing = false;
     p.dashTime = 0.0;
-    // Clamp speed to normal max (exit dash boost)
+    // Clamp speed to normal maximum (exit dash boost)
     try {
-      const base = 3.0; const max = base; // seam scaling removed
+      const base = 3.0; const max = base; // Note: seam scaling removed
       if (p.speed > max) p.speed = max;
-    } catch(_){ /* ignore */ }
+    } catch(_){ /* ignore clamp errors */ }
   }
-  // If back ability is locked, only perform dash cancel above
+  
+  // Exit early if back ability is locked (only dash cancel above is allowed)
   if (!p.canBack) return;
+  
+  // Behavior varies based on current movement state
   if (p.movementMode === 'stationary' && (p.speed||0) <= 0.001){
-    // 180 and start accelerating in opposite direction
+    // When completely stopped: execute 180-degree turn and start accelerating in opposite direction
     p.angle += Math.PI;
     p.movementMode = 'accelerate';
-  // First movement: start music
-  startMusicOnce();
+    startMusicOnce(); // Initialize background music on movement
   } else {
+    // When moving: switch to deceleration mode to gradually stop
     p.movementMode = 'stationary';
   }
+  
+  // Provide visual and audio feedback
   if (typeof showSwipeGlow === 'function') showSwipeGlow('down');
-  // SFX: back/stop (35%)
   try { if (window.sfx) sfx.play('./sfx/Menu_Back.mp3', { volume: 0.35 }); } catch(_){}
 }
 
-// --- Dash helpers ---
+// ============================================================================
+// Advanced Dash Mechanics System
+// ============================================================================
+
+/**
+ * Initiate freeze mode for precision dash targeting
+ * When player has dash ability, this allows them to freeze in midair and
+ * precisely aim their dash direction before executing the movement.
+ */
 function startFreeze(){
-  if (state.player.isBallMode) return;
+  if (state.player.isBallMode) return; // No dashing in ball mode
+  
   const p = state.player;
-  if (!p.hasDash || !p.canDash) return;
+  if (!p.hasDash || !p.canDash) return; // Requires dash ability unlock
   if (p.dashUsed) return;
   if (p.isFrozen || p.isDashing) return;
   p.isFrozen = true;
