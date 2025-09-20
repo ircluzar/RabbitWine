@@ -1,4 +1,89 @@
 "use strict";
+/**
+ * Desktop FPS Editor Mode with 3D Level Construction.
+ *
+ * Overview:
+ *  - Provides a noclip fly camera for desktop users to build and modify 3D levels.
+ *  - Supports block placement/removal with a visor-based interaction system.
+ *  - Includes multiple block types, sets, and specialized tools (portals, locks, fences).
+ *  - Features real-time multiplayer synchronization for collaborative editing.
+ *  - Integrates structure preview/save modal for level data management.
+ *
+ * Core Systems:
+ *  
+ * 1. FPS Camera:
+ *    - Pointer lock-based mouse look with WASD movement.
+ *    - Configurable fly speed, noclip through walls.
+ *    - Seamless transition from/to player perspective.
+ *    - Mouse wheel visor distance adjustment.
+ *
+ * 2. Block Interaction:
+ *    - Grid-aligned visor showing placement target.
+ *    - Left click: place block, Right click: remove block.
+ *    - Ray casting for precise 3D positioning.
+ *    - Real-time collision and span management.
+ *
+ * 3. Block Type System:
+ *    - Set A: BASE(1), BAD(2), GLASS(3), WATER(4), HALF(5), FENCE(6), BADFENCE(7), PORTAL(8), NOCLIMB(9)
+ *    - Set B: Currently only LOCK(1) - non-solid outline blocks
+ *    - Keyboard 1-9 for slot selection, 0 to cycle sets
+ *    - Visual type bar with current selection display
+ *
+ * 4. Special Mechanics:
+ *    - Portal placement with destination prompts and metadata persistence
+ *    - Lock blocks for puzzle mechanics (non-solid, outline-only)
+ *    - Fence/BadFence with jump behavior modifiers
+ *    - Half-blocks with fractional height (0.5 unit slabs)
+ *    - NoClimb surfaces that disable wall-jumping
+ *
+ * 5. Structure Management:
+ *    - Modal with level data preview (JSON format)
+ *    - Save/load functionality with validation
+ *    - Import/export for level sharing
+ *    - Real-time multiplayer operations (mpSendMapOps, mpSendTileOps, mpSendPortalOps)
+ *
+ * 6. Span System Integration:
+ *    - Automatic normalization and merging of same-type adjacent spans
+ *    - Height-based collision detection and rendering
+ *    - Support for typed spans (t: 1=BAD, 2=FENCE, 3=BADFENCE, 4=HALF, 5=PORTAL, 6=LOCK, 9=NOCLIMB)
+ *    - Fractional heights for half-blocks and custom geometry
+ *
+ * Accessibility & UX:
+ *    - Desktop-only restriction (pointer:fine media query detection)
+ *    - Keyboard shortcuts with visual feedback
+ *    - Clear entry/exit state management
+ *    - Proper focus handling and canvas pointer lock
+ *    - Escape key safe-exit with modal closure
+ *
+ * Data Flow:
+ *  Read: state.editor (mode, fps camera, visor, block selection), map arrays, columnSpans, player position
+ *  Write: state.editor fields, DOM elements (crosshair, modal, type bar), map tiles, span data, multiplayer ops
+ *
+ * Performance Considerations:
+ *    - Efficient ray casting with configurable step size
+ *    - Batched span operations with normalization
+ *    - Event delegation and proper cleanup on mode exit
+ *    - Modal lazy creation with DOM recycling
+ *
+ * Network Integration:
+ *    - Immediate local updates with network synchronization
+ *    - Operation queuing for reliable delivery
+ *    - Portal metadata replication across clients
+ *    - Conflict resolution via authoritative server state
+ *
+ * Dependencies:
+ *    - DOM: CANVAS element for pointer lock and focus
+ *    - State: editor object, player position, input systems
+ *    - Map: columnSpans, columnHeights, map arrays, portal destinations
+ *    - Multiplayer: mpSendMapOps, mpSendTileOps, mpSendPortalOps functions
+ *    - UI: showTopNotification for user feedback
+ *
+ * Exports (window):
+ *    - onToggleEditorMode() - main entry/exit function
+ *    - onPointerLockChange() - pointer lock state handler
+ *    - ensureBlockTypeBar() - UI component initializer
+ *    - Various editor helper functions for modal and interaction management
+ */
 // Editor FPS mode (desktop-only): noclip fly, grid visor, structure modal with preview and save.
 (function(){
   if (typeof window === 'undefined') return;

@@ -490,6 +490,10 @@ function __mp_offlineApplyItemsFull(list){
         else { if (typeof window.spawnItemWorld==='function') window.spawnItemWorld(w.x, y, w.z, payload, { ghost }); }
       } catch(_){ }
     }
+    // Baseline injection: if snapshot empty and level is ROOT, restore tutorial items
+    try {
+      if ((!list || list.length === 0) && typeof window.spawnRootBaselineItemsIfEmpty === 'function') window.spawnRootBaselineItemsIfEmpty();
+    } catch(_){ }
     // Update purple total for current room based on list (0 if none)
     try {
       const totalPurple = Array.isArray(list) ? list.reduce((n,e)=> n + ((e && (e.kind===1 || e.kind==="1"))?1:0), 0) : 0;
@@ -664,6 +668,10 @@ function mpEnsureWS(nowMs){
         shadowItems.push({ gx, gy, y, kind, payload });
       } catch(_){ }
     }
+    // Baseline injection for empty ROOT authoritative snapshot
+    try {
+      if ((!list || list.length === 0) && typeof window.spawnRootBaselineItemsIfEmpty === 'function') window.spawnRootBaselineItemsIfEmpty();
+    } catch(_){ }
     try { console.log('[MP] items_full applied count=', shadowItems.length); } catch(_){ }
     // Update purple total for current room based on snapshot (0 if none)
     try {

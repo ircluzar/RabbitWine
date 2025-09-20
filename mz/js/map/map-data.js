@@ -230,6 +230,52 @@ function buildSampleMap(){
 // ============================================================================
 
 /**
+ * ROOT baseline ability items (grid coordinates + payload + optional elevation)
+ * Centralized so both the original sample map builder and any late authoritative
+ * empty snapshots (offline JSON or network items_full) can re-seed them.
+ * NOTE: Keep in sync with the builder.item calls inside buildSampleMap().
+ */
+const __ROOT_BASELINE_ITEMS = [
+  { gx:3,  gy:19, y:0.75, payload:'ABILITY_BACK' },
+  { gx:3,  gy:3,  y:0.75, payload:'ABILITY_MOVE' },
+  { gx:14, gy:20, y:0.75, payload:'ABILITY_JUMP' },
+  { gx:12, gy:10, y:0.75, payload:'ABILITY_WALLJUMP' },
+  { gx:14, gy:4,  y:23.00, payload:'ABILITY_DASH' }
+];
+
+/**
+ * Spawn baseline ability items for ROOT if the current active item list is empty.
+ * Invoked only after the item system is loaded (spawnItemWorld present) and we
+ * detect an empty authoritative snapshot for ROOT. This prevents an empty
+ * offline JSON (or server snapshot) from wiping tutorial progression.
+ */
+function spawnRootBaselineItemsIfEmpty(){
+  try {
+    if (typeof window === 'undefined') return;
+    if (typeof MP_LEVEL === 'string' && MP_LEVEL !== 'ROOT') return; // only for ROOT
+    // Prefer global fallback if MP_LEVEL not yet defined
+    if (typeof MP_LEVEL !== 'string' && typeof window.MP_LEVEL === 'string' && window.MP_LEVEL !== 'ROOT') return;
+    // Require item query helpers to judge emptiness (fallback to length check later)
+    let existing = 0;
+    try { if (typeof window.listActiveItems === 'function') existing = window.listActiveItems().length|0; } catch(_){ }
+    if (existing > 0) return; // already have items (authoritative snapshot had some)
+    if (typeof window.spawnItemWorld !== 'function') return; // item system not ready
+    const W = (typeof MAP_W === 'number') ? MAP_W : (window.MAP_W||24);
+    const H = (typeof MAP_H === 'number') ? MAP_H : (window.MAP_H||24);
+    for (const it of __ROOT_BASELINE_ITEMS){
+      if (!it) continue;
+      const x = (it.gx + 0.5) - W * 0.5;
+      const z = (it.gy + 0.5) - H * 0.5;
+      const y = (typeof it.y === 'number') ? it.y : 0.75;
+      try { window.spawnItemWorld(x, y, z, it.payload || '', { ghost:false }); } catch(_){ }
+    }
+    try { console.info('[ROOT][baseline-items] Injected baseline ability items (authoritative snapshot empty)'); } catch(_){ }
+  } catch(_){ }
+}
+
+try { if (typeof window !== 'undefined') window.spawnRootBaselineItemsIfEmpty = spawnRootBaselineItemsIfEmpty; } catch(_){ }
+
+/**
  * Auto-build sample map for ROOT level, preserve blank state for multiplayer levels
  * Allows level-specific initialization while maintaining consistent map structure
  */
