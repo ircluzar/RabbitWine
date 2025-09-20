@@ -75,6 +75,15 @@ window.mpGetMapVersion = ()=> mpMap.version;
 // Local type-hint cache for map ops we originate, to upgrade echoed ops when the server omits type flags.
 // key: 'gx,gy,y' -> { t:number, ts:number }
 const __mp_localTypeHints = new Map();
+// Gate allowing persisted lock replay for this level (set true only if level itself produces lock adds)
+let __mp_lockReplayGate = false;
+// LocalStorage key builder for persisted Lock voxels (namespaced per level to avoid cross-level contamination)
+function __mp_lockLSKey(){
+  try {
+    const lvl = (typeof MP_LEVEL === 'string' && MP_LEVEL.trim()) ? MP_LEVEL.trim() : 'ROOT';
+    return 'mp_lock_voxels_v1_'+lvl;
+  } catch(_) { return 'mp_lock_voxels_v1_ROOT'; }
+}
 function __mp_typeAllowed(t){ return (t===1||t===2||t===3||t===4||t===5||t===6||t===9); }
 function __mp_hintGet(key){
   try {
@@ -97,6 +106,7 @@ function __mp_hintSet(key, t){
 }
 function mpApplyFullMap(version, ops){
   mpMap.adds.clear(); mpMap.removes.clear();
+  let sawLock = false;
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add') {
@@ -108,14 +118,17 @@ function mpApplyFullMap(version, ops){
       else if (tt===3) mpMap.adds.add(op.key+'#3');
       else if (tt===4) mpMap.adds.add(op.key+'#4');
       else if (tt===5) mpMap.adds.add(op.key+'#5');
-      else if (tt===6) mpMap.adds.add(op.key+'#6');
+  else if (tt===6){ mpMap.adds.add(op.key+'#6'); sawLock = true; }
       else if (tt===9) mpMap.adds.add(op.key+'#9');
       else mpMap.adds.add(op.key);
     }
     else if (op.op === 'remove') mpMap.removes.add(op.key);
   }
   mpMap.version = version|0;
-  try { console.log('[MP] map_full applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
+  if (sawLock) __mp_lockReplayGate = true;
+  // Count lock keys for instrumentation
+  let lockCount = 0; try { for (const k of mpMap.adds){ if (k.endsWith('#6')) { lockCount++; } } } catch(_){ }
+  try { console.log('[MP] map_full applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size, 'locks=', lockCount, 'gate=', __mp_lockReplayGate); } catch(_){ }
   try { __mp_rebuildWorldFromDiff(); } catch(_){ }
   // Self-healing reconciliation: for legacy snapshots missing #6 typed keys, reinsert locally & optionally rebroadcast.
   try { if (typeof window.mpReconcileLockTypesAfterFull === 'function') window.mpReconcileLockTypesAfterFull(); } catch(_){ }
@@ -133,6 +146,7 @@ function mpApplyFullMap(version, ops){
   try { __mp_clearBootWatch(); } catch(_){ }
 }
 function mpApplyOps(version, ops){
+  let sawLock = false;
   for (const op of (ops||[])){
     if (!op || typeof op.key!=='string') continue;
     if (op.op === 'add'){
@@ -140,6 +154,7 @@ function mpApplyOps(version, ops){
   if (!tt){ const hint = __mp_hintGet(op.key); if (hint) tt = hint; }
   const addKey = (tt===1)? (op.key+'#1') : (tt===2)? (op.key+'#2') : (tt===3)? (op.key+'#3') : (tt===4)? (op.key+'#4') : (tt===5)? (op.key+'#5') : (tt===6)? (op.key+'#6') : (tt===9)? (op.key+'#9') : op.key;
       if (mpMap.removes.has(op.key)) mpMap.removes.delete(op.key); else mpMap.adds.add(addKey);
+      if (tt===6) sawLock = true;
     } else if (op.op === 'remove'){
       if (mpMap.adds.has(op.key)) mpMap.adds.delete(op.key);
       else if (mpMap.adds.has(op.key+'#1')) mpMap.adds.delete(op.key+'#1');
@@ -153,7 +168,9 @@ function mpApplyOps(version, ops){
     }
   }
   mpMap.version = version|0;
-  try { console.log('[MP] map_ops applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size); } catch(_){ }
+  if (sawLock) __mp_lockReplayGate = true;
+  let lockCount = 0; try { for (const k of mpMap.adds){ if (k.endsWith('#6')) lockCount++; } } catch(_){ }
+  try { console.log('[MP] map_ops applied v', mpMap.version, 'adds=', mpMap.adds.size, 'removes=', mpMap.removes.size, 'locks=', lockCount, 'gate=', __mp_lockReplayGate); } catch(_){ }
   try { __mp_rebuildWorldFromDiff(); } catch(_){ }
   try {
     if (__mp_levelLoading){
@@ -1160,20 +1177,29 @@ window.mpSendMapOps = function(ops){
     try { __mp_localApplyMapOps(ops); } catch(_){ }
     // Persist Lock adds to localStorage tracker for offline sessions (so a reload can re-send typed ops)
     try {
-      const lsKey = 'mp_lock_voxels_v1';
+      const lvlKey = __mp_lockLSKey();
+      const legacyKey = 'mp_lock_voxels_v1'; // pre-namespacing global key
       let set = window.__mp_lockVoxelSet;
       if (!set){
         set = new Set();
-        try { const raw = localStorage.getItem(lsKey); if (raw){ for (const k of JSON.parse(raw)) if (typeof k==='string') set.add(k); } } catch(_){ }
+        // Load level-specific first
+        try { const rawLvl = localStorage.getItem(lvlKey); if (rawLvl){ for (const k of JSON.parse(rawLvl)) if (typeof k==='string') set.add(k); } } catch(_){ }
+        // Migrate legacy (global) entries ONLY if no level-specific existing data
+        if (!set.size){
+          try { const rawLegacy = localStorage.getItem(legacyKey); if (rawLegacy){ for (const k of JSON.parse(rawLegacy)) if (typeof k==='string') set.add(k); } } catch(_){ }
+        }
         window.__mp_lockVoxelSet = set;
       }
       let dirty = false;
       for (const op of ops){
         if (!op || typeof op.key !== 'string') continue;
-        if (op.op === 'add' && op.t === 6){ if (!set.has(op.key)){ set.add(op.key); dirty = true; } }
+        if (op.op === 'add' && op.t === 6){ if (!set.has(op.key)){ set.add(op.key); dirty = true; } __mp_lockReplayGate = true; }
         else if (op.op === 'remove'){ if (set.has(op.key)){ set.delete(op.key); dirty = true; } }
       }
-      if (dirty){ try { localStorage.setItem(lsKey, JSON.stringify(Array.from(set.values()).slice(0,8192))); } catch(_){ } }
+      if (dirty){
+        try { localStorage.setItem(lvlKey, JSON.stringify(Array.from(set.values()).slice(0,8192))); } catch(_){ }
+        try { console.log('[MP] persist: updated lock set size', set.size, 'gate=', __mp_lockReplayGate, 'level=', MP_LEVEL); } catch(_){ }
+      }
     } catch(_){ }
     if (!online) return false; // offline: we've already applied locally
     const clean = [];
@@ -1356,6 +1382,17 @@ window.mpSwitchLevel = function(levelName){
   try {
     const name = (typeof levelName==='string' && levelName.trim()) ? levelName.trim() : 'ROOT';
   MP_LEVEL = name;
+  // Reset per-level persisted Lock voxel cache so subsequent ops/replay load the correct namespaced data
+  try { window.__mp_lockVoxelSet = null; } catch(_){ }
+  // Reset lock replay gate; only opened if incoming snapshot/ops actually contain lock voxels
+  __mp_lockReplayGate = false;
+  // Clear local type hints to avoid promoting stale types cross-level
+  try { __mp_localTypeHints.clear(); } catch(_){ }
+  // Hard clear diffs and spans to ensure zero frame of stale geometry
+  try { mpMap.adds.clear(); mpMap.removes.clear(); } catch(_){ }
+  try { if (window.columnSpans && typeof window.columnSpans.clear==='function') window.columnSpans.clear(); } catch(_){ }
+  try { if (typeof window.rebuildInstances==='function') window.rebuildInstances(); } catch(_){ }
+  try { console.log('[MP] switch level ->', MP_LEVEL, '(cleared world; lock gate closed)'); } catch(_){ }
 // Reconciliation after full snapshot: ensure every in-memory Lock span has a corresponding #6 key in mpMap.adds.
 // If missing, insert locally and (if online) send typed add ops (throttled) so server diff is updated.
 // Idempotent; safe to call after each mpApplyFullMap.
@@ -1411,11 +1448,18 @@ window.mpReconcileLockTypesAfterFull = (function(){
 // Replay persisted Lock voxels (placed while offline) ensuring typed ops are sent once online.
 window.__mp_replayPersistedLocks = function(){
   try {
-    const lsKey = 'mp_lock_voxels_v1';
+    if (!__mp_lockReplayGate){ try { console.log('[MP] replay: gate closed; skipping persisted locks for level', MP_LEVEL); } catch(_){ } return false; }
+    const lvlKey = __mp_lockLSKey();
+    const legacyKey = 'mp_lock_voxels_v1';
     let set = window.__mp_lockVoxelSet;
     if (!set){
       set = new Set();
-      try { const raw = localStorage.getItem(lsKey); if (raw){ for (const k of JSON.parse(raw)) if (typeof k==='string') set.add(k); } } catch(_){ }
+      // Load per-level first
+      try { const rawLvl = localStorage.getItem(lvlKey); if (rawLvl){ for (const k of JSON.parse(rawLvl)) if (typeof k==='string') set.add(k); } } catch(_){ }
+      // Fallback migrate legacy entries if level set empty
+      if (!set.size){
+        try { const rawLegacy = localStorage.getItem(legacyKey); if (rawLegacy){ for (const k of JSON.parse(rawLegacy)) if (typeof k==='string') set.add(k); } } catch(_){ }
+      }
       window.__mp_lockVoxelSet = set;
     }
     if (!set.size) return false;
@@ -1433,7 +1477,7 @@ window.__mp_replayPersistedLocks = function(){
       }
     }
     if (toSend.length){ try { window.mpSendMapOps(toSend); } catch(_){ } }
-    if (toSend.length){ try { console.log('[MP] replay: sent persisted Lock ops', toSend.length); } catch(_){ } }
+    if (toSend.length){ try { console.log('[MP] replay: sent persisted Lock ops', toSend.length, 'level=', MP_LEVEL); } catch(_){ } }
     return true;
   } catch(err){ try { console.warn('[MP] replay persisted locks failed', err); } catch(_){ } return false; }
 };
