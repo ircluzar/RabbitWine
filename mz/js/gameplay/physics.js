@@ -397,14 +397,23 @@ function isWallAt(x, z) {
     }
   }
   
-  // Check base map tile
+  // Check base map tile (treat base tiles as voxel spans with finite vertical extent)
   const cv = map[mapIdx(gx, gz)];
-  if (cv === TILE.WALL || cv === TILE.BAD || cv === TILE.FILL) return true;
-  if (cv === TILE.HALF && py < 0.52) return true; // half-height wall
-  
-  // FENCE/BADFENCE require more complex rail logic - simplified check
-  if (cv === TILE.FENCE || cv === TILE.BADFENCE) {
-    if (py >= -0.1 && py <= 1.5) return true; // conservative fence collision
+  const EPS = 1e-4;
+  // WALL / BAD / FILL occupy [0,1). Only block if player vertical center inside that slab.
+  if (cv === TILE.WALL || cv === TILE.BAD || cv === TILE.FILL){
+    if (py > -EPS && py < 1.0 - EPS) return true;
+  }
+  // HALF occupies [0,0.5). Allow clearance once player reaches the top (with small descent grace)
+  if (cv === TILE.HALF){
+    const HALF_TOP = 0.5;
+    const DESC_GRACE = 0.012; // allow slight downward motion to still count as on top
+    if (py < HALF_TOP - EPS) return true;               // clearly below: collide
+    if (py < HALF_TOP + DESC_GRACE && p && p.vy < -0.05) return true; // descending onto lip
+  }
+  // FENCE/BADFENCE: rails up to ~1.5; treat as blocking only within that vertical band
+  if (cv === TILE.FENCE || cv === TILE.BADFENCE){
+    if (py > -0.1 && py < 1.5 - EPS) return true;
   }
   
   return false;
