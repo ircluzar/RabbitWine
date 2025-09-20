@@ -1,8 +1,37 @@
 /**
- * Debug HUD toggle control.
- * Manages the button that toggles visibility of the debug HUD and coordinates display.
- * Exports: onToggleDebug() function for button click handling.
- * Dependencies: state.debugVisible from state.js, DEBUG_TOGGLE and HUD from dom.js. Side effects: Modifies button state and HUD aria.
+ * Debug toggle + alt control lock system.
+ *
+ * Responsibilities:
+ *  - Toggle debug HUD visibility (onToggleDebug) with comprehensive ability unlock.
+ *  - Manage alt control lock button (camera-relative movement vs player-relative).
+ *  - Generate inline SVG icons for lock states (normal, locked, forced-locked).
+ *  - Coordinate UI element visibility (editor button, lock button) based on debug/lock state.
+ *
+ * Debug Mode Effects:
+ *  - Enables all player abilities (turn, back, jump, wall-jump, dash).
+ *  - Shows editor toggle button and other debug-only UI.
+ *  - Updates lock button and camera status to reflect capabilities.
+ *
+ * Alt Control Lock:
+ *  - When locked: movement interpreted relative to camera direction (not player facing).
+ *  - When unlocked: normal player-facing-relative controls.
+ *  - Forced lock mode: external constraint disables user toggle.
+ *
+ * Data Sources (read):
+ *  - state: debugVisible, altBottomControlLocked, lockedCameraForced, snapBottomFull, player abilities.
+ *  - DEBUG_TOGGLE, ALT_LOCK_BTN, CAMERA_STATUS, HUD (DOM elements).
+ *
+ * Side Effects (write):
+ *  - Mutates state.debugVisible, state.altBottomControlLocked, state.lockCameraYaw, state.camYaw.
+ *  - Updates button aria attributes, textContent, innerHTML (SVG icons).
+ *  - Modifies player abilities when debug enabled.
+ *  - Shows/hides editor button and other conditional UI.
+ *
+ * Exported API (window):
+ *  - onToggleDebug()
+ *  - setAltLockButtonIcon()
+ *  - setCameraStatusLabel()
+ *  - onToggleAltControlLock()
  */
 
 // Debug HUD toggle

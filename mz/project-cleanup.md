@@ -3,7 +3,7 @@
 This document provides a comprehensive checklist for cleaning up all JavaScript files in the MZ project. Each file should be reviewed for code quality, documentation, and removal of obsolete comments.
 
 ## Status Update - Major Progress! 🚀
-**Current Progress: 33/86 files completed (38%)**
+**Current Progress: 41/86 files completed (48%)**
 
 **COMPLETED DIRECTORIES ✅**:
 - **Root Level (3 files)** - Enhanced with comprehensive documentation
@@ -14,13 +14,18 @@ This document provides a comprehensive checklist for cleaning up all JavaScript 
 - **Map Directory (4 files)** - 3D world building, column systems, tile rendering
 - **Pipelines Directory (6 files)** - Advanced WebGL2 rendering pipelines
 
-**UI DIRECTORY PROGRESS (5 files completed so far)**:
+**UI DIRECTORY PROGRESS (8 files completed)**:
 - ✅ `dom.js` (centralized element cache + accessibility notes)
 - ✅ `dom-events.js` (comprehensive event binding documentation + defensive guards)
 - ✅ `hud.js` (HUD system + swipe glow refactor, global exports)
 - ✅ `input-keyboard.js` (normalized key handling + dual token storage)
 - ✅ `input-pointer.js` (gesture detection, alt control mode, global exports)
-  Remaining UI targets: `editor.js`, `notification-modal.js`, `resize.js`, `seam.js`, `start-modal.js`, `toggle.js`
+- ✅ `seam.js` (split-screen drag control, snap logic documentation)
+- ✅ `resize.js` (viewport scaling + letterbox calculation)
+- ✅ `toggle.js` (debug toggle + alt control lock system with SVG icons)
+- ✅ `notification-modal.js` (toast notifications with accessibility + visual effects)
+- ✅ `start-modal.js` (game start modal with audio unlock + ARIA support)
+  Remaining UI targets: `editor.js` (large file, requires separate focused session)
 
 **RECENTLY COMPLETED - PIPELINES DIRECTORY**:
 - ✅ `grid.js` - Grid overlay rendering with distance-based fading and boundary visualization

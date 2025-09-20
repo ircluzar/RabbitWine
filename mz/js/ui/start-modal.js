@@ -1,4 +1,42 @@
 "use strict";
+/**
+ * Game start modal with audio unlock + initial user gesture capture.
+ *
+ * Responsibilities:
+ *  - Display blocking overlay requiring user interaction before game begins.
+ *  - Unlock Web Audio API context via user gesture (tap, click, keypress).
+ *  - Apply full-page posterize effects during modal display.
+ *  - Transition to in-engine visual effects after dismissal.
+ *  - Initialize audio volume settings and play dismissal sound.
+ *
+ * Interaction Methods:
+ *  - Tap/click anywhere on overlay or button.
+ *  - Press Space key.
+ *  - All methods trigger closeAndStart() with proper event handling.
+ *
+ * Visual Effects:
+ *  - Full-page posterize filter (16-color / 64-color modes).
+ *  - Card-based modal with pixelated styling and subtle dither patterns.
+ *  - Pop-in animation for card appearance.
+ *  - Radial gradient background with transparency layers.
+ *
+ * Accessibility Features:
+ *  - Proper ARIA dialog attributes (role="dialog", aria-modal="true").
+ *  - Keyboard navigation support (Space key activation).
+ *  - High contrast design with clear button labeling.
+ *  - Event capture for reliable dismissal across interaction types.
+ *
+ * Side Effects (write):
+ *  - Injects CSS styles + SVG posterize filters into document.
+ *  - Modifies body classList for posterize mode toggle.
+ *  - Unlocks audio context and configures initial volume settings.
+ *  - Updates state visual effect parameters (posterize, dither, pixelation).
+ *  - Plays dismissal sound effect.
+ *
+ * Exported Behavior:
+ *  - Auto-initializes on DOMContentLoaded or immediately if DOM ready.
+ *  - No explicit exports; self-contained initialization system.
+ */
 // Start modal: shows a blocking overlay until user interacts. Dismissal grants initial forward movement.
 (function(){
   if (typeof window === 'undefined') return;

@@ -1,4 +1,37 @@
 "use strict";
+/**
+ * Toast notification system with glitch/pixel styling effects.
+ *
+ * Responsibilities:
+ *  - Display temporary top-of-screen notifications with auto-dismiss timers.
+ *  - Apply pixelated, posterized visual effects consistent with game aesthetic.
+ *  - Manage notification lifecycle (enter animation, display duration, exit animation).
+ *  - Support both simple messages and title+body combinations.
+ *
+ * Visual Effects:
+ *  - Dual-layer content (normal + posterized) with crossfade animation.
+ *  - Pixelated borders, background patterns, and color bar accents.
+ *  - SVG posterize filters for color reduction (16-color / 64-color modes).
+ *  - Entry/exit animations with vertical slide and opacity transitions.
+ *
+ * Accessibility Features:
+ *  - Non-blocking (pointer-events: none) to avoid interfering with game interaction.
+ *  - Auto-dismissal for screen reader compatibility.
+ *  - Semantic structure with title/body separation.
+ *  - High contrast borders and backgrounds for visibility.
+ *
+ * Data Sources (read):
+ *  - message, opts (ttl, body) from function parameters.
+ *  - document.body classList for posterize mode detection.
+ *
+ * Side Effects (write):
+ *  - Injects CSS styles + SVG filters into document head/body.
+ *  - Creates/removes DOM notification elements in toast container.
+ *  - Uses setTimeout for auto-dismissal timing.
+ *
+ * Exported API (window):
+ *  - showTopNotification(message, opts) -> { close() }
+ */
 // Glitchy, pixelated top notification (toast) that auto-dismisses after a few seconds.
 (function(){
   if (typeof window === 'undefined') return;

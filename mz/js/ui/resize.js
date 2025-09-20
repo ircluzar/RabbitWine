@@ -1,8 +1,32 @@
 /**
- * Canvas resize handling with letterboxing and device pixel ratio management.
- * Manages viewport scaling, letterbox calculation, and maintains aspect ratio for the game canvas.
- * Exports: resizeCanvasToViewport() function and letterbox calculation utilities.
- * Dependencies: state from state.js, BASE_WIDTH/BASE_HEIGHT from constants.js, CANVAS from dom.js. Side effects: Modifies canvas size and state.letterboxCss.
+ * Viewport resize handling + letterbox calculation.
+ *
+ * Responsibilities:
+ *  - Resize game canvas to match window dimensions while preserving aspect ratio.
+ *  - Calculate letterbox offsets for centered viewport presentation.
+ *  - Support both fixed resolution (BASE_WIDTH × BASE_HEIGHT) and fillViewport modes.
+ *  - Apply device pixel ratio scaling (clamped to max 3× for performance).
+ *  - Update seam position and UI element visibility on resize.
+ *
+ * Resize Strategy:
+ *  - fillViewport mode: scale canvas to full window size, maintain aspect ratio via letterboxing.
+ *  - Fixed mode: use BASE_WIDTH × BASE_HEIGHT canvas, center within window.
+ *  - DPR scaling applied to canvas.width/height but CSS size uses logical pixels.
+ *
+ * Data Sources (read):
+ *  - window.innerWidth/Height, window.devicePixelRatio.
+ *  - state: fillViewport, seamRatio, snapTopFull, snapBottomFull, player.canTurn.
+ *  - BASE_WIDTH, BASE_HEIGHT (target aspect ratio).
+ *  - CANVAS, SEAM, ALT_LOCK_BTN, SEAM_HANDLE (DOM elements).
+ *
+ * Side Effects (write):
+ *  - Mutates CANVAS.width/height (backing store pixels).
+ *  - Updates state.dpr, state.letterboxCss.
+ *  - Repositions SEAM.style.top.
+ *  - Updates ALT_LOCK_BTN + SEAM_HANDLE visibility/attributes.
+ *
+ * Exported API (window):
+ *  - resizeCanvasToViewport()
  */
 
 // Resize and letterbox computation
@@ -75,3 +99,10 @@ function resizeCanvasToViewport() {
     }
   } catch(_){ }
 }
+
+// Global exports
+try {
+  if (typeof window !== 'undefined'){
+    window.resizeCanvasToViewport = resizeCanvasToViewport;
+  }
+} catch(_){ }

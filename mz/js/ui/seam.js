@@ -1,8 +1,31 @@
 /**
- * Seam dragging UI for split-screen camera view control.
- * Handles pointer events for dragging the seam divider that controls camera viewport splitting.
- * Exports: draggingSeam variable, onSeamPointerDown(), onSeamPointerMove(), onSeamPointerUp() functions.
- * Dependencies: state.seamRatio and state.letterboxCss from state.js, SEAM_HANDLE from dom.js. Side effects: Modifies state.seamRatio and element pointer capture.
+ * Split-screen seam dragging UI control.
+ *
+ * Responsibilities:
+ *  - Handle pointer drag interactions on the seam divider (SEAM_HANDLE).
+ *  - Manage snap states (top fullscreen / bottom fullscreen / proportional split).
+ *  - Update state.seamRatio and SEAM position during drags.
+ *  - Enforce unlock condition (player.canTurn) to prevent use when camera control locked.
+ *
+ * Interaction Logic:
+ *  - Drag beyond 80% towards one side snaps to fullscreen mode for that viewport.
+ *  - Fullscreen modes require 31% drag back toward center to unsnap.
+ *  - Proportional mode clamps seam between 5% and 95% of viewport height.
+ *
+ * Data Sources (read):
+ *  - state: seamRatio, letterboxCss, snapTopFull, snapBottomFull, player.canTurn.
+ *  - window.innerHeight for clientY coordinate normalization.
+ *  - SEAM_HANDLE, SEAM (DOM elements).
+ *
+ * Side Effects (write):
+ *  - Mutates state.seamRatio, state.snapTopFull, state.snapBottomFull.
+ *  - Repositions SEAM.style.top.
+ *  - Sets/releases pointer capture on SEAM_HANDLE.
+ *
+ * Exported API (window):
+ *  - draggingSeam (boolean state)
+ *  - seamUnlocked() (condition checker)
+ *  - onSeamPointerDown(e), onSeamPointerMove(e), onSeamPointerEnd(e)
  */
 
 // Seam drag logic
@@ -80,3 +103,14 @@ function onSeamPointerMove(e){
 }
 
 function onSeamPointerEnd(e){ draggingSeam = false; }
+
+// Global exports
+try {
+  if (typeof window !== 'undefined'){
+    window.draggingSeam = draggingSeam;
+    window.seamUnlocked = seamUnlocked;
+    window.onSeamPointerDown = onSeamPointerDown;
+    window.onSeamPointerMove = onSeamPointerMove;
+    window.onSeamPointerEnd = onSeamPointerEnd;
+  }
+} catch(_){ }
