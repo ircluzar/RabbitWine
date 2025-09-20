@@ -95,6 +95,17 @@ function rebuildInstances(){
   instOpen = new Float32Array(openPositions);   // Open tile instances
   instWall = new Float32Array(wallPositions);   // Wall tile instances  
   instBad = new Float32Array(hazardPositions);  // Hazard tile instances
+
+  // Refresh global references so consumers don't hold onto stale arrays
+  if (typeof window !== 'undefined') {
+    window.instOpen = instOpen;
+    window.instWall = instWall;
+    window.instBad = instBad;
+  } else if (typeof globalThis !== 'undefined') {
+    globalThis.instOpen = instOpen;
+    globalThis.instWall = instWall;
+    globalThis.instBad = instBad;
+  }
 }
 
 // ============================================================================
@@ -113,5 +124,12 @@ rebuildInstances();
  */
 if (typeof window !== 'undefined'){
   window.rebuildInstances = rebuildInstances;  // Instance regeneration function
+  window.instOpen = instOpen;                  // Open tile instance data
+  window.instWall = instWall;                  // Wall tile instance data  
   window.instBad = instBad;                    // Hazard tile instance data
+} else if (typeof globalThis !== 'undefined') {
+  globalThis.rebuildInstances = rebuildInstances;
+  globalThis.instOpen = instOpen;
+  globalThis.instWall = instWall;
+  globalThis.instBad = instBad;
 }

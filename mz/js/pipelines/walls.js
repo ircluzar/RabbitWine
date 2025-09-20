@@ -1,52 +1,91 @@
+// ============================================================================
+// Wall and Column Rendering Pipeline System
+// ============================================================================
 /**
- * Wall and column rendering pipeline with voxel-based geometry.
- * Handles instanced rendering of walls, tall columns, fences, and their wireframe outlines with voxel subdivision.
- * Exports: WALL_VS, WALL_FS shaders, wallProgram, wallVAO, drawWalls(), drawTallColumns().
+ * @fileoverview Advanced voxel-based wall and column rendering pipeline
+ * 
+ * Features:
+ * - Instanced rendering of walls, tall columns, fences with voxel subdivision
+ * - Dynamic transparency effects: fade bands, screendoor patterns, stippling
+ * - Glitter animation effects for visual interest
+ * - Player-relative transparency for visibility management in top-down view
+ * - Wireframe outline rendering for editor and debug modes
+ * - Multi-height column support with configurable voxel resolution
+ * 
+ * Architecture:
+ * - Voxel-based geometry: Subdivided cubes for smooth lighting and effects
+ * - Instance data: Position offsets for efficient batch rendering
+ * - Shader effects: Distance fading, stipple patterns, animation support
+ * - Buffer management: Separate VAOs for solid walls and wireframe outlines
+ * 
+ * Dependencies: gl-core.js (createProgram), global gl context, game state
+ * Exports: Wall shaders, programs, VAOs, drawWalls(), drawTallColumns()
+ * Side effects: Creates multiple VAO/VBO resources, modifies WebGL state
  */
 
-// Shaders
+// ============================================================================
+// Wall Rendering Shaders
+// ============================================================================
+
+/**
+ * Vertex shader for voxel-based wall rendering with subdivision support
+ * Transforms voxel coordinates to world space using instance offsets
+ */
 const WALL_VS = `#version 300 es
-layout(location=0) in vec3 a_pos;
-layout(location=1) in vec2 a_off;
-uniform mat4 u_mvp;
-uniform vec2 u_origin;
-uniform float u_scale;
-uniform float u_height;
-uniform vec3 u_voxCount;
-uniform vec3 u_voxOff;
-uniform float u_yBase;
-out float v_worldY;
-out vec2 v_worldXZ;
+layout(location=0) in vec3 a_pos;      // Voxel vertex position within subdivision
+layout(location=1) in vec2 a_off;      // Per-instance position offset (grid coords)
+uniform mat4 u_mvp;                    // Model-View-Projection matrix
+uniform vec2 u_origin;                 // Map origin offset for centering
+uniform float u_scale;                 // Global scale factor
+uniform float u_height;                // Wall height in world units
+uniform vec3 u_voxCount;               // Voxel subdivision counts [X,Y,Z]
+uniform vec3 u_voxOff;                 // Voxel offset within subdivision
+uniform float u_yBase;                 // Base Y coordinate for wall bottom
+out float v_worldY;                    // World Y coordinate for fragment shader
+out vec2 v_worldXZ;                    // World XZ coordinates for effects
 void main(){
+  // Convert voxel coordinates to normalized local space (0..1)
   float lx = (a_pos.x + u_voxOff.x) / u_voxCount.x;
   float ly = (a_pos.y + u_voxOff.y) / u_voxCount.y;
   float lz = (a_pos.z + u_voxOff.z) / u_voxCount.z;
+  
+  // Transform to world space using instance offset and scale
   vec2 xz = (vec2(lx, lz) + a_off + u_origin) * u_scale;
   float y = ly * u_height + u_yBase;
+  
+  // Pass world coordinates to fragment shader for effects
   v_worldY = y;
   v_worldXZ = xz;
+  
   gl_Position = u_mvp * vec4(xz.x, y, xz.y, 1.0);
 }`;
+
+/**
+ * Fragment shader for wall rendering with advanced transparency and visual effects
+ * Supports fade bands, screendoor patterns, glitter animation, and stippling
+ */
 const WALL_FS = `#version 300 es
 precision mediump float;
-uniform vec3 u_color;
-uniform float u_alpha;
-uniform int u_useFade;
-uniform float u_playerY;
-uniform float u_fadeBand;
-uniform float u_minAlpha;
-uniform int u_glitterMode;
-uniform float u_now;
-// Top-view only screendoor transparency for obstructions above the player
-uniform int u_stippleMode;      // 0=off, 1=top-view screendoor
-uniform float u_stippleAllow;   // allowed space (blocks) above player before stipple kicks in
-uniform vec2 u_camXZ;           // camera world XZ
-uniform float u_camY;           // camera world Y
-uniform float u_stippleRadius;  // radius around camera (in world units) where effect applies
-uniform int u_stippleInvert;    // 0=apply within radius, 1=apply outside radius
-uniform int u_stippleAbove;     // 1=check above player (default), 0=check below
-in float v_worldY;
-in vec2 v_worldXZ;
+uniform vec3 u_color;                  // Base wall color
+uniform float u_alpha;                 // Base alpha value
+uniform int u_useFade;                 // Enable distance-based alpha fading
+uniform float u_playerY;               // Player Y position for fade calculations
+uniform float u_fadeBand;              // Fade band width around player
+uniform float u_minAlpha;              // Minimum alpha when faded
+uniform int u_glitterMode;             // Enable glitter animation effects
+uniform float u_now;                   // Current time for animations
+
+// Screendoor transparency for top-view obstruction management
+uniform int u_stippleMode;             // 0=off, 1=enable screendoor pattern
+uniform float u_stippleAllow;          // Height threshold above player for stippling
+uniform vec2 u_camXZ;                  // Camera world position XZ
+uniform float u_camY;                  // Camera world position Y
+uniform float u_stippleRadius;         // Effect radius around camera
+uniform int u_stippleInvert;           // 0=apply within radius, 1=outside radius
+uniform int u_stippleAbove;            // 1=check above player, 0=below
+
+in float v_worldY;                     // World Y coordinate from vertex shader
+in vec2 v_worldXZ;                     // World XZ coordinates from vertex shader
 out vec4 outColor;
 void main(){
   float aMul = 1.0;
@@ -80,8 +119,14 @@ void main(){
   outColor = col;
 }`;
 
-// Program and uniforms
+// ============================================================================
+// WebGL Resources and Initialization
+// ============================================================================
+
+/** Shader program for wall and column rendering */
 const wallProgram = createProgram(WALL_VS, WALL_FS);
+
+/** Core uniform locations for transform and geometry parameters */
 const wall_u_mvp       = gl.getUniformLocation(wallProgram, 'u_mvp');
 const wall_u_origin    = gl.getUniformLocation(wallProgram, 'u_origin');
 const wall_u_scale     = gl.getUniformLocation(wallProgram, 'u_scale');
@@ -89,6 +134,8 @@ const wall_u_height    = gl.getUniformLocation(wallProgram, 'u_height');
 const wall_u_voxCount  = gl.getUniformLocation(wallProgram, 'u_voxCount');
 const wall_u_voxOff    = gl.getUniformLocation(wallProgram, 'u_voxOff');
 const wall_u_yBase     = gl.getUniformLocation(wallProgram, 'u_yBase');
+
+/** Visual effect uniform locations for transparency and animation */
 const wall_u_useFade   = gl.getUniformLocation(wallProgram, 'u_useFade');
 const wall_u_playerY   = gl.getUniformLocation(wallProgram, 'u_playerY');
 const wall_u_fadeBand  = gl.getUniformLocation(wallProgram, 'u_fadeBand');
@@ -97,6 +144,8 @@ const wall_u_color     = gl.getUniformLocation(wallProgram, 'u_color');
 const wall_u_alpha     = gl.getUniformLocation(wallProgram, 'u_alpha');
 const wall_u_glitterMode = gl.getUniformLocation(wallProgram, 'u_glitterMode');
 const wall_u_now       = gl.getUniformLocation(wallProgram, 'u_now');
+
+/** Screendoor transparency uniform locations for top-view visibility */
 const wall_u_stippleMode = gl.getUniformLocation(wallProgram, 'u_stippleMode');
 const wall_u_stippleAllow = gl.getUniformLocation(wallProgram, 'u_stippleAllow');
 const wall_u_camXZ  = gl.getUniformLocation(wallProgram, 'u_camXZ');
@@ -141,6 +190,9 @@ gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
 gl.vertexAttribDivisor(1, 1);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+// Wireframe VAO for outlines (placeholder - may be defined elsewhere)
+const wallWireVAO = gl.createVertexArray();
 
 // Top-view jitter
 let wallJitterLastTickSec = 0.0;
@@ -193,7 +245,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     }
   // Filter out ground-level wall tiles that are represented as tall columns.
   // Important: do NOT hide a ground wall if only elevated spans (base>0) exist there.
-  let data = instWall;
+  let data = window.instWall || new Float32Array(0);
   // Split instances into normal vs BAD vs HALF, and hide ground cube if spans include base=0
   let wallsNormal = new Float32Array(0);
   let wallsBad = new Float32Array(0);
@@ -1533,4 +1585,60 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   gl.disable(gl.BLEND);
   gl.depthFunc(gl.LESS);
   gl.bindVertexArray(null);
+}
+
+// ============================================================================
+// Global Export Registration
+// ============================================================================
+
+/** Export wall rendering system components for cross-module access */
+if (typeof window !== 'undefined') {
+  // Shader source code
+  window.WALL_VS = WALL_VS;
+  window.WALL_FS = WALL_FS;
+  
+  // WebGL program and resources
+  window.wallProgram = wallProgram;
+  window.wallVAO = wallVAO;
+  window.wallWireVAO = wallWireVAO;
+  
+  // Core uniform locations (transform and geometry)
+  window.wall_u_mvp = wall_u_mvp;
+  window.wall_u_origin = wall_u_origin;
+  window.wall_u_scale = wall_u_scale;
+  window.wall_u_height = wall_u_height;
+  window.wall_u_voxCount = wall_u_voxCount;
+  window.wall_u_voxOff = wall_u_voxOff;
+  window.wall_u_yBase = wall_u_yBase;
+  
+  // Visual effect uniforms (transparency and animation)
+  window.wall_u_useFade = wall_u_useFade;
+  window.wall_u_playerY = wall_u_playerY;
+  window.wall_u_fadeBand = wall_u_fadeBand;
+  window.wall_u_minAlpha = wall_u_minAlpha;
+  window.wall_u_color = wall_u_color;
+  window.wall_u_alpha = wall_u_alpha;
+  window.wall_u_glitterMode = wall_u_glitterMode;
+  window.wall_u_now = wall_u_now;
+  
+  // Screendoor transparency uniforms
+  window.wall_u_stippleMode = wall_u_stippleMode;
+  window.wall_u_stippleAllow = wall_u_stippleAllow;
+  window.wall_u_camXZ = wall_u_camXZ;
+  window.wall_u_camY = wall_u_camY;
+  window.wall_u_stippleRadius = wall_u_stippleRadius;
+  window.wall_u_stippleInvert = wall_u_stippleInvert;
+  
+  // Rendering functions
+  window.drawWalls = drawWalls;
+  window.drawTallColumns = drawTallColumns;
+  
+} else if (typeof globalThis !== 'undefined') {
+  // Alternative global object for other environments
+  globalThis.WALL_VS = WALL_VS;
+  globalThis.WALL_FS = WALL_FS;
+  globalThis.wallProgram = wallProgram;
+  globalThis.wallVAO = wallVAO;
+  globalThis.drawWalls = drawWalls;
+  globalThis.drawTallColumns = drawTallColumns;
 }

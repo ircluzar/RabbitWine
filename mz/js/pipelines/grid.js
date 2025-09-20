@@ -1,11 +1,33 @@
 /**
- * Grid overlay rendering pipeline with distance-based fading.
- * Provides wireframe grid lines that fade based on camera distance for visual reference.
- * Exports: GRID_VS, GRID_FS shaders, gridProgram, gridVAO, drawGridOverlay(), renderGridViewport() functions.
- * Dependencies: createProgram() from gl-core.js, gl context. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ * Advanced grid overlay rendering pipeline with adaptive distance-based fading and boundary visualization.
+ * Provides comprehensive wireframe grid systems for spatial reference, level boundaries, and debug visualization
+ * with sophisticated camera-aware rendering optimizations and dynamic color management based on game state.
+ * 
+ * Key Features:
+ * - Dynamic ground grid with distance-based transparency fading
+ * - Adaptive vertical boundary grid with camera lock state indication
+ * - Sphere masking for localized grid visibility around player
+ * - Multi-pass rendering for enhanced line thickness appearance
+ * - Level-aware height calculation from column geometry data
+ * - Runtime color customization and debug visualization support
+ * 
+ * @fileoverview Comprehensive grid rendering system with advanced visual feedback
+ * @exports drawGridOverlay() - Main ground grid rendering function
+ * @exports drawBoundaryGrid() - Vertical boundary visualization with state-aware coloring
+ * @exports renderGridViewport() - Viewport setup with level-themed background colors
+ * @exports GRID_VS, GRID_FS - WebGL2 shader programs for grid rendering
+ * @dependencies createProgram() from gl-core.js, WebGL2 context, game state integration
+ * @sideEffects Creates and manages VAO/VBO resources, modifies WebGL rendering state
  */
 
-// Grid pipeline (extracted from scene.js)
+// ============================================================================
+// WebGL2 Shader Programs for Advanced Grid Rendering
+// ============================================================================
+
+/**
+ * Vertex shader for grid line rendering with world-space positioning and offset support
+ * Features: MVP transformation, world-space coordinate output, thickness simulation via offset
+ */
 const GRID_VS = `#version 300 es
 layout(location=0) in vec3 a_pos;
 uniform mat4 u_mvp;
@@ -52,10 +74,27 @@ const grid_u_sphereRadius = gl.getUniformLocation(gridProgram, 'u_sphereRadius')
 const grid_u_useSphereMask = gl.getUniformLocation(gridProgram, 'u_useSphereMask');
 const grid_u_offset = gl.getUniformLocation(gridProgram, 'u_offset');
 
+// ============================================================================
+// Grid Geometry Generation and GPU Buffer Management
+// ============================================================================
+
+/**
+ * Generate horizontal grid line geometry with configurable density and extent
+ * Creates intersecting X and Z axis lines for spatial reference visualization
+ * @param {number} size - Grid extent in both directions (creates -size to +size range)
+ * @param {number} step - Distance between grid lines (typically 1 for per-tile resolution)
+ * @returns {Float32Array} Interleaved line vertex data for WebGL buffer upload
+ */
 function buildGridLines(size=20, step=1){
   const lines=[];
-  for(let i=-size;i<=size;i+=step){
+  
+  // Generate horizontal lines (vary Z, constant X range)
+  for(let i=-size; i<=size; i+=step){
     lines.push(-size,0,i,  size,0,i);
+  }
+  
+  // Generate vertical lines (vary X, constant Z range)  
+  for(let i=-size; i<=size; i+=step){
     lines.push(i,0,-size,  i,0,size);
   }
   return new Float32Array(lines);
@@ -72,14 +111,22 @@ gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 const gridVertexCount = gridData.length/3;
 
-// --- Red vertical boundary grid (invisible wall cue) ---
-// Lazily built so it can adapt to MAP_W/MAP_H if they change.
+// ============================================================================
+// Dynamic Boundary Grid System with Adaptive Height Detection
+// ============================================================================
+
+/** Lazily-built boundary grid VAO for vertical level containment visualization */
 let boundaryVAO = null;
 let boundaryVBO = null;
 let boundaryVertexCount = 0;
-let boundaryBuiltFor = { w: 0, h: 0, height: 0 };
+let boundaryBuiltFor = { w: 0, h: 0, height: 0 }; // Cache key for rebuild detection
 
-// Determine the current level height (in whole blocks), based on spans/columns
+/**
+ * Compute maximum level height by analyzing all column geometry data sources
+ * Scans multi-span columns, legacy extraColumns, and height maps to determine
+ * the tallest structure in the current level for boundary grid sizing
+ * @returns {number} Maximum height in world units (minimum 1)
+ */
 function computeLevelHeight(){
   let maxTop = 1; // at least ground wall height
   try {
@@ -295,4 +342,27 @@ function drawBoundaryGrid(mvp, camEye, isThirdPerson){
   }
   gl.bindVertexArray(null);
   gl.disable(gl.BLEND);
+}
+
+// ============================================================================
+// Global Exports for Cross-Module Integration
+// ============================================================================
+
+/**
+ * Export grid rendering system components to global scope for rendering pipeline access
+ * Enables main rendering loop and debug systems to access grid visualization functions
+ */
+if (typeof window !== 'undefined') {
+  // Primary rendering functions
+  window.drawGridOverlay = drawGridOverlay;           // Ground grid with distance fading
+  window.drawBoundaryGrid = drawBoundaryGrid;         // Vertical boundary visualization  
+  window.renderGridViewport = renderGridViewport;     // Viewport setup with themed backgrounds
+  
+  // Utility functions for advanced usage
+  window.buildGridLines = buildGridLines;             // Grid geometry generation
+  window.computeLevelHeight = computeLevelHeight;     // Dynamic level height calculation
+  
+  // WebGL resources for direct access if needed
+  window.gridProgram = gridProgram;                   // Compiled shader program
+  window.gridVAO = gridVAO;                          // Ground grid vertex array object
 }

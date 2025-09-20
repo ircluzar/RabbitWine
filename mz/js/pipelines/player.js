@@ -1,11 +1,33 @@
 /**
- * Player rendering pipeline with vertex buffer and shader management.
- * Handles player geometry, trail rendering, and WebGL draw calls with texture array support.
- * Exports: PLAYER_VS, PLAYER_FS shaders, playerProgram, playerVAO, and drawPlayerAndTrail() function.
- * Dependencies: gl context, createProgram() from gl-core.js, state.player and state.trail from state.js. Side effects: Creates VAO/VBO resources and modifies WebGL state.
+ * Player rendering pipeline with advanced cube geometry and procedural texture system.
+ * Provides comprehensive player visualization including dynamic cube faces, texture array support,
+ * and specialized rendering modes for different game states (normal, highlighted, damaged).
+ * Features procedural green noise textures with clustered detail patterns for visual interest.
+ * 
+ * Key Features:
+ * - Multi-face cube geometry with per-face texture layer assignment
+ * - Procedural texture array generation with noise clustering algorithms
+ * - Multiple rendering modes: normal, force white, force red, stipple pattern
+ * - Screen-space checkerboard stippling for transparency effects
+ * - Optimized vertex buffer layout with position, UV, and layer attributes
+ * 
+ * @fileoverview Advanced player cube rendering with procedural textures and multi-mode support
+ * @exports PLAYER_VS, PLAYER_FS - WebGL2 shader programs for player rendering
+ * @exports playerProgram, playerVAO, playerTexArray - Core rendering resources
+ * @exports createGreenNoiseTextureArray() - Procedural texture generation utility
+ * @dependencies createProgram() from gl-core.js, WebGL2 context with texture array support
+ * @sideEffects Creates and uploads vertex buffers, generates texture arrays, modifies WebGL state
  */
 
-// Player pipeline (extracted from gameplay.js)
+// ============================================================================
+// WebGL2 Shader Programs for Advanced Player Rendering
+// ============================================================================
+
+/**
+ * Vertex shader for player cube rendering with texture layer support
+ * Features: MVP and model matrix transformations, per-face texture layer assignment,
+ * interleaved vertex attributes for position, UV coordinates, and layer selection
+ */
 const PLAYER_VS = `#version 300 es
 layout(location=0) in vec3 a_pos;
 layout(location=1) in vec2 a_uv;
@@ -46,10 +68,32 @@ const pl_u_model = gl.getUniformLocation(playerProgram, 'u_model');
 const pl_u_tex = gl.getUniformLocation(playerProgram, 'u_tex');
 const pl_u_forceWhite = gl.getUniformLocation(playerProgram, 'u_forceWhite');
 const pl_u_stipple = gl.getUniformLocation(playerProgram, 'u_stipple');
+
+// ============================================================================
+// Player Cube Geometry and Vertex Buffer Setup
+// ============================================================================
+
+/** 
+ * WebGL Vertex Array Object for player cube rendering 
+ * Contains all vertex attributes: position (vec3), UV (vec2), layer (float)
+ */
 const playerVAO = gl.createVertexArray();
 const playerVBO = gl.createBuffer();
+
+// Configure cube geometry with per-face texture layer assignment
 gl.bindVertexArray(playerVAO);
 gl.bindBuffer(gl.ARRAY_BUFFER, playerVBO);
+
+/**
+ * Upload cube face geometry with interleaved vertex attributes
+ * Each face uses a different texture layer (0-5) for visual variety
+ * Vertex format: [position(3), UV(2), layer(1)] = 6 floats per vertex
+ * 
+ * Face assignments:
+ * - Layer 0: Front face (+Z)    - Layer 1: Back face (-Z)
+ * - Layer 2: Left face (-X)     - Layer 3: Right face (+X)  
+ * - Layer 4: Top face (+Y)      - Layer 5: Bottom face (-Y)
+ */
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
   // cube faces with layer per face
   -0.25,-0.25, 0.25,  0,0, 0,   0.25,-0.25, 0.25,  1,0, 0,   0.25, 0.25, 0.25,  1,1, 0,
@@ -74,6 +118,25 @@ gl.vertexAttribPointer(2,1,gl.FLOAT,false,6*4,5*4);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
+// ============================================================================
+// Procedural Texture Array Generation System
+// ============================================================================
+
+/**
+ * Generate procedural green noise texture array with clustered detail patterns
+ * Creates multiple texture layers with varying green tones and black cluster accents
+ * for visually interesting player cube faces that avoid repetitive appearance
+ * 
+ * Algorithm Features:
+ * - Base green color variation per layer (175-195 range with noise)
+ * - Clustered black spot generation (4% probability, 2x2 clusters)
+ * - Single pixel black accents (3% probability) for additional detail
+ * - Per-layer randomization ensures visual variety across cube faces
+ * 
+ * @param {number} size - Texture resolution per layer (default: 16x16 pixels)
+ * @param {number} layers - Number of texture layers to generate (default: 6 for cube faces)
+ * @returns {WebGLTexture} Configured texture array ready for shader sampling
+ */
 function createGreenNoiseTextureArray(size=16, layers=6){
   const tex = gl.createTexture();
   const data = new Uint8Array(size*size*4*layers);
@@ -121,4 +184,37 @@ function createGreenNoiseTextureArray(size=16, layers=6){
   return tex;
 }
 
+// ============================================================================
+// Texture Array Initialization for Player Rendering
+// ============================================================================
+
+/** 
+ * Pre-generated player texture array with 6 layers of procedural green noise
+ * Each layer provides unique texture variation for the 6 cube faces
+ */
 const playerTexArray = createGreenNoiseTextureArray(16, 6);
+
+// ============================================================================
+// Global Exports for Rendering Pipeline Integration
+// ============================================================================
+
+/**
+ * Export player rendering system components to global scope for gameplay integration
+ * Enables main rendering loop and game systems to access player visualization resources
+ */
+if (typeof window !== 'undefined') {
+  // Core rendering resources
+  window.playerProgram = playerProgram;               // Compiled shader program
+  window.playerVAO = playerVAO;                      // Cube geometry vertex array
+  window.playerTexArray = playerTexArray;            // Procedural texture array
+  
+  // Shader uniform locations for direct access
+  window.pl_u_mvp = pl_u_mvp;                       // MVP matrix uniform
+  window.pl_u_model = pl_u_model;                   // Model matrix uniform  
+  window.pl_u_tex = pl_u_tex;                       // Texture array uniform
+  window.pl_u_forceWhite = pl_u_forceWhite;         // Force white mode uniform
+  window.pl_u_stipple = pl_u_stipple;               // Stipple pattern uniform
+  
+  // Utility functions
+  window.createGreenNoiseTextureArray = createGreenNoiseTextureArray; // Texture generation
+}
