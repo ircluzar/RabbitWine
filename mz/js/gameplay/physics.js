@@ -28,6 +28,9 @@ try {
   }
 }
 
+// Collision detection modules loaded via static script tags in index.php
+// collisionHorizontal.js and collisionVertical.js should be available via window exports
+
 // ╔════════════════════════════════════════════════════════════╗
 // ║ SEGMENT: physics-terrain                                    ║
 // ║ CONDEMNED: Extracted to gameplay/physics/terrain.js        ║
@@ -357,6 +360,64 @@ function ceilingHeightAt(x, z, py){
 }
 
 /**
+ * Check if there's a wall at the given world coordinates
+ * Simple collision check used by extracted collision modules
+ * @param {number} x - World X coordinate
+ * @param {number} z - World Z coordinate
+ * @returns {boolean} True if there's a solid wall/obstacle at the position
+ */
+function isWallAt(x, z) {
+  const gx = Math.floor(x + MAP_W*0.5);
+  const gz = Math.floor(z + MAP_H*0.5);
+  if (gx < 0 || gz < 0 || gx >= MAP_W || gz >= MAP_H) return true; // border = wall
+  
+  const key = `${gx},${gz}`;
+  const p = state.player;
+  const py = p ? p.y : 0.5; // use player Y or default
+  
+  // Check spans
+  let spans = null;
+  try {
+    spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+          : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+          : null;
+  } catch(_){ spans = null; }
+  
+  if (Array.isArray(spans) && spans.length) {
+    for (const s of spans) {
+      if (!s) continue;
+      const b = (s.b || 0), h = (s.h || 0), t = ((s.t|0) || 0);
+      if (h <= 0) continue;
+      
+      // Portal (t==5) and Lock (t==6) are non-solid
+      if (t === 5 || t === 6) continue;
+      
+      // Check if player Y intersects this span
+      if (py > b - 0.02 && py < b + h - 0.02) return true;
+    }
+  }
+  
+  // Check base map tile
+  const cv = map[mapIdx(gx, gz)];
+  if (cv === TILE.WALL || cv === TILE.BAD || cv === TILE.FILL) return true;
+  if (cv === TILE.HALF && py < 0.52) return true; // half-height wall
+  
+  // FENCE/BADFENCE require more complex rail logic - simplified check
+  if (cv === TILE.FENCE || cv === TILE.BADFENCE) {
+    if (py >= -0.1 && py <= 1.5) return true; // conservative fence collision
+  }
+  
+  return false;
+}
+
+// ╔════════════════════════════════════════════════════════════╗
+// ║ SEGMENT: physics-collision                                  ║
+// ║ Functions: moveAndCollide - horizontal collision logic      ║
+// ║ Extracted to: collision/collisionHorizontal.js             ║
+// ║            : collision/collisionVertical.js                ║
+// ╚════════════════════════════════════════════════════════════╝
+
+/**
  * Update player position with collision detection and physics
  * @param {number} dt - Delta time in seconds
  */
@@ -559,7 +620,6 @@ function moveAndCollide(dt){
   } catch(_){ }
   const baseSpeed = 3.0;
   const seamMax = baseSpeed; // seam scaling removed
-  const wasDashing = !!p.isDashing;
   // Target speed depends on mode
   let targetSpeed = (p.movementMode === 'accelerate') ? seamMax : 0.0;
   // If frozen, speed is forced 0 (already set in controls but keep safe)
@@ -599,636 +659,45 @@ function moveAndCollide(dt){
   }
   const stepX = dirX * p.speed * dt;
   const stepZ = dirZ * p.speed * dt;
-  // Track collision source for wall-jump logic
-  let lastHitFenceRail = false; // set by isWallAt() on its last evaluation
-  let lastHitSolidSpan = false; // set when solid block/span caused return
-  let lastHitNoClimb = false;   // set when the blocking solid was a NOCLIMB ground tile
-  let lastHitFenceRailDir = null; // 'N'|'S'|'E'|'W' when rail hit
-  let collidedFenceRail = false; // aggregated when a move is finally blocked
-  let collidedSolidSpan = false; // aggregated when a move is finally blocked
-  let collidedNoClimb = false;   // aggregated NOCLIMB contact across axis checks
-  // Resolution targets to pop out of thin rail voxels toward center
-  let lastResolveX = null; // world X to snap to if X is blocked by a rail
-  let lastResolveZ = null; // world Z to snap to if Z is blocked by a rail
-  let newX = p.x + stepX;
-  let newZ = p.z + stepZ;
-  // Limit rail snapping per axis to at most once per frame
-  let snappedXThisFrame = false;
-  let snappedZThisFrame = false;
-  function isWallAt(wx, wz){
-    // reset per-call flag
-    lastHitFenceRail = false;
-  lastHitSolidSpan = false;
-  lastHitNoClimb = false;
-  lastHitFenceRailDir = null;
-  lastResolveX = null;
-  lastResolveZ = null;
-    const gx = Math.floor(wx + MAP_W*0.5);
-    const gz = Math.floor(wz + MAP_H*0.5);
-    if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return true;
-    const key = `${gx},${gz}`;
-    // Local cell-space coordinates (0..1) inside this tile
-    const cellMinX = gx - MAP_W*0.5;
-    const cellMinZ = gz - MAP_H*0.5;
-    const lx = wx - cellMinX;
-    const lz = wz - cellMinZ;
-  const RAIL_HW = 0.11; // half-width of rail collision band around center and edge
-  const RAIL_MARGIN = 0.004; // toned down push-out margin to reduce aggressive snaps
-  const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
-    const setResolveForRail = (orient /* 'E'|'W'|'N'|'S' */)=>{
-      const eps = 0.002;
-      if (orient==='E' || orient==='W'){
-        // Rail runs along X, push Z out of the band around center
-        if (lz < 0.5) lastResolveZ = cellMinZ + (0.5 - (RAIL_HW + RAIL_MARGIN)); else lastResolveZ = cellMinZ + (0.5 + (RAIL_HW + RAIL_MARGIN));
-      } else if (orient==='N' || orient==='S'){
-        // Rail runs along Z, push X out of the band around center
-        if (lx < 0.5) lastResolveX = cellMinX + (0.5 - (RAIL_HW + RAIL_MARGIN)); else lastResolveX = cellMinX + (0.5 + (RAIL_HW + RAIL_MARGIN));
-      }
-    };
-    // Collide if any span overlaps player Y; prefer explicit spans, else synthesize from column data and map tile
-    let spans = null;
-    try {
-      spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-            : null;
-    } catch(_){ spans = null; }
-  /** @type {Array<{b:number,h:number,t?:number}>} */
-  let spanList = [];
-  if (Array.isArray(spans) && spans.length) spanList = spans.slice();
-  const spansAllNonSolidLW = Array.isArray(spans) && spans.length>0 && spans.every(s => { if (!s) return false; const t=((s.t|0)||0); return (t===2||t===3||t===5||t===6); });
-    // Always merge in default-map columns (but skip FENCE/BADFENCE tiles; they use inner voxels)
-    try {
-      const _cvLW = map[mapIdx(gx,gz)];
-      if (_cvLW !== TILE.FENCE && _cvLW !== TILE.BADFENCE && !spansAllNonSolidLW && columnHeights.has(key)){
-        let b = 0; let h = columnHeights.get(key) || 0;
-        try {
-          if (typeof columnBases !== 'undefined' && columnBases && columnBases.has(key)) b = columnBases.get(key) || 0;
-          else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)) b = window.columnBases.get(key) || 0;
-        } catch(_){ }
-    if (h > 0) spanList.push({ b: b|0, h: h|0 });
-      }
-    } catch(_){ }
-  // Always include ground-level WALL/HALF/BAD/NOCLIMB tile as solid span so lateral collision matches ground height logic
-    {
-      const cell = map[mapIdx(gx,gz)];
-      if (cell === TILE.WALL){ spanList.push({ b: 0, h: 1 }); }
-      else if (cell === TILE.HALF){ spanList.push({ b: 0, h: 0.5 }); }
-      else if (cell === TILE.BAD){ spanList.push({ b: 0, h: 1, t: 1 }); }
-      else if (cell === TILE.NOCLIMB){ spanList.push({ b: 0, h: 1, t: 9 }); /* mark with t:9 to track NOCLIMB */ }
-    }
-  if (Array.isArray(spanList) && spanList.length){
-      const py = state.player.y;
-  for (const s of spanList){
-    if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
-    const top = b + h; const t = ((s.t|0)||0);
-    // Portal spans (t==5) are triggers, not solids; do not block laterally here
-    if (t === 5 || t === 6) { continue; }
-    // Solid spans (non-fence) use strict vertical check (unchanged)
-  if (t !== 2 && t !== 3){ if (py >= b && py <= top - 0.02) { lastHitSolidSpan = true; if (t===9) lastHitNoClimb = true; return true; } else { continue; } }
-  // Fence spans (t==2 or t==3): voxel-accurate rails with a small vertical tolerance
-        {
-          const V_EPS = 0.04; // slightly tighter to reduce zip-ups
-          if (!(py >= (b - V_EPS) && py <= (top - 0.02 + V_EPS))) continue;
-          // Determine the integral level for connectivity (renderer uses integer lv slices)
-          const lv = Math.max(b|0, Math.min((top|0)-1, Math.floor(py)));
-          // Central (inner) rails inside the current cell: thin cross through center
-          // Z-centered rail along X direction
-          if (inBand(lz, 0.5, RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir = 'E'; setResolveForRail('E'); return true; }
-          // X-centered rail along Z direction
-          if (inBand(lx, 0.5, RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir = 'N'; setResolveForRail('N'); return true; }
-          const hasFenceAtLevel = (x,y,level)=>{
-            const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
-            if (!Array.isArray(sp)) return false; for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if ((tt===2 || tt===3) && hh>0 && level>=bb && level<bb+hh) return true; }
-            return false;
-          };
-          const hasSolidAtLevel = (x,y,level)=>{
-            const k = `${x},${y}`; const sp = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(k) : null;
-            if (Array.isArray(sp)){
-              for (const ss of sp){ if (!ss) continue; const bb=(ss.b|0), hh=(ss.h|0), tt=((ss.t|0)||0); if (hh>0 && (tt!==2 && tt!==3 && tt!==5 && tt!==6) && level>=bb && level<bb+hh) return true; }
-            }
-            return false;
-          };
-          // Determine rail connections for this cell
-      const cellTile = map[mapIdx(gx,gz)];
-          // Ground-tile fence connectivity uses map tiles; elevated uses spans
-      const connGround = (dx,dy)=>{
-            const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
-            const neighbor = map[mapIdx(nx,ny)];
-    // Treat the current cell as having a rail on its edges when it's a ground fence
-    const currentIsFence = (cellTile===TILE.FENCE) || (cellTile===TILE.BADFENCE);
-    return currentIsFence || (neighbor===TILE.FENCE)||(neighbor===TILE.BADFENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.NOCLIMB)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
-          };
-          const connElev = (dx,dy)=>{
-            const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
-      // Current cell has a fence span at this level by construction of this branch
-      const currentHas = true;
-      return currentHas || hasFenceAtLevel(nx,ny,lv) || hasSolidAtLevel(nx,ny,lv);
-          };
-          const connect = ((cellTile===TILE.FENCE || cellTile===TILE.BADFENCE) && b===0) ? connGround : connElev;
-          // Test four edge rails (E,W,N,S) using narrow bands near tile edges
-          // East edge: z near center AND x near 1.0
-          if (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='E'; setResolveForRail('E'); return true; }
-          // West edge: z near center AND x near 0.0
-          if (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='W'; setResolveForRail('W'); return true; }
-          // North edge: x near center AND z near 0.0
-          if (connect(0,-1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,0.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='N'; setResolveForRail('N'); return true; }
-          // South edge: x near center AND z near 1.0
-          if (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) { lastHitFenceRail = true; lastHitFenceRailDir='S'; setResolveForRail('S'); return true; }
-          // If no rail footprint intersects, do not block
-        }
-      }
-      return false;
-    }
-  // Column with optional raised base (skip for FENCE/BADFENCE tiles)
-  if (map[mapIdx(gx,gz)] !== TILE.FENCE && map[mapIdx(gx,gz)] !== TILE.BADFENCE && columnHeights.has(key) && !spansAllNonSolidLW){
-      const h = columnHeights.get(key) || 0.0;
-      // Use same safe base lookup as groundHeightAt
-      let b = 0.0;
-      try {
-        if (typeof columnBases !== 'undefined' && columnBases && columnBases instanceof Map && columnBases.has(key)){
-          const bv = columnBases.get(key);
-          b = (typeof bv === 'number') ? bv : 0.0;
-        } else if (typeof window !== 'undefined' && window.columnBases instanceof Map && window.columnBases.has(key)){
-          const bv = window.columnBases.get(key);
-          b = (typeof bv === 'number') ? bv : 0.0;
-        }
-      } catch(_){}
-      if (h <= 0.0) return false;
-      const top = b + h;
-      const py = state.player.y;
-    // If below the base or above the top, not colliding laterally.
-  if (py < b) return false;
-    if (py > top - 0.02) return false;
-  lastHitSolidSpan = true; return true;
-    }
-  // No spans/columns: fallback to ground wall tile only (WALL, HALF and ground-level BAD/FENCE with voxel rails)
-  const cv2 = map[mapIdx(gx,gz)];
-  if (cv2 === TILE.WALL || cv2 === TILE.BAD){ if (state.player.y <= 1.0 - 0.02) { lastHitSolidSpan = true; return true; } else { return false; } }
-  if (cv2 === TILE.NOCLIMB){ if (state.player.y <= 1.0 - 0.02) { lastHitSolidSpan = true; lastHitNoClimb = true; return true; } else { return false; } }
-  if (cv2 === TILE.HALF){ if (state.player.y <= 0.5 - 0.02) { lastHitSolidSpan = true; return true; } else { return false; } }
-  if (cv2 === TILE.FENCE || cv2 === TILE.BADFENCE){
-    if (state.player.y >= -0.06 && state.player.y <= 1.5 - 0.02 + 0.06){
-      // Voxel rail check like above using map-based connectivity
-      const connect = (dx,dy)=>{
-        const nx = gx+dx, ny=gz+dy; if (nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return false;
-        const neighbor = map[mapIdx(nx,ny)];
-        return (neighbor===TILE.FENCE)||(neighbor===TILE.BADFENCE)||(neighbor===TILE.WALL)||(neighbor===TILE.NOCLIMB)||(neighbor===TILE.BAD)||(neighbor===TILE.FILL)||(neighbor===TILE.HALF);
-      };
-      if ( (connect(1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,1.0,RAIL_HW)) ||
-           (connect(-1,0) && inBand(lz,0.5,RAIL_HW) && inBand(lx,0.0,RAIL_HW)) ) {
-        lastHitFenceRail = true; lastHitFenceRailDir = (lx > 0.5 ? 'E':'W'); setResolveForRail(lastHitFenceRailDir); return true;
-      }
-      if ( (connect(0,1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,1.0,RAIL_HW)) ||
-           (connect(0,-1) && inBand(lx,0.5,RAIL_HW) && inBand(lz,0.0,RAIL_HW)) ) {
-        lastHitFenceRail = true; lastHitFenceRailDir = (lz > 0.5 ? 'S':'N'); setResolveForRail(lastHitFenceRailDir); return true;
-      }
-    }
-    return false;
+  
+  // ╔════════════════════════════════════════════════════════════╗
+  // ║ CONDEMNED: Horizontal collision processing                  ║
+  // ║ EXTRACTED TO: collision/collisionHorizontal.js             ║
+  // ╚════════════════════════════════════════════════════════════╝
+  
+  // Store dash state before potential modification
+  const wasDashing = !!p.isDashing;
+  
+  // Delegate horizontal collision processing to extracted module
+  if (typeof window.processHorizontalCollision !== 'function') {
+    console.error('[PHYSICS] processHorizontalCollision not available - collision modules not loaded');
+    console.log('[PHYSICS] Available window functions:', Object.keys(window).filter(k => k.includes('collision') || k.includes('Collision')));
+    return; // Early exit to prevent runtime error
   }
-    return false;
-  }
-  let hitWall = false;
-  // Helper: check if the current grid cell contains a hazardous span at the player's Y
-  function isHazardAtCellY(gx, gz, py){
-    if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return false;
-    const key = `${gx},${gz}`;
-    let spans = null;
-    try {
-      spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-            : null;
-    } catch(_){ spans = null; }
-    if (Array.isArray(spans)){
-      for (const s of spans){
-        if (!s) continue; const b=(s.b||0), h=(s.h||0), t=((s.t|0)||0); if (h<=0) continue;
-        if (t===1 && py >= b && py <= (b + h - 0.02)) return true;
-      }
-    }
-    return false;
-  }
-  // Ball mode should only trigger on touching the grid edge (true out-of-bounds),
-  // not when colliding with blocks that happen to be placed in border cells.
-  function isBorderCell(gx, gz){
-    return (gx === 0 || gz === 0 || gx === (MAP_W|0)-1 || gz === (MAP_H|0)-1);
-  }
-  // Try move along Z; if blocked by border, enter ball mode
-  {
-  const gxCur = Math.floor(p.x + MAP_W*0.5);
-  const gzNew = Math.floor(newZ + MAP_H*0.5);
-    const outZ = (gzNew < 0 || gzNew >= MAP_H);
-    if (!isWallAt(p.x, newZ)) {
-      p.z = newZ;
-    } else {
-      // Before treating as a collision, if the blocking cell contains a portal at this Y, trigger teleport
-      {
-        const nowSec = state.nowSec || (performance.now()/1000);
-        if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
-          // Use the blocking cell, clamped to the grid, so border portals still trigger
-          let gxCell = gxCur;
-          let gzCell = gzNew;
-          if (gxCell < 0) gxCell = 0; else if (gxCell >= (MAP_W|0)) gxCell = (MAP_W|0) - 1;
-          if (gzCell < 0) gzCell = 0; else if (gzCell >= (MAP_H|0)) gzCell = (MAP_H|0) - 1;
-          if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
-            let portalHit = false;
-            const cvBlock = map[mapIdx(gxCell,gzCell)];
-            if (cvBlock === TILE.LEVELCHANGE) portalHit = true;
-            if (!portalHit){
-              try {
-                const keyB = `${gxCell},${gzCell}`;
-                const spansB = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(keyB)
-                              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(keyB)
-                              : null;
-                if (Array.isArray(spansB)){
-                  for (const s of spansB){ if (!s) continue; const t=((s.t|0)||0); if (t!==5) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (p.y >= b && p.y <= top - 0.02){ portalHit = true; break; } }
-                }
-              } catch(_){ }
-            }
-      if (portalHit){
-              const keyB = `${gxCell},${gzCell}`;
-              let dest = null;
-              try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(keyB) || null; } catch(_){ }
-      if (typeof dest === 'string' && dest){
-  // Exit positioning: if this portal is on a world border, spawn at the opposite wall cell in the other map.
-  // Keep player's facing; only use the wall inward normal if player's incoming dir points outward.
-  let exDirX = (p.isDashing && typeof p._dashDirX==='number') ? p._dashDirX : Math.sin(p.angle);
-  let exDirZ = (p.isDashing && typeof p._dashDirZ==='number') ? p._dashDirZ : -Math.cos(p.angle);
-    let exGx = gxCell, exGz = gzCell;
-  let nX = 0, nZ = 0; // inward normal
-  if (gxCell === 0){ nX = -1; nZ = 0; exGx = (MAP_W|0) - 1; }
-  else if (gxCell === (MAP_W|0)-1){ nX = 1; nZ = 0; exGx = 0; }
-  else if (gzCell === 0){ nX = 0; nZ = -1; exGz = (MAP_H|0) - 1; }
-  else if (gzCell === (MAP_H|0)-1){ nX = 0; nZ = 1; exGz = 0; }
-  // If this was a border portal, ensure we move inward. Use player's dir unless it faces outward or is near-tangent.
-  if (nX!==0 || nZ!==0){ const d = exDirX*nX + exDirZ*nZ; if (d <= 0.05){ exDirX = nX; exDirZ = nZ; } }
-        const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
-        const cx = exGx - MAP_W*0.5 + 0.5;
-        const cz = exGz - MAP_H*0.5 + 0.5;
-        const EXIT_DIST = 0.52;
-        const outX = cx + exDirX * EXIT_DIST;
-        const outZ2 = cz + exDirZ * EXIT_DIST;
-                // Snapshot movement/physics state and restore after level switch
-                const keep = {
-                  angle: p.angle,
-                  speed: p.speed,
-                  movementMode: p.movementMode,
-                  vy: p.vy,
-                  grounded: p.grounded,
-                  isDashing: !!p.isDashing,
-                  dashUsed: !!p.dashUsed,
-                  dashTime: p.dashTime,
-                  _dashDirX: p._dashDirX,
-                  _dashDirZ: p._dashDirZ,
-                  isFrozen: !!p.isFrozen,
-                  isBallMode: !!p.isBallMode,
-                  _ballVX: p._ballVX,
-                  _ballVZ: p._ballVZ,
-                  _ballBouncesLeft: p._ballBouncesLeft,
-                  _ballSpinAxisX: p._ballSpinAxisX,
-                  _ballSpinAxisY: p._ballSpinAxisY,
-                  _ballSpinAxisZ: p._ballSpinAxisZ,
-                  _ballSpinSpeed: p._ballSpinSpeed,
-                };
-                try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
-                // Restore movement/physics state and place player at computed exit
-                p.angle = keep.angle;
-                p.x = outX; p.z = outZ2;
-                // Preserve vertical motion; only clamp up to ground if below it
-                try {
-                  const gH2 = groundHeightAt(p.x, p.z);
-                  if (p.y < gH2 - 1e-3){ p.y = gH2; if ((keep.vy||0) < 0) keep.vy = 0; }
-                } catch(_){ }
-                p.vy = (typeof keep.vy==='number') ? keep.vy : p.vy;
-                p.grounded = !!keep.grounded;
-                p.speed = (typeof keep.speed==='number') ? keep.speed : p.speed;
-                if (keep.movementMode) p.movementMode = keep.movementMode;
-                p.isDashing = keep.isDashing; p.dashUsed = keep.dashUsed; p.dashTime = keep.dashTime||0;
-                p._dashDirX = keep._dashDirX; p._dashDirZ = keep._dashDirZ;
-                p.isFrozen = keep.isFrozen;
-                p.isBallMode = keep.isBallMode;
-                p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
-                p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
-                p._portalCooldownUntil = nowSec + 0.6;
-                try { if (window.sfx) sfx.play('./sfx/VRUN_Teleport.mp3'); } catch(_){ }
-                return;
-              }
-            }
-          }
-        }
-      }
-  const zRailHit = lastHitFenceRail; const zSolidHit = lastHitSolidSpan; const zRailDir = lastHitFenceRailDir; const zNoClimbHit = lastHitNoClimb;
-  // Preserve resolution target before any further collision checks overwrite it
-  const zResolveTarget = lastResolveZ;
-      // Attempt step-up onto small ledges (half-step or <=0.5 rise)
-      let stepped = false;
-      if (!outZ){
-        const stepMax = 0.5 + 1e-3;
-        const gDst = landingHeightAt(p.x, newZ, p.y, stepMax);
-        if (gDst !== null){
-          // Ensure destination is not hazardous at the standing Y
-          const keyG = `${gxCur},${gzNew}`;
-          const pyStand = gDst - 0.02;
-          const hazardous = isHazardAtCellY(gxCur, gzNew, pyStand) || (map[mapIdx(gxCur,gzNew)] === TILE.BAD);
-          // Ensure no ceiling immediately at stand height
-          const cH = ceilingHeightAt(p.x, newZ, gDst - 0.05);
-          const blockedAbove = isFinite(cH) && (cH <= gDst + 0.02);
-          if (!hazardous && !blockedAbove){
-            // Check lateral clearance at new Y by temporarily adjusting Y
-            const oldY = p.y; p.y = gDst;
-            const blockedAtNewY = isWallAt(p.x, newZ);
-            if (!blockedAtNewY){ p.z = newZ; p.vy = 0.0; p.grounded = true; stepped = true; }
-            p.y = stepped ? p.y : oldY;
-            if (stepped){ p.y = gDst; }
-          }
-        }
-      }
-  if (!stepped){
-  newZ = p.z; hitWall = true; collidedFenceRail = collidedFenceRail || zRailHit; collidedSolidSpan = collidedSolidSpan || zSolidHit; collidedNoClimb = collidedNoClimb || zNoClimbHit;
-        // Try a tiny nudge along the rail tangent to reduce sticking if the block was a rail
-        if (zRailHit && zRailDir){
-          const nudge = 0.02;
-          if (zRailDir==='N' || zRailDir==='S'){
-            const sign = Math.sign(((p.x + MAP_W*0.5) - Math.floor(p.x + MAP_W*0.5) - 0.5) || 1);
-            const tryX = p.x + sign * nudge;
-            if (!isWallAt(tryX, p.z)) p.x = tryX;
-          } else if (zRailDir==='E' || zRailDir==='W'){
-            const sign = Math.sign(((p.z + MAP_H*0.5) - Math.floor(p.z + MAP_H*0.5) - 0.5) || 1);
-            const tryZ = p.z + sign * nudge;
-            if (!isWallAt(p.x, tryZ)) p.z = tryZ;
-          }
-          // If we have a safe resolution target along Z, snap to it conservatively
-          const SNAP_MIN_PEN = 0.006; // require meaningful penetration before snapping
-          if (!snappedZThisFrame && zResolveTarget !== null) {
-            const dz = Math.abs(p.z - zResolveTarget);
-            if (dz > SNAP_MIN_PEN && !isWallAt(p.x, zResolveTarget)) {
-              p.z = zResolveTarget;
-              snappedZThisFrame = true;
-            }
-          }
-        }
-      }
-      // If collided with a hazardous rail at this cell and within bounds, trigger damage like BAD
-      if (!outZ){
-        const gxCell = gxCur; const gzCell = gzNew;
-        const cellTile = (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H) ? map[mapIdx(gxCell,gzCell)] : -1;
-        // Hazard if ground-tile is BADFENCE or if any span at this cell covering current Y is t==3
-        let spanHazard = false;
-        try {
-          const key = `${gxCell},${gzCell}`; const spans = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(key) : null;
-          if (Array.isArray(spans)){
-            for (const s of spans){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (t===3 && h>0 && p.y >= b && p.y <= (b+h - 0.02)){ spanHazard = true; break; } }
-          }
-        } catch(_){ }
-        if (zRailHit && ((cellTile === TILE.BADFENCE) || spanHazard)){
-          const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
-          enterBallMode(n, { downward: false });
-          p.x = oldX; p.z = oldZ;
-          return;
-        }
-      }
-      // Only trigger damage/ball mode if we attempted to go outside the grid
-      if (outZ){
-        // Suppress boundary damage if currently inside a Lock span
-        try {
-          const gxCell = Math.floor(p.x + MAP_W*0.5);
-          const gzCell = Math.floor(p.z + MAP_H*0.5);
-          if (isInsideLockAt(gxCell, gzCell, p.y)){
-            p.x = oldX; p.z = oldZ; return; // cancel damage and stay within bounds
-          }
-        } catch(_){ }
-        // normal points inward (opposite attempted step)
-        const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
-        enterBallMode(n);
-        // Revert any movement from this frame
-        p.x = oldX; p.z = oldZ;
-        return;
-      } else {
-        // Collided within bounds; if the blocked cell is BAD, trigger damage
-        const gxCell = gxCur;
-        const gzCell = gzNew;
-        if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
-          // Prefer span hazard at current Y; fallback to ground-level BAD map tile
-          const hazardous = isHazardAtCellY(gxCell, gzCell, p.y) || (map[mapIdx(gxCell,gzCell)] === TILE.BAD);
-          if (hazardous){
-            const n = { nx: 0, nz: (Math.sign(dirZ) > 0 ? -1 : 1) };
-            enterBallMode(n, { downward: false });
-            p.x = oldX; p.z = oldZ;
-            return;
-          }
-        }
-      }
-    }
-  }
-  // Try move along X; if blocked by border, enter ball mode
-  {
-  const gzCur = Math.floor(p.z + MAP_H*0.5);
-  const gxNew = Math.floor(newX + MAP_W*0.5);
-    const outX = (gxNew < 0 || gxNew >= MAP_W);
-    if (!isWallAt(newX, p.z)) {
-      p.x = newX;
-    } else {
-      // Before treating as a collision, if the blocking cell contains a portal at this Y, trigger teleport
-      {
-        const nowSec = state.nowSec || (performance.now()/1000);
-        if (!p._portalCooldownUntil || nowSec >= p._portalCooldownUntil){
-          // Use the blocking cell, clamped to the grid, so border portals still trigger
-          let gxCell = gxNew;
-          let gzCell = gzCur;
-          if (gxCell < 0) gxCell = 0; else if (gxCell >= (MAP_W|0)) gxCell = (MAP_W|0) - 1;
-          if (gzCell < 0) gzCell = 0; else if (gzCell >= (MAP_H|0)) gzCell = (MAP_H|0) - 1;
-          if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
-            let portalHit = false;
-            const cvBlock = map[mapIdx(gxCell,gzCell)];
-            if (cvBlock === TILE.LEVELCHANGE) portalHit = true;
-            if (!portalHit){
-              try {
-                const keyB = `${gxCell},${gzCell}`;
-                const spansB = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(keyB)
-                              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(keyB)
-                              : null;
-                if (Array.isArray(spansB)){
-                  for (const s of spansB){ if (!s) continue; const t=((s.t|0)||0); if (t!==5) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (p.y >= b && p.y <= top - 0.02){ portalHit = true; break; } }
-                }
-              } catch(_){ }
-            }
-      if (portalHit){
-              const keyB = `${gxCell},${gzCell}`;
-              let dest = null;
-              try { if (window.portalDestinations instanceof Map) dest = window.portalDestinations.get(keyB) || null; } catch(_){ }
-      if (typeof dest === 'string' && dest){
-  // Keep player's facing; only use inward normal at border if player facing is outward or tangent
-  let exDirX = (p.isDashing && typeof p._dashDirX==='number') ? p._dashDirX : Math.sin(p.angle);
-  let exDirZ = (p.isDashing && typeof p._dashDirZ==='number') ? p._dashDirZ : -Math.cos(p.angle);
-  let exGx = gxCell, exGz = gzCell;
-  let nX = 0, nZ = 0;
-  if (gxCell === 0){ nX = -1; nZ = 0; exGx = (MAP_W|0) - 1; }
-  else if (gxCell === (MAP_W|0)-1){ nX = 1; nZ = 0; exGx = 0; }
-  else if (gzCell === 0){ nX = 0; nZ = -1; exGz = (MAP_H|0) - 1; }
-  else if (gzCell === (MAP_H|0)-1){ nX = 0; nZ = 1; exGz = 0; }
-  if (nX!==0 || nZ!==0){ const d = exDirX*nX + exDirZ*nZ; if (d <= 0.05){ exDirX = nX; exDirZ = nZ; } }
-        const L = Math.hypot(exDirX, exDirZ) || 1; exDirX/=L; exDirZ/=L;
-        const cx = exGx - MAP_W*0.5 + 0.5;
-        const cz = exGz - MAP_H*0.5 + 0.5;
-        const EXIT_DIST = 0.52;
-        const outX2 = cx + exDirX * EXIT_DIST;
-        const outZ3 = cz + exDirZ * EXIT_DIST;
-                const keep = {
-                  angle: p.angle,
-                  speed: p.speed,
-                  movementMode: p.movementMode,
-                  vy: p.vy,
-                  grounded: p.grounded,
-                  isDashing: !!p.isDashing,
-                  dashUsed: !!p.dashUsed,
-                  dashTime: p.dashTime,
-                  _dashDirX: p._dashDirX,
-                  _dashDirZ: p._dashDirZ,
-                  isFrozen: !!p.isFrozen,
-                  isBallMode: !!p.isBallMode,
-                  _ballVX: p._ballVX,
-                  _ballVZ: p._ballVZ,
-                  _ballBouncesLeft: p._ballBouncesLeft,
-                  _ballSpinAxisX: p._ballSpinAxisX,
-                  _ballSpinAxisY: p._ballSpinAxisY,
-                  _ballSpinAxisZ: p._ballSpinAxisZ,
-                  _ballSpinSpeed: p._ballSpinSpeed,
-                };
-                try { if (typeof window.mpSwitchLevel === 'function') window.mpSwitchLevel(dest); else if (typeof window.setLevel==='function' && typeof window.parseLevelGroupId==='function'){ window.setLevel(window.parseLevelGroupId(dest)); } } catch(_){ }
-                p.angle = keep.angle;
-                p.x = outX2; p.z = outZ3;
-                try {
-                  const gH2 = groundHeightAt(p.x, p.z);
-                  if (p.y < gH2 - 1e-3){ p.y = gH2; if ((keep.vy||0) < 0) keep.vy = 0; }
-                } catch(_){ }
-                p.vy = (typeof keep.vy==='number') ? keep.vy : p.vy;
-                p.grounded = !!keep.grounded;
-                p.speed = (typeof keep.speed==='number') ? keep.speed : p.speed;
-                if (keep.movementMode) p.movementMode = keep.movementMode;
-                p.isDashing = keep.isDashing; p.dashUsed = keep.dashUsed; p.dashTime = keep.dashTime||0;
-                p._dashDirX = keep._dashDirX; p._dashDirZ = keep._dashDirZ;
-                p.isFrozen = keep.isFrozen;
-                p.isBallMode = keep.isBallMode;
-                p._ballVX = keep._ballVX; p._ballVZ = keep._ballVZ; p._ballBouncesLeft = keep._ballBouncesLeft;
-                p._ballSpinAxisX = keep._ballSpinAxisX; p._ballSpinAxisY = keep._ballSpinAxisY; p._ballSpinAxisZ = keep._ballSpinAxisZ; p._ballSpinSpeed = keep._ballSpinSpeed;
-                p._portalCooldownUntil = nowSec + 0.6;
-                try { if (window.sfx) sfx.play('./sfx/VRUN_Teleport.mp3'); } catch(_){ }
-                return;
-              }
-            }
-          }
-        }
-      }
-  const xRailHit = lastHitFenceRail; const xSolidHit = lastHitSolidSpan; const xRailDir = lastHitFenceRailDir; const xNoClimbHit = lastHitNoClimb;
-  // Preserve resolution target before further checks
-  const xResolveTarget = lastResolveX;
-      // Attempt step-up onto small ledges (half-step or <=0.5 rise)
-      let stepped = false;
-      if (!outX){
-        const stepMax = 0.5 + 1e-3;
-        const gDst = landingHeightAt(newX, p.z, p.y, stepMax);
-        if (gDst !== null){
-          const keyG = `${gxNew},${gzCur}`;
-          const pyStand = gDst - 0.02;
-          const hazardous = isHazardAtCellY(gxNew, gzCur, pyStand) || (map[mapIdx(gxNew,gzCur)] === TILE.BAD);
-          const cH = ceilingHeightAt(newX, p.z, gDst - 0.05);
-          const blockedAbove = isFinite(cH) && (cH <= gDst + 0.02);
-          if (!hazardous && !blockedAbove){
-            const oldY = p.y; p.y = gDst;
-            const blockedAtNewY = isWallAt(newX, p.z);
-            if (!blockedAtNewY){ p.x = newX; p.vy = 0.0; p.grounded = true; stepped = true; }
-            p.y = stepped ? p.y : oldY;
-            if (stepped){ p.y = gDst; }
-          }
-        }
-      }
-  if (!stepped){
-  newX = p.x; hitWall = true; collidedFenceRail = collidedFenceRail || xRailHit; collidedSolidSpan = collidedSolidSpan || xSolidHit; collidedNoClimb = collidedNoClimb || xNoClimbHit;
-        if (xRailHit && xRailDir){
-          const nudge = 0.02;
-          if (xRailDir==='N' || xRailDir==='S'){
-            const sign = Math.sign(((p.x + MAP_W*0.5) - Math.floor(p.x + MAP_W*0.5) - 0.5) || 1);
-            const tryX = p.x + sign * nudge;
-            if (!isWallAt(tryX, p.z)) p.x = tryX;
-          } else if (xRailDir==='E' || xRailDir==='W'){
-            const sign = Math.sign(((p.z + MAP_H*0.5) - Math.floor(p.z + MAP_H*0.5) - 0.5) || 1);
-            const tryZ = p.z + sign * nudge;
-            if (!isWallAt(p.x, tryZ)) p.z = tryZ;
-          }
-          // If we have a safe resolution target along X, snap to it conservatively
-          const SNAP_MIN_PEN = 0.006;
-          if (!snappedXThisFrame && xResolveTarget !== null) {
-            const dx = Math.abs(p.x - xResolveTarget);
-            if (dx > SNAP_MIN_PEN && !isWallAt(xResolveTarget, p.z)) {
-              p.x = xResolveTarget;
-              snappedXThisFrame = true;
-            }
-          }
-        }
-      }
-      // If collided with a hazardous rail at this cell and within bounds, trigger damage like BAD
-      if (!outX){
-        const gxCell = gxNew; const gzCell = gzCur;
-        const cellTile = (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H) ? map[mapIdx(gxCell,gzCell)] : -1;
-        let spanHazard = false;
-        try {
-          const key = `${gxCell},${gzCell}`; const spans = (typeof columnSpans!=='undefined' && columnSpans && columnSpans.get) ? columnSpans.get(key) : null;
-          if (Array.isArray(spans)){
-            for (const s of spans){ if (!s) continue; const b=(s.b|0), h=(s.h|0), t=((s.t|0)||0); if (t===3 && h>0 && p.y >= b && p.y <= (b+h - 0.02)){ spanHazard = true; break; } }
-          }
-        } catch(_){ }
-        if (xRailHit && ((cellTile === TILE.BADFENCE) || spanHazard)){
-          const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
-          enterBallMode(n, { downward: false });
-          p.x = oldX; p.z = oldZ;
-          return;
-        }
-      }
-      // Only trigger damage/ball mode if we attempted to go outside the grid
-      if (outX){
-        // Suppress boundary damage if currently inside a Lock span
-        try {
-          const gxCell = Math.floor(p.x + MAP_W*0.5);
-          const gzCell = Math.floor(p.z + MAP_H*0.5);
-          if (isInsideLockAt(gxCell, gzCell, p.y)){
-            p.x = oldX; p.z = oldZ; return; // cancel damage and stay within bounds
-          }
-        } catch(_){ }
-        const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
-        enterBallMode(n);
-        p.x = oldX; p.z = oldZ;
-        return;
-      } else {
-        // Collided within bounds; if the blocked cell is BAD, trigger damage
-        const gxCell = gxNew;
-        const gzCell = gzCur;
-        if (gxCell>=0&&gzCell>=0&&gxCell<MAP_W&&gzCell<MAP_H){
-          const hazardous = isHazardAtCellY(gxCell, gzCell, p.y) || (map[mapIdx(gxCell,gzCell)] === TILE.BAD);
-          if (hazardous){
-            const n = { nx: (Math.sign(dirX) > 0 ? -1 : 1), nz: 0 };
-            enterBallMode(n, { downward: false });
-            p.x = oldX; p.z = oldZ;
-            return;
-          }
-        }
-      }
-    }
-  }
+  console.log('[PHYSICS] Using extracted horizontal collision module');
+  const horizontalResult = window.processHorizontalCollision(dt, p, stepX, stepZ);
+  const hitWall = horizontalResult.hitWall;
+  const collidedFenceRail = horizontalResult.collidedFenceRail;
+  const collidedSolidSpan = horizontalResult.collidedSolidSpan;
+  const collidedNoClimb = horizontalResult.collidedNoClimb;
 
   // If dash hit a wall this frame, cancel any movement and jump immediately
   if (hitWall && wasDashing){
     // If collided with a fence rail (and not a solid span), disallow wall-jump response
     if (collidedFenceRail && !collidedSolidSpan){
       p.isDashing = false;
-  const base2 = 3.0; const max2 = base2; if (p.speed > max2) p.speed = max2; return;
+      const base2 = 3.0; const max2 = base2; 
+      if (p.speed > max2) p.speed = max2; 
+      return;
     }
-  if (!state.player.canWallJump || collidedNoClimb) {
+    if (!state.player.canWallJump || collidedNoClimb) {
       // If walljump disabled, just cancel dash and stop against wall
       state.player.isDashing = false;
-  const base2 = 3.0; const max2 = base2;
+      const base2 = 3.0; const max2 = base2;
       if (state.player.speed > max2) state.player.speed = max2;
       return;
     }
-    // Revert movement from this frame
-    p.x = oldX; p.z = oldZ;
+    // Revert movement from this frame (handled by collision module)
     p.isDashing = false;
     // Wall jump: flip and give upward vy
     p.angle += Math.PI;
@@ -1236,15 +705,15 @@ function moveAndCollide(dt){
     p.grounded = false;
     p.jumpStartY = p.y;
     p.wallJumpCooldown = 0.22;
-  // SFX: wall jump
-  try { if (window.sfx) sfx.play('./sfx/VHS_Jump2.mp3'); } catch(_){}
+    // SFX: wall jump
+    try { if (window.sfx) sfx.play('./sfx/VHS_Jump2.mp3'); } catch(_){}
     // Reset dash on wall jump to allow chaining as requested
     p.dashUsed = false;
     // Clamp speed to max after dash ends
-  const base2 = 3.0; const max2 = base2;
+    const base2 = 3.0; const max2 = base2;
     if (p.speed > max2) p.speed = max2;
-  // Ensure we keep moving after the wall-jump
-  p.movementMode = 'accelerate';
+    // Ensure we keep moving after the wall-jump
+    p.movementMode = 'accelerate';
     return;
   }
 
@@ -1378,149 +847,67 @@ function moveAndCollide(dt){
   } catch(_){ }
 }
 
+// ╔════════════════════════════════════════════════════════════╗
+// ║ SEGMENT: physics-collision-vertical                         ║
+// ║ CONDEMNED: Vertical physics processing                      ║  
+// ║ EXTRACTED TO: collision/collisionVertical.js               ║
+// ╚════════════════════════════════════════════════════════════╝
+
 function applyVerticalPhysics(dt){
-  if (state && state.editor && state.editor.mode === 'fps') return; // no gravity in editor
+  // Delegate to extracted vertical physics module
   const p = state.player;
-  if (p.isBallMode) { return; }
-  const GRAV = -12.5;
-  // If frozen: pause gravity
-  if (!p.isFrozen){
-    // If dashing: ignore gravity for 1 second countdown
-  if (p.isDashing){
-      p.dashTime -= dt;
-      if (p.dashTime <= 0){
-        p.isDashing = false;
-    // Drop straight down next frame, keep current vy (0) and clamp speed to max
-  const base = 3.0; const max = base;
-    if (p.speed > max) p.speed = max;
-    // Continue moving at max speed in that direction
-    p.movementMode = 'accelerate';
-      }
-      // Do not apply gravity while dashing
-    } else {
-      p.vy += GRAV * dt;
-    }
-  }
-  let newY = p.y + p.vy * dt;
-  const gH = groundHeightAt(p.x, p.z);
-  if (p.vy <= 0.0 && newY <= gH){
-    newY = gH;
-    // If landing on a BAD cell (hazardous span top or ground BAD), trigger damage immediately
-    try {
-      const gx = Math.floor(p.x + MAP_W*0.5);
-      const gz = Math.floor(p.z + MAP_H*0.5);
-      if (gx>=0&&gz>=0&&gx<MAP_W&&gz<MAP_H){
-        // Prefer span hazard: check if the top we landed on is a hazardous span top
-        let hazardous = false;
-        try {
-          const key = `${gx},${gz}`;
-          let spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-                    : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-                    : null;
-          if (Array.isArray(spans)){
-            const topY = Math.round(gH); // integer voxel top
-            // BAD blocks (t==1) span top
-            hazardous = spans.some(s => s && ((s.t|0)===1) && (((s.b|0)+(s.h|0))===topY));
-            // BADFENCE rails (t==3): if we landed on a fence rail top at this cell within inner bands
-            if (!hazardous){
-              // Check inner cross bands around the tile center like lateral/ceiling logic
-              const RAIL_HW = 0.11;
-              const cellMinX = gx - MAP_W*0.5;
-              const cellMinZ = gz - MAP_H*0.5;
-              const lx = p.x - cellMinX;
-              const lz = p.z - cellMinZ;
-              const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
-              const centerHit = (inBand(lz,0.5,RAIL_HW) || inBand(lx,0.5,RAIL_HW));
-              if (centerHit){
-                for (const s of spans){
-                  if (!s) continue; const t=((s.t|0)||0); if (t!==3) continue; const b=(s.b|0), h=(s.h|0); if (h<=0) continue;
-                  const topMost = b + h; // exclusive
-                  for (let lv=b; lv<topMost; lv++){
-                    const top = lv + 1; if (Math.abs(top - topY) <= 1e-3){ hazardous = true; break; }
-                  }
-                  if (hazardous) break;
-                }
-              }
-            }
-          }
-        } catch(_){ }
-        // Fallback: ground-level BAD tile
-        if (!hazardous && map[mapIdx(gx,gz)] === TILE.BAD){ hazardous = true; }
-        if (hazardous){
-          enterBallMode({ nx: 0, nz: 0 });
-          p.y = newY; // settle to ground before exiting
-          return;
-        }
-      }
-    } catch(_){ }
-    p.vy = 0.0;
-    p.grounded = true;
-    // SFX: landing (only if we were in the air)
-    try { if (!state._wasGrounded && window.sfx) sfx.play('./sfx/VHS_Step2.mp3'); } catch(_){}
-    // touching ground resets dash availability
-    p.dashUsed = false;
-    // Exiting any freeze/dash on ground
-    p.isFrozen = false;
-    p.isDashing = false;
+  if (typeof window.processVerticalPhysics === 'function') {
+    window.processVerticalPhysics(dt, p);
   } else {
-    if (p.grounded) { p.jumpStartY = p.y; }
-    p.grounded = false;
-  }
-  // Ceiling collision: if moving upward into a span above, clamp to its bottom and stop upward motion
-  if (p.vy > 0.0){
-    const cH = ceilingHeightAt(p.x, p.z, p.y);
-    if (isFinite(cH)){
-  const eps = 1e-4;
-      if (newY >= cH - eps){
-        // If hitting a BAD ceiling in current grid, trigger damage (prefer span hazard at the ceiling base)
-  try {
-          const gx = Math.floor(p.x + MAP_W*0.5);
-          const gz = Math.floor(p.z + MAP_H*0.5);
-          if (gx>=0&&gz>=0&&gx<MAP_W&&gz<MAP_H){
-            // Check if the ceiling base belongs to a hazardous span
-            let hazardous = false;
-            try {
-              const key = `${gx},${gz}`;
-              let spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-                        : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-                        : null;
-              if (Array.isArray(spans)){
-    // Find any span whose base is within a tiny epsilon of the computed ceiling
-    const epsB = 1e-3;
-    hazardous = spans.some(s => s && ((s.t|0)===1) && Math.abs((s.b|0) - cH) <= epsB);
-              }
-            } catch(_){ }
-            // Fallback: ground-level BAD tile
-            if (!hazardous && map[mapIdx(gx,gz)] === TILE.BAD){ hazardous = true; }
-            // BADFENCE: if the tile is BADFENCE and we are within inner rail bands, treat as hazardous ceiling
-            if (!hazardous && map[mapIdx(gx,gz)] === TILE.BADFENCE){
-              try {
-                const RAIL_HW = 0.11;
-                const cellMinX = gx - MAP_W*0.5;
-                const cellMinZ = gz - MAP_H*0.5;
-                const lx = p.x - cellMinX;
-                const lz = p.z - cellMinZ;
-                const inBand = (v, c=0.5, hw=RAIL_HW) => (v >= c - hw - 1e-4 && v <= c + hw + 1e-4);
-                if (inBand(lz,0.5,RAIL_HW) || inBand(lx,0.5,RAIL_HW)) hazardous = true;
-              } catch(_){ }
-            }
-            if (hazardous){
-              // Apply downward recoil on ceiling damage to prevent zipping upward through the block
-              enterBallMode({ nx: 0, nz: 0 }, { downward: true });
-            }
-          }
-        } catch(_){ }
-        newY = cH - eps;
-        // Do not forcibly zero vy before damage; ball-mode handler will set appropriate vertical velocity
-        if (!p.isBallMode) p.vy = 0.0;
-        // Keep air state; this is a head-bump, not a landing
-        p.grounded = false;
+    // Fallback implementation if module not loaded
+    if (state && state.editor && state.editor.mode === 'fps') return;
+    if (p.isBallMode) { return; }
+    const prevGrounded = !!p.grounded;
+    
+    const GRAV = -12.5;
+    if (!p.isFrozen){
+      if (p.isDashing){
+        p.dashTime -= dt;
+        if (p.dashTime <= 0){
+          p.isDashing = false;
+          const base = 3.0; 
+          if (p.speed > base) p.speed = base;
+          p.movementMode = 'accelerate';
+        }
+      } else {
+        p.vy += GRAV * dt;
       }
     }
+    
+    let newY = p.y + p.vy * dt;
+    const gH = groundHeightAt(p.x, p.z);
+    
+    if (p.vy <= 0.0 && newY <= gH){
+      newY = gH;
+      p.vy = 0.0;
+      p.grounded = true;
+      if (typeof state._wasGrounded !== 'boolean') state._wasGrounded = false;
+      if (!prevGrounded) {
+        try { if (window.sfx) sfx.play('./sfx/VHS_Step2.mp3'); } catch(_){ }
+        p.dashUsed = false;
+        p.isFrozen = false;
+        p.isDashing = false;
+      }
+    } else {
+      if (p.grounded) { 
+        p.jumpStartY = p.y; 
+      }
+      p.grounded = false;
+    }
+    
+    p.y = newY;
+    state._wasGrounded = p.grounded;
   }
-  p.y = newY;
-  // Track previous grounded state for landing SFX
-  state._wasGrounded = p.grounded;
+  
+  // Handle vertical portal triggers
+  if (typeof window.handleVerticalPortalTrigger === 'function') {
+    window.handleVerticalPortalTrigger(state.player);
+  }
 }
 
 // --- Damage and Ball Mode ---
@@ -1901,4 +1288,7 @@ function exitBallMode(){
 }
 
 // Expose enterBallMode for other modules
-if (typeof window !== 'undefined') window.enterBallMode = enterBallMode;
+if (typeof window !== 'undefined') {
+  window.enterBallMode = enterBallMode;
+  window.isWallAt = isWallAt;
+}

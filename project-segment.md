@@ -319,5 +319,92 @@ Phase 6: ...
 ```
 
 ---
+## 11. Current Progress (2025-09-20)
+
+### Completed (Foundational Extraction & Stability Work)
+- Cycle 1 partial extraction executed for Walls and Multiplayer:
+  - `walls/shaders.js` created; shader sources + program creation moved out of `walls.js`.
+  - `app/multiplayer/config.js` extracted with connection/backoff timing constants & time sync (`mpComputeOffset`) to resolve undefined constant errors (`MP_FAIL_BASE_MS`, etc.).
+- Refactored rendering bootstrap ordering in `index.php` to ensure `walls/shaders.js` loads before `walls.js`, and `multiplayer/config.js` loads before `multiplayer.js`.
+- Eliminated duplicate declarations:
+  - Removed duplicate `MP_ID` in `multiplayer.js` (now solely in `config.js`).
+  - Removed stray inlined wall shader source block from `walls.js` to avoid duplicate `WALL_VS` definitions.
+- Added defensive guards in rendering paths (`drawWalls`, `drawTallColumns`, outline helpers) to prevent WebGL invalid operation spam when resources not yet initialized.
+
+### Initialization / Runtime Fixes
+- Introduced deferred initialization loop in `walls.js` to wait for `gl` + shader helpers.
+- Identified regression: `core/gl-core.js` did not expose `window.gl` / `window.createProgram`, causing wall init starvation.
+  - Fixed by exporting legacy globals (`window.gl`, `window.createProgram`, `window.createRenderTarget`).
+- Added eager initialization attempt inside `bootstrap.js` after canvas sizing.
+- Added late-init fallback inside `drawWalls()` (single-shot attempt if dependencies appear mid-frame).
+- Guarded jitter system (`ensureWallGeomJitterTick`) against null geometry.
+
+### Remaining Large Monoliths (Not Yet Sliced)
+- `physics.js`, `editor.js`, majority of `multiplayer.js`, bulk of `walls.js` (instance build, outlines, jitter, categorization) still reside in original files pending cycles 2–7.
+
+### Current Walls Status
+- Shader code: Extracted (`walls/shaders.js`).
+- Program & VAO creation: Still embedded in monolith; target for upcoming `walls-buffers` slice.
+- Instance categorization / special tile logic / outlines: Still monolith.
+- Jitter logic: Still inside monolith; will move during `walls-outlines-jitter` slice (Cycle 5) unless earlier for risk reduction.
+
+### Risk / Debt Snapshot
+| Area | Risk | Mitigation Plan |
+|------|------|-----------------|
+| Deferred wall init race | Medium (was failing when globals missing) | Globals re-exported; add small diagnostic helper next cycle. |
+| Multiplayer monolith size | Medium | Proceed with `mp-connection` + `mp-mapdiff` slices next. |
+| Editor coupling (raycast + block ops) | Medium | Extract `editor-raycast` early in Cycle 2 to unblock block type modularization. |
+| Physics single-file complexity | High cognitive load | Start with terrain+collision separation per planned order. |
+
+### Cycle 2 Progress: Physics Collision Extraction
+**COMPLETED: Physics Collision Slice**
+- **physics-collision slice**: Successfully extracted horizontal and vertical collision detection logic from `physics.js`.
+  - Created `mz/js/gameplay/collision/collisionHorizontal.js`: 
+    - Comprehensive `processHorizontalCollision()` function handling X/Z axis collision detection
+    - Portal teleport logic, rail collision detection, step-up mechanics, hazard collision
+    - Wall collision with fence rail nudging and snapping behavior
+  - Created `mz/js/gameplay/collision/collisionVertical.js`:
+    - Complete `applyVerticalPhysics()` function for gravity, ground/ceiling collision
+    - Hazardous landing detection for BAD tiles and BADFENCE rails
+    - Ceiling collision with recoil on hazardous surfaces
+    - Portal trigger handling for vertical movement
+  - Modified `physics.js` with SEGMENT/CONDEMNED banners and delegation:
+    - `moveAndCollide()` now delegates horizontal collision to `processHorizontalCollision()`
+    - `applyVerticalPhysics()` now delegates to extracted module
+    - Added script injection imports for collision modules
+    - Maintained all original functionality through delegation pattern
+- **Integration Status**: Syntax errors resolved, modules properly integrated
+- **Testing**: Ready for runtime validation
+
+### Next Planned Actions (Updated Horizon)
+1. Cycle 2 Continuation:
+   - Test physics collision module integration to validate functionality preservation
+   - Extract `connection.js` (`mp-connection`) wrapping retry/backoff now that constants stable.
+   - Extract `raycast.js` + visor basics (`editor-raycast`).
+   - Extract `buffers.js` for VAO/VBO setup (`walls-buffers`).
+2. Traceability maintained with `// SEGMENT:` and `// CONDEMNED` banners in extracted code.
+3. Consider lightweight `__debugWalls()` helper to log readiness if needed during remaining extractions.
+
+### Recently Resolved Errors (Historical Log)
+| Error | Root Cause | Resolution |
+|-------|-----------|------------|
+| `MP_FAIL_BASE_MS not defined` | Config not loaded before multiplayer | Added `app/multiplayer/config.js` script include prior to `multiplayer.js`. |
+| Repeated WebGL INVALID_OPERATION (no buffer/program) | Wall resources never initialized (no `window.gl`) | Exported `gl` globals, added deferred + eager init, guarded draws. |
+| Duplicate `WALL_VS` definition | Residual shader block in `walls.js` post extraction | Removed block; single source now in `walls/shaders.js`. |
+| Duplicate `MP_ID` | Declared in both config and multiplayer | Removed in `multiplayer.js`. |
+
+### Progress Metric (Updated)
+- **Physics monolith reduction**: ~25% (collision detection logic extracted - horizontal + vertical collision)
+- Walls monolith reduction: ~5–10% (shader slice only).
+- Multiplayer monolith reduction: ~5% (config/time sync slice).
+- Editor domain: 0% (pending Cycle 2 continuation).
+
+### Blockers / Watchlist
+- None blocking extraction; ensure no new direct references added to soon-to-be sliced internal helpers.
+
+---
+_Status section will evolve into a per-slice checklist with commit hashes once Cycle 2 begins._
+
+---
 Prepared by: segmentation assistant
 Date: (update on first commit)

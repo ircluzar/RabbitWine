@@ -106,6 +106,9 @@ function bust($path) {
     <!-- Gameplay logic (Milestone 5) -->
   <script src="<?php echo bust('./js/app/save.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/controls.js'); ?>"></script>
+    <script src="<?php echo bust('./js/gameplay/physics/terrain.js'); ?>"></script>
+    <script src="<?php echo bust('./js/gameplay/collision/collisionHorizontal.js'); ?>"></script>
+    <script src="<?php echo bust('./js/gameplay/collision/collisionVertical.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/physics.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/trail-logic.js'); ?>"></script>
     <script src="<?php echo bust('./js/gameplay/fx-lines.js'); ?>"></script>
