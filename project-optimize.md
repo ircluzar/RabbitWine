@@ -66,6 +66,8 @@ Uniform locations for blit pass (`u_tex`, `u_topMix`, `u_topLevels`, `u_topDithe
 **Recommendation**: Prepare offsets array Float32Array(7*4) once per frame (or only when jitter pattern changes) and instanced draw (vertex shader adds offset). Combine with item #1.
 **Expected Gain**: Fewer draw calls and allocations; moderate CPU win.
 **Validation**: Draw call count -7 per frame improvement.
+### Status Update (Implemented)
+`gameplay.js` refactored: the player outline jitter previously issued 7 separate single-instance uploads + draws. It now packs all offsets into one `Float32Array` (reused each frame) and performs a single instanced draw. Stats available via `window.__playerOutlineStats` (fields: `jitterInstanceCount`, `uploads`). Expected reductions: ~6 fewer GL draw calls and ~6 fewer small allocations per frame. Further improvement possible by migrating trail & outline to shared instancing update pipeline.
 
 ## 7. Trail Corner Offsets Zero Buffer Reallocation (Med Impact, Effort S, Category CPU/Memory)
 **Why**: For bottom camera each frame new large zero-filled Float32Array created and uploaded. Zero fill cost + transfer bandwidth.

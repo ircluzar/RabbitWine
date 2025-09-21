@@ -266,24 +266,37 @@ function drawPlayerAndTrail(mvp){
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
   } else {
-    // Normal white jittered shell behavior
+    // Normal white jittered shell behavior (INSTANCED REFACTOR)
+    if (!window.__playerOutlineStats){ window.__playerOutlineStats = { jitterInstanceCount:0, uploads:0 }; }
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
-    const offsets = [
-      [0,0,0],
-      [0.01,0.00,0.00], [-0.01,0.00,0.00],
-      [0.00,0.01,0.00], [0.00,-0.01,0.00],
-      [0.00,0.00,0.01], [0.00,0.00,-0.01],
-    ];
-    for (let i=0;i<offsets.length;i++){
-      const o = offsets[i];
-      const instOne = new Float32Array([p.x + o[0], p.y + 0.25 + o[1], p.z + o[2], nowSec]);
-      gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
-      gl.depthMask(false);
-      gl.drawArraysInstanced(gl.LINES, 0, 24, 1);
+    // Predefined jitter offsets (7 instances)
+    const OFFS = window.__playerOutlineOffsets || (
+      window.__playerOutlineOffsets = [
+        0,0,0,
+        +0.01,0,0,  -0.01,0,0,
+        0,+0.01,0,  0,-0.01,0,
+        0,0,+0.01,  0,0,-0.01
+      ]
+    );
+    // Build a single instance buffer: [x,y,z,seed] per instance
+    const n = OFFS.length/3;
+    const buf = (window.__playerOutlineScratch && window.__playerOutlineScratch.length === n*4)
+      ? window.__playerOutlineScratch
+      : (window.__playerOutlineScratch = new Float32Array(n*4));
+    for (let i=0;i<n;i++){
+      const bx = OFFS[i*3+0], by = OFFS[i*3+1], bz = OFFS[i*3+2];
+      buf[i*4+0] = p.x + bx;
+      buf[i*4+1] = p.y + 0.25 + by;
+      buf[i*4+2] = p.z + bz;
+      buf[i*4+3] = nowSec; // birth/seed
     }
-    
+    gl.bufferData(gl.ARRAY_BUFFER, buf, gl.DYNAMIC_DRAW);
+    window.__playerOutlineStats.uploads++;
+    gl.depthMask(false);
+    gl.drawArraysInstanced(gl.LINES, 0, 24, n);
+    window.__playerOutlineStats.jitterInstanceCount = n;
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
