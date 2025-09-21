@@ -733,7 +733,9 @@ function moveAndCollide(dt){
     console.log('[PHYSICS] Available window functions:', Object.keys(window).filter(k => k.includes('collision') || k.includes('Collision')));
     return; // Early exit to prevent runtime error
   }
-  console.log('[PHYSICS] Using extracted horizontal collision module');
+  // Removed verbose runtime log: '[PHYSICS] Using extracted horizontal collision module'
+  // If needed for debugging, re-enable behind a flag:
+  // if (window.__DEBUG_PHYSICS) console.log('[PHYSICS] Using extracted horizontal collision module');
   const horizontalResult = window.processHorizontalCollision(dt, p, stepX, stepZ);
   const hitWall = horizontalResult.hitWall;
   const collidedFenceRail = horizontalResult.collidedFenceRail;

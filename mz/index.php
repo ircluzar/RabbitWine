@@ -27,6 +27,16 @@ function bust($path) {
     <title>VRUN MZ</title>
     <link rel="preload" href="<?php echo bust('./DEGRADE.ttf'); ?>" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="<?php echo bust('./styles.css'); ?>" as="style" />
+    <!-- Inline @font-face to ensure the cache-busted URL matches the preload so browser reuses the resource -->
+    <style>
+      @font-face {
+        font-family: 'DEGRADE';
+        src: url('<?php echo bust('./DEGRADE.ttf'); ?>') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
     <link rel="stylesheet" href="<?php echo bust('./styles.css'); ?>" />
   </head>
   <body>

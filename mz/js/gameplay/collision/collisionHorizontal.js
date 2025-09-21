@@ -13,6 +13,8 @@
  * @returns {object} Result containing { newX, newZ, hitWall, collidedFenceRail, collidedSolidSpan, collidedNoClimb, collidedWorldBoundary }
  */
 function processHorizontalCollision(dt, p, stepX, stepZ) {
+  // NOTE (2025-09): Added elevated NOCLIMB span detection (t:9) in classifyX/classifyZ so wall-jump gating
+  // correctly blocks on NOCLIMB pillars. Previously only base tile value 9 set lastHitNoClimb; spans were missed.
   const oldX = p.x, oldZ = p.z;
   
   // Track collision source for wall-jump logic
@@ -97,6 +99,20 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
             const tile = map[mapIdx(gxCurCell, gzNewCell)];
             if (tile === TILE.NOCLIMB) lastHitNoClimb = true;
             // FENCE/BADFENCE classification already handled elsewhere via lastHitFenceRail
+            // NEW: detect elevated NOCLIMB spans (t:9) at this cell/height; previously only ground tile 9 set the flag.
+            // Without this, walljump gating misses elevated noclimb pillars because isWallAt() still returns true for them.
+            try {
+              const keyNC = `${gxCurCell},${gzNewCell}`;
+              const spansNC = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(keyNC)
+                            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(keyNC)
+                            : null;
+              if (Array.isArray(spansNC)){
+                for (const s of spansNC){
+                  if (!s) continue; const t=((s.t|0)||0); if (t!==9) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+                  const top=b+h; if (p.y >= b && p.y <= top - 0.02){ lastHitNoClimb = true; break; }
+                }
+              }
+            } catch(_){ }
           } catch(_){ }
         })();
         const zRailHit = lastHitFenceRail; 
@@ -153,6 +169,19 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
           try {
             const tile = map[mapIdx(gxNewCell, gzCurCell)];
             if (tile === TILE.NOCLIMB) lastHitNoClimb = true;
+            // NEW: elevated NOCLIMB span detection (t:9) for X-axis attempt
+            try {
+              const keyNC = `${gxNewCell},${gzCurCell}`;
+              const spansNC = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(keyNC)
+                            : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(keyNC)
+                            : null;
+              if (Array.isArray(spansNC)){
+                for (const s of spansNC){
+                  if (!s) continue; const t=((s.t|0)||0); if (t!==9) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+                  const top=b+h; if (p.y >= b && p.y <= top - 0.02){ lastHitNoClimb = true; break; }
+                }
+              }
+            } catch(_){ }
           } catch(_){ }
         })();
         const xRailHit = lastHitFenceRail; 
