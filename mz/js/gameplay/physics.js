@@ -480,6 +480,163 @@ function isWallAt(x, z) {
  * Update player position with collision detection and physics
  * @param {number} dt - Delta time in seconds
  */
+// Shared helper (extracted) to test if player is inside a Lock span (t:6) at given world coords.
+// Exported on window for early-frame lock update (Theory 1 mitigation).
+function __isInsideLockAt(gx, gz, py){
+  if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return false;
+  const key = `${gx},${gz}`;
+  let found = false; let bestSpan = null; // store first matching span for latching
+  try {
+    const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+               : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+               : null;
+    if (Array.isArray(spans)){
+      for (const s of spans){ if (!s) continue; const t=((s.t|0)||0); if (t!==6) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h;
+        // For immediate hit test we use full inclusive interior (no top shrink); hysteresis handled outside.
+        if (py >= b && py <= top){ found = true; bestSpan = { b, top }; break; }
+      }
+    }
+  } catch(_){ }
+  if (found){ state._lastLockSpanB = bestSpan.b; state._lastLockSpanTop = bestSpan.top; }
+  return found;
+}
+
+// Centralized camera lock state update. Phase can be 'early' (before physics) or 'post' (after horizontal move)
+// so we can detect entering lock spans prior to vertical ceiling handling (Theory 1).
+function updateLockCameraState(phase){
+  if (!state || !state.player) return;
+  const p = state.player;
+  const gxCam = Math.floor(p.x + MAP_W*0.5);
+  const gzCam = Math.floor(p.z + MAP_H*0.5);
+  // Raw geometric test (no hysteresis) updates _lastLockSpanB/_lastLockSpanTop when inside
+  const rawInside = __isInsideLockAt(gxCam, gzCam, p.y);
+  // Hysteresis policy:
+  //  - Enter when rawInside true.
+  //  - Once inside, remain inside while py <= (_lastLockSpanTop + EXIT_TOP_PAD) and py >= (_lastLockSpanB - EXIT_BOTTOM_PAD)
+  //  - This prevents a single-frame leave when brushing the exact top.
+  const EXIT_TOP_PAD = 0.01; // allow slight overshoot before exit
+  const EXIT_BOTTOM_PAD = 0.01; // allow slight dip below base (physics rounding)
+  let inLockNow = rawInside;
+  if (!rawInside && state._inLockNow && typeof state._lastLockSpanTop === 'number'){
+    const top = state._lastLockSpanTop; const b = state._lastLockSpanB||0;
+    if (p.y <= top + EXIT_TOP_PAD && p.y >= b - EXIT_BOTTOM_PAD){ inLockNow = true; }
+  }
+  // Track previous frame lock state (persisted once per frame before early update mutates current)
+  if (phase === 'early'){
+    if (typeof state.frameCounter === 'number'){
+      if (state._lockPrevFrameCounter !== state.frameCounter){
+        state._lockPrevFrameCounter = state.frameCounter;
+        state._inLockPrevFrame = !!state._inLockNow; // snapshot last frame's final state
+      }
+    } else {
+      // Fallback: if frameCounter absent, treat prev frame as current
+      if (typeof state._inLockPrevFrame !== 'boolean') state._inLockPrevFrame = !!state._inLockNow;
+    }
+  }
+  const prevFrameLock = !!state._inLockPrevFrame;
+  const currentBefore = !!state._inLockNow;
+  // During early phase, we overwrite current lock presence for use by vertical physics.
+  if (phase === 'early') state._inLockNow = !!inLockNow;
+  // ENTER logic: if we were not in lock last frame and now are (first detection), fire immediately (prevents flicker)
+  if (!prevFrameLock && inLockNow && !state._pendingLockExit){
+    try {
+      if (typeof state._prevAltBottomControlLocked === 'undefined') state._prevAltBottomControlLocked = !!state.altBottomControlLocked;
+      if (typeof state._prevLockCameraYaw === 'undefined') state._prevLockCameraYaw = !!state.lockCameraYaw;
+    } catch(_){ }
+    state.lockedCameraForced = true;
+    state.altBottomControlLocked = true;
+    state.lockCameraYaw = true;
+    try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
+    try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
+  }
+  // EXIT scheduling: detect leave (prevFrameLock true, now false) during early phase and defer side-effects to post
+  if (phase === 'early' && prevFrameLock && !inLockNow){
+    state._pendingLockExit = true;
+  }
+  // Perform exit at post phase if still not inside and exit pending
+  if (phase === 'post' && state._pendingLockExit){
+    // Re-evaluate in case horizontal movement re-entered a lock this same frame
+    const postInLock = __isInsideLockAt(gxCam, gzCam, p.y);
+    if (!postInLock){
+      state.lockedCameraForced = false;
+      try { if (typeof state._prevAltBottomControlLocked !== 'undefined') state.altBottomControlLocked = !!state._prevAltBottomControlLocked; } catch(_){ }
+      try { if (typeof state._prevLockCameraYaw !== 'undefined') state.lockCameraYaw = !!state._prevLockCameraYaw; } catch(_){ }
+      try { delete state._prevAltBottomControlLocked; delete state._prevLockCameraYaw; } catch(_){ }
+      try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
+      try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
+      state._inLockNow = false; // finalize current state
+    } else {
+      // Cancel pending if we re-entered
+      state._inLockNow = true;
+    }
+    state._pendingLockExit = false;
+  }
+  // Steady-state orientation adjustments only when solidly inside at post phase
+  if (phase === 'post' && state._inLockNow && !state._pendingLockExit){
+    // Still in lock: handle border side / corner orientation logic (moved from moveAndCollide original block)
+    try {
+      const maxGX = (MAP_W|0) - 1;
+      const maxGZ = (MAP_H|0) - 1;
+      const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
+      if (onBorder){
+        const prevGX = (typeof state._prevGridGX === 'number') ? state._prevGridGX : gxCam;
+        const prevGZ = (typeof state._prevGridGZ === 'number') ? state._prevGridGZ : gzCam;
+        const prevSides = [];
+        if (prevGX === 0) prevSides.push('W'); else if (prevGX === maxGX) prevSides.push('E');
+        if (prevGZ === 0) prevSides.push('N'); else if (prevGZ === maxGZ) prevSides.push('S');
+        const curSides = [];
+        if (gxCam === 0) curSides.push('W'); else if (gxCam === maxGX) curSides.push('E');
+        if (gzCam === 0) curSides.push('N'); else if (gzCam === maxGZ) curSides.push('S');
+        let chosenSide = null;
+        if (curSides.length === 2){
+          const cornerKey = gxCam + ',' + gzCam;
+          const prevKey = state._lastCornerKeyEntered;
+          const dGX = gxCam - prevGX;
+            const dGZ = gzCam - prevGZ;
+          const newSides = curSides.filter(s => !prevSides.includes(s));
+          const shouldTrigger = (cornerKey !== prevKey) && newSides.length > 0;
+          if (shouldTrigger){
+            chosenSide = newSides[0];
+            state._lastCornerKeyEntered = cornerKey;
+            if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner move trigger key=',cornerKey,' newSides=',newSides,' chosenSide=',chosenSide); }
+          }
+        } else if (curSides.length === 1){
+          chosenSide = curSides[0];
+          if (state._lastCornerKeyEntered) delete state._lastCornerKeyEntered;
+        }
+        const prevSide = state._lockBorderSide || null;
+        if (chosenSide && chosenSide !== prevSide){
+          const yawForSide = (s)=>{ switch(s){ case 'W': return -Math.PI/2; case 'E': return Math.PI/2; case 'N': return 0.0; case 'S': return Math.PI; } return state.camYaw||0.0; };
+          const targetYaw = yawForSide(chosenSide);
+          const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
+          const cur = state.camYaw || 0.0;
+          const diff = Math.abs(norm(targetYaw - cur));
+          const smooth = (window.__LOCK_WALL_SMOOTH !== undefined) ? !!window.__LOCK_WALL_SMOOTH : false;
+          if (!smooth || diff > (2*Math.PI/180)){
+            state.camYaw = norm(targetYaw);
+          } else if (smooth && diff > 0){
+            const step = Math.min(diff, ( (typeof window.__LOCK_WALL_STEP_DEG === 'number'? window.__LOCK_WALL_STEP_DEG:90) * Math.PI/180));
+            state.camYaw = norm(cur + Math.sign(targetYaw - cur)*step);
+          }
+          if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] switched side', prevSide, '->', chosenSide,'yaw=', state.camYaw.toFixed(3)); }
+          state._lockBorderSide = chosenSide;
+        }
+      } else {
+        if (state._lockBorderSide) delete state._lockBorderSide;
+      }
+      state._prevGridGX = gxCam; state._prevGridGZ = gzCam;
+    } catch(_){ }
+  }
+  // Debug instrumentation (toggle): one-line event logging
+  if (phase === 'early' && window.__DEBUG_LOCK_GAP){ console.log('[lock-gap] early', state.frameCounter||0, 'prevFrame=',prevFrameLock,'raw=',rawInside,'latchedNow=',inLockNow,'pendingExit=',!!state._pendingLockExit,'y=',state.player.y.toFixed(3), 'spanB=',state._lastLockSpanB,'spanTop=',state._lastLockSpanTop); }
+  if (phase === 'post' && window.__DEBUG_LOCK_GAP){ console.log('[lock-gap] post', state.frameCounter||0, 'finalIn=',state._inLockNow,'pendingExit=',!!state._pendingLockExit,'y=',state.player.y.toFixed(3), 'spanB=',state._lastLockSpanB,'spanTop=',state._lastLockSpanTop); }
+}
+
+if (typeof window !== 'undefined'){
+  window.__isInsideLockAt = __isInsideLockAt;
+  window.updateLockCameraState = updateLockCameraState;
+}
+
 function moveAndCollide(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // no collision in editor
   const p = state.player;
@@ -511,172 +668,8 @@ function moveAndCollide(dt){
     }
   } catch(_){ }
   const oldX = p.x, oldZ = p.z;
-  // Helper: is the player inside a Lock span (t:6) at current grid cell and Y
-  function isInsideLockAt(gx, gz, py){
-    if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return false;
-    const key = `${gx},${gz}`;
-    try {
-      const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
-                   : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
-                   : null;
-      if (Array.isArray(spans)){
-        for (const s of spans){ if (!s) continue; const t=((s.t|0)||0); if (t!==6) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue; const top=b+h; if (py >= b && py <= top - 0.02) return true; }
-      }
-    } catch(_){ }
-    return false;
-  }
-  // Camera: when inside a Lock span, force Locked mode; revert when not
-  try {
-    const gxCam = Math.floor(p.x + MAP_W*0.5);
-    const gzCam = Math.floor(p.z + MAP_H*0.5);
-    const inLockNow = isInsideLockAt(gxCam, gzCam, p.y);
-    const was = !!state._inLockNow;
-    state._inLockNow = !!inLockNow;
-    if (inLockNow && !was){
-      // Entering Lock: force Locked camera mode and Fixed control scheme
-      // Preserve user's prior preferences to restore on exit
-      try {
-        if (typeof state._prevAltBottomControlLocked === 'undefined') state._prevAltBottomControlLocked = !!state.altBottomControlLocked;
-        if (typeof state._prevLockCameraYaw === 'undefined') state._prevLockCameraYaw = !!state.lockCameraYaw;
-      } catch(_){ }
-      state.lockedCameraForced = true;
-      state.altBottomControlLocked = true;
-      state.lockCameraYaw = true;
-      try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
-      try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
-      // If entering a Lock on a border cell, auto-face the camera inward if misaligned
-      try {
-        const maxGX = (MAP_W|0) - 1;
-        const maxGZ = (MAP_H|0) - 1;
-        const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
-        if (onBorder){
-          const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
-          const prevGX = (typeof state._prevGridGX === 'number') ? state._prevGridGX : gxCam;
-          const prevGZ = (typeof state._prevGridGZ === 'number') ? state._prevGridGZ : gzCam;
-          const prevSides = [];
-          if (prevGX === 0) prevSides.push('W'); else if (prevGX === maxGX) prevSides.push('E');
-          if (prevGZ === 0) prevSides.push('N'); else if (prevGZ === maxGZ) prevSides.push('S');
-          const curSides = [];
-          if (gxCam === 0) curSides.push('W'); else if (gxCam === maxGX) curSides.push('E');
-          if (gzCam === 0) curSides.push('N'); else if (gzCam === maxGZ) curSides.push('S');
-          const isCorner = curSides.length === 2;
-          let targetYaw = null;
-          if (isCorner){
-            const cornerKey = gxCam + ',' + gzCam;
-            const prevKey = state._lastCornerKeyEntered;
-            const dGX = gxCam - prevGX;
-            const dGZ = gzCam - prevGZ;
-            // New side difference triggers rotation; allow re-trigger after leaving corner (prevKey different) or if previous sides differ.
-            const newSides = curSides.filter(s => !prevSides.includes(s));
-            const shouldTrigger = (cornerKey !== prevKey) && newSides.length > 0;
-            if (shouldTrigger){
-              const newSide = newSides[0];
-              switch(newSide){
-                case 'W': targetYaw = -Math.PI/2; break;
-                case 'E': targetYaw =  Math.PI/2; break;
-                case 'N': targetYaw = 0.0; break;
-                case 'S': targetYaw =  Math.PI; break;
-              }
-              state._lastCornerKeyEntered = cornerKey;
-              if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner trigger entry key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ,' yaw=',targetYaw); }
-            } else {
-              if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner no-trigger key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ); }
-            }
-          } else {
-            // Clear corner key when leaving a corner so re-entry can trigger again.
-            if (state._lastCornerKeyEntered) delete state._lastCornerKeyEntered;
-          }
-          if (!isCorner){
-            // Single-side border cell: straightforward mapping + reset corner key
-            if (gxCam === 0) targetYaw = -Math.PI/2; else if (gxCam === maxGX) targetYaw = Math.PI/2; else if (gzCam === 0) targetYaw = 0.0; else if (gzCam === maxGZ) targetYaw = Math.PI;
-          }
-          if (targetYaw !== null){
-            const cur = state.camYaw || 0.0;
-            const diff = Math.abs(norm(targetYaw - cur));
-            const TH = 5 * Math.PI/180;
-            if (diff > TH){ state.camYaw = norm(targetYaw); }
-          }
-        } else {
-          // Left border region; nothing special
-        }
-        // Persist previous frame grid after processing (always)
-        state._prevGridGX = gxCam; state._prevGridGZ = gzCam;
-      } catch(_){ }
-    } else if (inLockNow && was){
-      // Still in lock; check if we crossed from one boundary wall to another lock block on a different side.
-      try {
-        const maxGX = (MAP_W|0) - 1;
-        const maxGZ = (MAP_H|0) - 1;
-        const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
-        if (onBorder){
-          const prevGX = (typeof state._prevGridGX === 'number') ? state._prevGridGX : gxCam;
-          const prevGZ = (typeof state._prevGridGZ === 'number') ? state._prevGridGZ : gzCam;
-          const prevSides = [];
-          if (prevGX === 0) prevSides.push('W'); else if (prevGX === maxGX) prevSides.push('E');
-          if (prevGZ === 0) prevSides.push('N'); else if (prevGZ === maxGZ) prevSides.push('S');
-          const curSides = [];
-          if (gxCam === 0) curSides.push('W'); else if (gxCam === maxGX) curSides.push('E');
-          if (gzCam === 0) curSides.push('N'); else if (gzCam === maxGZ) curSides.push('S');
-          let chosenSide = null;
-          if (curSides.length === 2){
-            const cornerKey = gxCam + ',' + gzCam;
-            const prevKey = state._lastCornerKeyEntered;
-            const dGX = gxCam - prevGX;
-            const dGZ = gzCam - prevGZ;
-            const newSides = curSides.filter(s => !prevSides.includes(s));
-            const shouldTrigger = (cornerKey !== prevKey) && newSides.length > 0;
-            if (shouldTrigger){
-              chosenSide = newSides[0];
-              state._lastCornerKeyEntered = cornerKey;
-              if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] corner move trigger key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ,' chosenSide=',chosenSide); }
-            } else if (window.__DEBUG_LOCK_WALL){
-              console.log('[lock-wall] corner move no-trigger key=',cornerKey,' prevKey=',prevKey,' prevSides=',prevSides,' curSides=',curSides,' newSides=',newSides,' dGX=',dGX,' dGZ=',dGZ); }
-          } else if (curSides.length === 1){
-            chosenSide = curSides[0];
-            if (state._lastCornerKeyEntered) delete state._lastCornerKeyEntered;
-          }
-          const prevSide = state._lockBorderSide || null;
-          if (chosenSide && chosenSide !== prevSide){
-            const yawForSide = (s)=>{ switch(s){ case 'W': return -Math.PI/2; case 'E': return Math.PI/2; case 'N': return 0.0; case 'S': return Math.PI; } return state.camYaw||0.0; };
-            const targetYaw = yawForSide(chosenSide);
-            const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
-            const cur = state.camYaw || 0.0;
-            const diff = Math.abs(norm(targetYaw - cur));
-            const smooth = (window.__LOCK_WALL_SMOOTH !== undefined) ? !!window.__LOCK_WALL_SMOOTH : false;
-            if (!smooth || diff > (2*Math.PI/180)){
-              state.camYaw = norm(targetYaw);
-            } else if (smooth && diff > 0){
-              const step = Math.min(diff, ( (typeof window.__LOCK_WALL_STEP_DEG === 'number'? window.__LOCK_WALL_STEP_DEG:90) * Math.PI/180));
-              state.camYaw = norm(cur + Math.sign(targetYaw - cur)*step);
-            }
-            if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] switched side', prevSide, '->', chosenSide, 'prevSides=',prevSides,'curSides=',curSides,'yaw=', state.camYaw.toFixed(3)); }
-            state._lockBorderSide = chosenSide;
-          }
-        } else {
-          // Not on border; clear side tracking so re-entry triggers orientation again.
-          if (state._lockBorderSide) delete state._lockBorderSide;
-        }
-        // Always update previous grid so repeated corner traversals inside continuous lock work.
-        state._prevGridGX = gxCam; state._prevGridGZ = gzCam;
-      } catch(_){ }
-    } else if (!inLockNow && was){
-      // Exiting Lock: revert to Fixed camera mode
-      state.lockedCameraForced = false;
-      // Restore user's prior preferences if available; otherwise leave as-is
-      try {
-        if (typeof state._prevAltBottomControlLocked !== 'undefined'){
-          state.altBottomControlLocked = !!state._prevAltBottomControlLocked;
-        }
-        if (typeof state._prevLockCameraYaw !== 'undefined'){
-          state.lockCameraYaw = !!state._prevLockCameraYaw;
-        }
-      } catch(_){ }
-      // Clear the stored preferences to avoid stale carryover across future locks
-      try { delete state._prevAltBottomControlLocked; delete state._prevLockCameraYaw; } catch(_){ }
-      try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
-      try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
-    }
-  } catch(_){ }
+  // Lock state now handled centrally. Only perform post-phase side effects/orientation.
+  updateLockCameraState('post');
   const baseSpeed = 3.0;
   const seamMax = baseSpeed; // seam scaling removed
   // Target speed depends on mode

@@ -20,6 +20,8 @@
  * @param {number} dt - Delta time in seconds since last frame
  */
 function stepGame(dt){
+  // Frame counter (used for lock state prev-frame snapshot logic)
+  if (typeof state.frameCounter !== 'number') state.frameCounter = 0; else state.frameCounter++;
   // ============================================================================
   // Input Processing Phase
   // ============================================================================
@@ -36,6 +38,11 @@ function stepGame(dt){
   // Physics Integration Phase
   // ============================================================================
   
+  // Early lock containment update (Theory 1): ensures vertical physics & ceiling collision
+  // operate with up-to-date knowledge of being inside a lock span to prevent one-frame
+  // camera unlock flicker and BAD ceiling misclassification.
+  try { if (typeof updateLockCameraState === 'function') updateLockCameraState('early'); } catch(_){ }
+
   // Apply gravity and vertical movement physics (affects both modes)
   applyVerticalPhysics(dt);
   

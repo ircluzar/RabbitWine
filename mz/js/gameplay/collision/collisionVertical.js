@@ -80,25 +80,30 @@ function processVerticalPhysics(dt, p) {
     if (isFinite(cH)){
       const eps = 1e-4;
       if (newY >= cH - eps){
-        // Check for hazardous ceiling
-        if (checkHazardousCeiling(p, cH)) {
-          const CEIL_SPIKE_DOWN = 4.0;
+        // Recompute hazardous BEFORE mutating newY so we know true relationship
+        const hazardous = checkHazardousCeiling(p, cH);
+        const CEIL_SPIKE_DOWN = 4.0;
+        if (hazardous){
+          // DEBUG: Enable verbose logging of BAD ceiling collisions with: window.__DEBUG_BAD_CEIL = true
+          // Always apply downward spike, even inside lock blocks (decouple from camera lock state)
           p.vy = -CEIL_SPIKE_DOWN;
           p.grounded = false;
-          p.y = newY; // Apply movement before ball mode
-          enterBallMode({ nx: 0, nz: 0 });
+          // Commit Y just below ceiling
+          newY = cH - eps;
+          if (window.__DEBUG_BAD_CEIL){ console.log('[bad-ceil] spike', 'y->', newY.toFixed(3), 'vy=', p.vy.toFixed(3), 'lockIn=', !!state._inLockNow); }
+          // Option: damage/ball mode only if not already in ball mode; keep previous behavior
+          if (!p.isBallMode){
+            // Provide downward flag to reuse existing damage effect semantics
+            enterBallMode({ nx:0, nz:0 }, { downward:true });
+          }
+          p.y = newY;
           return;
         }
-        
+
+        // Non-hazardous ceiling: clamp and zero vy
         newY = cH - eps;
         p.vy = 0.0;
-        
-        // If ceiling hit was a spike, apply downward velocity
-        if (checkSpikeCeiling(p, cH)) {
-          const CEIL_SPIKE_DOWN = 4.0;
-          p.vy = -CEIL_SPIKE_DOWN;
-          p.grounded = false;
-        }
+        if (window.__DEBUG_BAD_CEIL){ console.log('[bad-ceil] normal ceiling clamp y->', newY.toFixed(3)); }
       }
     }
   }
