@@ -1161,134 +1161,114 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     const g = groups.get(key);
     if (!g || !g.pts || g.pts.length === 0) continue;
     // Special rendering for Lock spans (t==6): outline-only pastel blue
+    // Optimization Item 1: Reduce per-frame allocations by reusing scratch buffers and
+    // collapsing repeated bufferData calls inside the per-level loop.
     if ((g.t|0) === 6){
       const pts = g.pts;
+      const countTiles = pts.length;
+      if (!countTiles){ continue; }
       const baseCol = [0.65, 0.80, 1.0];
-      // Camera + vertical fade configuration (tweakable at runtime)
+      // Persistent (function-scope memoized) scratch arrays (indexed by a hidden symbol name)
+      // so we avoid reallocating Float32Arrays every frame. They grow as needed.
+      if (!window.__lockScratch){ window.__lockScratch = { offs:new Float32Array(0), inst:new Float32Array(0), zerosCorners:new Float32Array(0), zerosAxis:new Float32Array(0) }; }
+      const scr = window.__lockScratch;
+      // Ensure offs has capacity (gx,gy per tile)
+      if (scr.offs.length < countTiles*2){ scr.offs = new Float32Array(countTiles*2 * 1.5|0); }
+      for (let i=0;i<countTiles;i++){ scr.offs[i*2+0]=pts[i][0]; scr.offs[i*2+1]=pts[i][1]; }
+      // Camera + vertical fade configuration (unchanged logic)
       const cam = (state && state.camera) ? state.camera : {};
       const camY = (cam.position && cam.position[1]) || cam.y || 0;
-      const camFadeStart = (window.__LOCK_FADE_CAM_START !== undefined) ? window.__LOCK_FADE_CAM_START : 10.0; // camera Y where fade begins
-      const camFadeEnd   = (window.__LOCK_FADE_CAM_END   !== undefined) ? window.__LOCK_FADE_CAM_END   : 40.0; // camera Y where fully faded
-      const levelFadeBand = (window.__LOCK_LEVEL_FADE_BAND !== undefined) ? window.__LOCK_LEVEL_FADE_BAND : 2.0; // extra fade for low levels
-      const alphaBaseRest = (window.__LOCK_WORLD_ALPHA_REST !== undefined) ? window.__LOCK_WORLD_ALPHA_REST : 0.30; // default world lock alpha
-      const alphaBaseHiCam = (window.__LOCK_WORLD_ALPHA_HICAM !== undefined) ? window.__LOCK_WORLD_ALPHA_HICAM : 0.05; // min alpha at/after cam fade end
-      // Pre-pack tile array once
-      const offsPacked = new Float32Array(pts.length * 2);
-      for (let i=0;i<pts.length;i++){ offsPacked[i*2+0]=pts[i][0]; offsPacked[i*2+1]=pts[i][1]; }
-      // For each level in span, compute per-level alpha and send a separate outline batch (cheap: lines only)
+      const camFadeStart = (window.__LOCK_FADE_CAM_START !== undefined) ? window.__LOCK_FADE_CAM_START : 10.0;
+      const camFadeEnd   = (window.__LOCK_FADE_CAM_END   !== undefined) ? window.__LOCK_FADE_CAM_END   : 40.0;
+      const levelFadeBand = (window.__LOCK_LEVEL_FADE_BAND !== undefined) ? window.__LOCK_LEVEL_FADE_BAND : 2.0;
+      const alphaBaseRest = (window.__LOCK_WORLD_ALPHA_REST !== undefined) ? window.__LOCK_WORLD_ALPHA_REST : 0.30;
+      const alphaBaseHiCam = (window.__LOCK_WORLD_ALPHA_HICAM !== undefined) ? window.__LOCK_WORLD_ALPHA_HICAM : 0.05;
+      // Precompute cam fade once
+      let camT = 0.0; if (camY > camFadeStart){ camT = Math.min(1.0, (camY - camFadeStart) / Math.max(0.0001, camFadeEnd - camFadeStart)); camT = camT*camT*(3.0-2.0*camT); }
+      const alphaCamBase = alphaBaseRest * (1.0 - camT) + alphaBaseHiCam * camT;
+      // Prepare GL state once (moved out of per-level loop)
+      if (!window.trailCubeProgram){
+        // Skip rendering if program missing, but still continue to next group
+        continue;
+      }
+      const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
+      const wasBlend = gl.isEnabled(gl.BLEND);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(window.trailCubeProgram);
+      gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
+      const tNow_local = state.nowSec || (performance.now()/1000);
+      gl.uniform1f(tc_u_now, tNow_local);
+      gl.uniform1f(tc_u_ttl, 1.0);
+      gl.uniform1i(tc_u_dashMode, 0);
+      gl.uniform3f(tc_u_lineColor, baseCol[0], baseCol[1], baseCol[2]);
+      if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
+      gl.bindVertexArray(trailCubeVAO);
+      // Ensure inst buffer capacity (x,y,z,time) per tile reused for each level write
+      if (scr.inst.length < countTiles*4){ scr.inst = new Float32Array(countTiles*4 * 1.5|0); }
+      // Prepare static per-tile world XZ once (Y & time vary per level)
+      for (let i=0;i<countTiles;i++){
+        const gx = scr.offs[i*2+0]; const gy = scr.offs[i*2+1];
+        const cx = (gx - MAP_W*0.5 + 0.5); const cz = (gy - MAP_H*0.5 + 0.5);
+        scr.inst[i*4+0]=cx; scr.inst[i*4+2]=cz; // leave [1] (Y) & [3] (time) to fill per level
+      }
+      // Corner/axis zero buffers reused (allocate once if needed)
+      const neededCorners = countTiles * 8 * 3;
+      if (typeof trailCubeVBO_Corners !== 'undefined' && scr.zerosCorners.length < neededCorners){ scr.zerosCorners = new Float32Array(neededCorners); }
+      const neededAxis = countTiles * 3;
+      if (scr.zerosAxis.length < neededAxis){ scr.zerosAxis = new Float32Array(neededAxis); }
+      if (typeof trailCubeVBO_Corners !== 'undefined'){
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
+        gl.bufferData(gl.ARRAY_BUFFER, scr.zerosCorners, gl.DYNAMIC_DRAW);
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
+      gl.bufferData(gl.ARRAY_BUFFER, scr.zerosAxis, gl.DYNAMIC_DRAW);
+      // Iterate levels computing alpha & issuing draws with reused buffers
       for (let level=0; level<g.h; level++){
         const yCenter = (g.b + level) + 0.5 + (level>0 ? EPS*level : 0.0);
-        // Bottom view vertical fade (progressive disappearance as player moves away vertically)
+        // Bottom view vertical fade
         let bottomFade = 1.0;
-        try {
-          if (state.cameraKindCurrent === 'bottom'){
+        if (state.cameraKindCurrent === 'bottom'){
+          try {
             const playerY = state.player ? (state.player.y || 0) : 0;
             const band = (typeof window.__LOCK_OUTLINE_FADE_BAND === 'number') ? window.__LOCK_OUTLINE_FADE_BAND : 3.0;
             const minA = (typeof window.__LOCK_OUTLINE_MIN_ALPHA === 'number') ? window.__LOCK_OUTLINE_MIN_ALPHA : 0.0;
             if (band > 0){
-              // Lock voxel vertical extent is 1.0; compute distance from player to this 1-unit segment
-              const yMin = yCenter - 0.5;
-              const yMax = yCenter + 0.5;
-              let d = 0.0;
-              if (playerY < yMin) d = yMin - playerY; else if (playerY > yMax) d = playerY - yMax; else d = 0.0;
-              let t = Math.min(1.0, Math.max(0.0, d / band));
-              // smoothstep easing
-              t = t*t*(3.0 - 2.0*t);
-              bottomFade = (1.0 - t);
-              if (bottomFade < minA) bottomFade = minA;
+              const yMin = yCenter - 0.5; const yMax = yCenter + 0.5;
+              let d = 0.0; if (playerY < yMin) d = yMin - playerY; else if (playerY > yMax) d = playerY - yMax;
+              let t = Math.min(1.0, Math.max(0.0, d / band)); t = t*t*(3.0 - 2.0*t);
+              bottomFade = (1.0 - t); if (bottomFade < minA) bottomFade = minA;
             }
-          }
-        } catch(_){ }
-        // Camera fade factor (0..1) using smoothstep for smoother curve
-        let camT = 0.0;
-        if (camY > camFadeStart){ camT = Math.min(1.0, (camY - camFadeStart) / Math.max(0.0001, camFadeEnd - camFadeStart)); }
-        camT = camT * camT * (3.0 - 2.0 * camT);
-        const alphaCam = alphaBaseRest * (1.0 - camT) + alphaBaseHiCam * camT;
-        // Extra vertical fade for levels near ground when camera is high
+          } catch(_){ }
+        }
+        // Level fade near ground
         let levelFade = 1.0;
         if (level === 0){ levelFade = Math.max(0.0, 1.0 - camT * (1.0 + (levelFadeBand*0.5))); }
         else if (level === 1){ levelFade = Math.max(0.0, 1.0 - camT * (0.5 + (levelFadeBand*0.25))); }
-        let finalAlpha = alphaCam * levelFade * bottomFade;
-        // Camera lock effect (TOP SCREEN ONLY): when the game camera is locked, make lock blocks
-        // extremely transparent (target ~5% opacity). We cap (not multiply) their alpha so that
-        // returning from lock restores normal computed alpha. Optional override:
-        //   window.__LOCK_WORLD_LOCKMODE_ALPHA  (absolute alpha cap, default 0.05)
-        // Backwards compat: if legacy multiplier override window.__LOCK_WORLD_LOCKMODE_MUL is present
-        // and no absolute alpha override is defined, we keep the old multiplicative path.
+        let finalAlpha = alphaCamBase * levelFade * bottomFade;
+        // Lock camera alpha cap logic
         try {
-          const lockModeActive = (()=>{
-            try {
-              if (!state) return false;
-              // Existing camera flags
-              if (state.camera && (state.camera.isLocked || state.camera.lockMode)) return true;
-              // Pointer lock (editor / alt mode)
-              if (state.editor?.pointerLocked) return true;
-              // Yaw lock often accompanies lock situations
-              if (state.lockCameraYaw) return true;
-              // Global explicit override for testing
-              if (window.__CAMERA_LOCKED) return true;
-            } catch(_){ }
-            return false;
-          })();
+          const lockModeActive = (()=>{ try { if (!state) return false; if (state.camera && (state.camera.isLocked || state.camera.lockMode)) return true; if (state.editor?.pointerLocked) return true; if (state.lockCameraYaw) return true; if (window.__CAMERA_LOCKED) return true; } catch(_){ } return false; })();
           if (lockModeActive && state.cameraKindCurrent === 'top'){
             if (window.__LOCK_WORLD_LOCKMODE_ALPHA !== undefined){
-              const cap = window.__LOCK_WORLD_LOCKMODE_ALPHA;
-              if (finalAlpha > cap) finalAlpha = cap;
-            } else if (window.__LOCK_WORLD_LOCKMODE_MUL !== undefined) {
-              // Legacy behavior: apply user-provided multiplier
-              finalAlpha *= window.__LOCK_WORLD_LOCKMODE_MUL;
-            } else {
-              const cap = 0.05; // default 5% opacity target
-              if (finalAlpha > cap) finalAlpha = cap;
-            }
-            if (window.__DEBUG_LOCK_ALPHA){
-              if (!window.___dbgLockOnce){
-                window.___dbgLockOnce = true;
-              }
-            } else if (window.___dbgLockOnce){
-              // Reset one-shot if debugging turned off or lock released later
-              try { delete window.___dbgLockOnce; } catch(_){ }
-            }
+              const cap = window.__LOCK_WORLD_LOCKMODE_ALPHA; if (finalAlpha > cap) finalAlpha = cap;
+            } else if (window.__LOCK_WORLD_LOCKMODE_MUL !== undefined){ finalAlpha *= window.__LOCK_WORLD_LOCKMODE_MUL; }
+            else { const cap = 0.05; if (finalAlpha > cap) finalAlpha = cap; }
           }
         } catch(_){ }
-        // Global multiplier override
         if (typeof window.__LOCK_WORLD_ALPHA_MUL === 'number'){ finalAlpha *= window.__LOCK_WORLD_ALPHA_MUL; }
-        if (finalAlpha <= 0.005) continue; // skip near-zero
-        // Temporarily hook drawOutlinesForTileArray with custom alpha via modifying uniforms inline
-        // Save current blend/depth state
-        if (!window.trailCubeProgram) continue; // Skip if trailCubeProgram not available
-        const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
-        const wasBlend = gl.isEnabled(gl.BLEND);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.useProgram(window.trailCubeProgram);
-        gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
-        const tNow_local = state.nowSec || (performance.now()/1000);
-        gl.uniform1f(tc_u_now, tNow_local);
-        gl.uniform1f(tc_u_ttl, 1.0);
-        gl.uniform1i(tc_u_dashMode, 0);
-        gl.uniform3f(tc_u_lineColor, baseCol[0], baseCol[1], baseCol[2]);
-        if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
-        gl.bindVertexArray(trailCubeVAO);
-        const instOne = new Float32Array(offsPacked.length/2 * 4);
-        for (let i=0;i<offsPacked.length/2;i++){
-          const tx = offsPacked[i*2+0]; const ty = offsPacked[i*2+1];
-          const cx = (tx - MAP_W*0.5 + 0.5); const cz = (ty - MAP_H*0.5 + 0.5);
-          instOne[i*4+0]=cx; instOne[i*4+1]=yCenter; instOne[i*4+2]=cz; instOne[i*4+3]=tNow_local;
-        }
-        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst); gl.bufferData(gl.ARRAY_BUFFER, instOne, gl.DYNAMIC_DRAW);
-        if (typeof trailCubeVBO_Corners !== 'undefined'){
-          const zeros = new Float32Array((offsPacked.length/2) * 8 * 3);
-          gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners); gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
-        }
-        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array((offsPacked.length/2)*3), gl.DYNAMIC_DRAW);
+        if (finalAlpha <= 0.005) continue;
+        // Fill Y & time columns then upload once
+        for (let i=0;i<countTiles;i++){ scr.inst[i*4+1] = yCenter; scr.inst[i*4+3] = tNow_local; }
+        gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
+        // Use bufferData (size may grow) - future improvement: conditional subData if unchanged length
+        gl.bufferData(gl.ARRAY_BUFFER, scr.inst.subarray(0, countTiles*4), gl.DYNAMIC_DRAW);
         gl.depthMask(false);
         gl.uniform1f(tc_u_mulAlpha, finalAlpha);
-        gl.uniform1f(tc_u_scale, 1.02); gl.drawArraysInstanced(gl.LINES, 0, 24, offsPacked.length/2);
-        gl.uniform1f(tc_u_scale, 1.05); gl.drawArraysInstanced(gl.LINES, 0, 24, offsPacked.length/2);
-        if (!wasBlend) gl.disable(gl.BLEND); gl.depthMask(prevDepthMask);
+        gl.uniform1f(tc_u_scale, 1.02); gl.drawArraysInstanced(gl.LINES, 0, 24, countTiles);
+        gl.uniform1f(tc_u_scale, 1.05); gl.drawArraysInstanced(gl.LINES, 0, 24, countTiles);
       }
-      // Rebind wall VAO and program after custom lock outlines
+      if (!wasBlend) gl.disable(gl.BLEND); gl.depthMask(prevDepthMask);
+      // Restore wall rendering program/VAO
       gl.bindVertexArray(wallVAO);
       gl.useProgram(wallProgram);
       gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);

@@ -32,14 +32,24 @@ function drawPlayerAndTrail(mvp){
   // Render movement trail as instanced wireframe cubes
   const pts = state.trail.points;
   if (pts.length >= 1){
-    // Prepare instance data: [x, y, z, birth_time] for each trail point
-    const inst = new Float32Array(pts.length * 4);
-    for (let i = 0; i < pts.length; i++){ 
-      const p = pts[i]; 
-      inst[i * 4 + 0] = p[0]; // x
-      inst[i * 4 + 1] = p[1]; // y  
-      inst[i * 4 + 2] = p[2]; // z
-      inst[i * 4 + 3] = p[3]; // birth time
+    // Trail performance instrumentation
+    if (!window.__trailPerf){ window.__trailPerf = { instCapacity:0, instReallocs:0, instUploads:0, cornerCapacity:0, cornerReallocs:0, axisCapacity:0, axisReallocs:0, cornerUploads:0, axisUploads:0 }; }
+    // Allocate / grow pooled instance buffer (CPU side)
+    const neededInst = pts.length * 4;
+    if (!window.__trailInstCPU || window.__trailInstCPU.length < neededInst){
+      const newCap = neededInst <= 64 ? 64 : 1 << (32 - Math.clz32(neededInst - 1)); // power-of-two growth
+      window.__trailInstCPU = new Float32Array(newCap);
+      window.__trailPerf.instCapacity = newCap;
+      window.__trailPerf.instReallocs++;
+    }
+    const inst = window.__trailInstCPU;
+    for (let i = 0; i < pts.length; i++){
+      const p = pts[i];
+      const o = i*4;
+      inst[o+0] = p[0];
+      inst[o+1] = p[1];
+      inst[o+2] = p[2];
+      inst[o+3] = p[3];
     }
     
     // Update trail edge jitter animation (16ms intervals)
@@ -64,8 +74,10 @@ function drawPlayerAndTrail(mvp){
     
     // Upload instance data
     gl.bindVertexArray(trailCubeVAO);
-    gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
-    gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
+  // Only upload the used sub-range to GPU
+  gl.bufferData(gl.ARRAY_BUFFER, inst.subarray(0, neededInst), gl.DYNAMIC_DRAW);
+  window.__trailPerf.instUploads++;
     
     // Handle per-instance corner offsets for different camera views
     if (typeof trailCubeVBO_Corners !== 'undefined'){
@@ -80,18 +92,34 @@ function drawPlayerAndTrail(mvp){
         const packed = getTrailCornerOffsetsBuffer(keys, now);
         gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
         gl.bufferData(gl.ARRAY_BUFFER, packed, gl.DYNAMIC_DRAW);
+        window.__trailPerf.cornerUploads++;
       } else {
-        // Bottom view: use zero offsets (no animation)
-        const zeros = new Float32Array(pts.length * 8 * 3);
+        // Bottom view: use zero offsets (no animation) via pooled zero buffer
+        const neededCorner = pts.length * 8 * 3;
+        if (!window.__trailCornerZero || window.__trailCornerZero.length < neededCorner){
+          const newCap = neededCorner <= 512 ? 512 : 1 << (32 - Math.clz32(neededCorner - 1));
+          window.__trailCornerZero = new Float32Array(newCap); // auto zero-filled
+          window.__trailPerf.cornerCapacity = newCap;
+          window.__trailPerf.cornerReallocs++;
+        }
         gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Corners);
-        gl.bufferData(gl.ARRAY_BUFFER, zeros, gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, window.__trailCornerZero.subarray(0, neededCorner), gl.DYNAMIC_DRAW);
+        window.__trailPerf.cornerUploads++;
       }
     }
     
     // Upload axis data for per-instance attribute (unused when u_useAnim=0)
     if (typeof trailCubeVBO_Axis !== 'undefined' && trailCubeVBO_Axis){
+      const neededAxis = pts.length * 3;
+      if (!window.__trailAxisZero || window.__trailAxisZero.length < neededAxis){
+        const newCap = neededAxis <= 256 ? 256 : 1 << (32 - Math.clz32(neededAxis - 1));
+        window.__trailAxisZero = new Float32Array(newCap);
+        window.__trailPerf.axisCapacity = newCap;
+        window.__trailPerf.axisReallocs++;
+      }
       gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Axis);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts.length * 3), gl.DYNAMIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, window.__trailAxisZero.subarray(0, neededAxis), gl.DYNAMIC_DRAW);
+      window.__trailPerf.axisUploads = (window.__trailPerf.axisUploads||0)+1;
     }
     
     // Render trail with alpha blending

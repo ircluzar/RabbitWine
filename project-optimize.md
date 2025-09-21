@@ -21,6 +21,8 @@ This document lists potential performance optimizations for the `mz` portion of 
 - Consolidate outline jitter loop into a single instanced draw (supply offsets in a small instance buffer of N offsets) instead of N separate `bufferData` + draw calls.
 **Expected Gain**: Fewer JS allocations + fewer buffer re-specifications reduces CPU time and main thread stalls, likely double-digit % in heavy trails.
 **Validation**: Use Performance timeline + WebGL Inspector (EXT_disjoint_timer_query if available) to measure reduced bufferData calls.
+### Status Update (Implemented Phase 1)
+Trail instancing now uses pooled CPU buffers (`__trailInstCPU`) with power-of-two growth and subrange uploads to GPU, avoiding per-frame new `Float32Array` allocations. Corner (zero) and axis buffers likewise pooled (`__trailCornerZero`, `__trailAxisZero`). Instrumentation (`window.__trailPerf`) tracks capacities, realloc counts (`instReallocs`, `cornerReallocs`, `axisReallocs`) and upload counts (`instUploads`, `cornerUploads`, `axisUploads`). Behavior of trail rendering preserved: data values, birth times, and per-camera animated vs zero corner buffers remain unchanged. Further enhancement (deferred updates when unchanged across same frame) left for later if needed.
 
 ## 2. Dual-Pass Player Rendering (Depth + Occluded Stipple) Merge (High Impact, Effort M, Category GPU)
 **Why**: Player cube drawn twice (visible then occluded pass) and then multiple wireframe passes. Depth pre-pass logic could be replaced by a single pass with alpha/stipple discard in fragment shader or by using polygon offset / dual depth test techniques.
