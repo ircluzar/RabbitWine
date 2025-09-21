@@ -617,9 +617,50 @@ function __mp_unfreezePlayer(){
 // mpComputeOffset function is now provided by config.js module
 
 function mpEnsureWS(nowMs){
+  // Respect forced offline mode (user setting). If enabled, never attempt a connection.
+  try { if (window.mpForceOffline === true){ return; } } catch(_){ }
   if (mpWSState === 'open' || mpWSState === 'connecting') return;
   // Use wall-clock for cooldown gating to avoid mismatch with game timebases
   if (Date.now() < mpNextConnectAt) return; // cooldown
+
+// --- User-configurable networking controls (force offline & map cache clear) ---
+try {
+  // Initialize force-offline flag from localStorage (persisted across sessions)
+  if (typeof window.mpForceOffline === 'undefined'){
+    let persisted = null; try { persisted = localStorage.getItem('mz_force_offline'); } catch(_){ }
+    window.mpForceOffline = (persisted === '1');
+  }
+  // API: toggle forced offline mode. Closes any active socket when enabling.
+  window.setForceOffline = function(flag){
+    const on = !!flag; window.mpForceOffline = on;
+    try { localStorage.setItem('mz_force_offline', on ? '1':'0'); } catch(_){ }
+    if (on){
+      try { if (mpWS && mpWS.readyState === WebSocket.OPEN) mpWS.close(); } catch(_){ }
+      mpWSState = 'closed';
+    } else {
+      // Attempt immediate reconnect (best-effort)
+      try { mpEnsureWS(Date.now()); } catch(_){ }
+    }
+    try { if (typeof showTopNotification === 'function') showTopNotification(on ? 'Forced Offline Enabled' : 'Forced Offline Disabled'); } catch(_){ }
+    return on;
+  };
+  // API: clear local map diff cache and revert to baseline map (without contacting server)
+  window.mpClearLocalMapCache = function(){
+    try {
+      if (typeof mpMap === 'object'){
+        if (mpMap.adds && typeof mpMap.adds.clear === 'function') mpMap.adds.clear();
+        if (mpMap.removes && typeof mpMap.removes.clear === 'function') mpMap.removes.clear();
+        mpMap.version = 0;
+      }
+      // Rebuild from empty diff (baseline map already constructed by map-data.js for current level)
+      try { if (typeof __mp_rebuildWorldFromDiff === 'function') __mp_rebuildWorldFromDiff(); } catch(_){ }
+      // Persist new empty snapshot in save
+      try { if (window.gameSave && typeof gameSave.saveNow === 'function') gameSave.saveNow(); } catch(_){ }
+      try { if (typeof showTopNotification === 'function') showTopNotification('Local map cache cleared'); } catch(_){ }
+      return true;
+    } catch(_){ return false; }
+  };
+} catch(_){ }
   let url = MP_SERVER.replace(/\/$/, '');
   // Allow users to provide http(s) and convert scheme
   if (/^https?:\/\//i.test(url)){

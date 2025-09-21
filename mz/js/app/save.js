@@ -168,6 +168,9 @@
         lockCameraYaw: !!state.lockCameraYaw,
         seamRatio: state.seamRatio
       },
+      net: {
+        forceOffline: (typeof window !== 'undefined' && window.mpForceOffline === true) ? 1 : 0
+      },
   items: Array.from(collected), // legacy
   itemPayloads: Array.from(collectedPayloads), // legacy
   purple: Array.from(purpleCollected.entries()).map(([lvl,set])=>[lvl, Array.from(set)]), // legacy
@@ -219,6 +222,9 @@
         state.altBottomControlLocked = !!data.ui.altBottomControlLocked;
         state.lockCameraYaw = !!data.ui.lockCameraYaw;
         if (typeof data.ui.seamRatio === 'number') state.seamRatio = Math.min(0.95, Math.max(0.05, data.ui.seamRatio));
+      }
+      if (data.net && typeof data.net === 'object'){
+        try { if (data.net.forceOffline){ window.mpForceOffline = true; } } catch(_){ }
       }
       // Apply saved map diff snapshot early so world geometry (typed spans) is restored offline
       try {

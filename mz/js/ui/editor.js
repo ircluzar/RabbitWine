@@ -102,6 +102,45 @@ try {
 (function(){
   if (typeof window === 'undefined') return;
 
+  // --- Span helper bootstrap (fix for regression: loader was inside JSDoc comment) ---
+  // During the refactor spans.js was dynamically injected but the <script> tag creation code
+  // accidentally remained inside the large JSDoc comment, so it never executed. As a result
+  // __getSpans/__setSpans/__normalize were undefined and all editor block add/remove operations
+  // aborted with a ReferenceError. We defensively ensure the helpers exist immediately and then
+  // attempt async load of the extracted module (which may provide a richer normalize).
+  (function ensureSpanHelpers(){
+    if (typeof window.__getSpans !== 'function'){
+      window.__getSpans = function(gx,gy){
+        try { const key = `${gx},${gy}`; return (window.columnSpans && window.columnSpans.get(key) ? window.columnSpans.get(key).map(s=>({...s})) : []); } catch(_){ return []; }
+      };
+    }
+    if (typeof window.__setSpans !== 'function'){
+      window.__setSpans = function(gx,gy,spans){ try { if (typeof window.setSpansAt === 'function') window.setSpansAt(gx,gy,spans); } catch(_){ } };
+    }
+    if (typeof window.__normalize !== 'function'){
+      window.__normalize = function(spans){
+        const arr = Array.isArray(spans)?spans:[];
+        const norm = arr.filter(s=>s && (Number(s.h)||0) > 0).map(s=>{ const o={ b:(s.b|0), h: (typeof s.h==='number'? s.h : (s.h|0)) }; const tt=(s.t|0)||0; if ([1,2,3,4,5,6,9].includes(tt)) o.t=tt; return o; });
+        norm.sort((a,b)=> (a.b-b.b) || (((a.t|0)||0)-((b.t|0)||0)) );
+        const out=[]; for (const s of norm){ if (!out.length){ out.push({...s}); continue; } const t=out[out.length-1]; const sT=(s.t|0)||0, tT=(t.t|0)||0; if (sT===tT && s.b <= t.b + t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; } else out.push({...s}); }
+        return out;
+      };
+    }
+    // Attempt async load of official spans module (will override these shims when loaded)
+    try {
+      if (!document.querySelector('script[data-mz-editor-spans]')){
+        const script = document.createElement('script');
+        script.src = 'js/ui/editor/spans.js';
+        script.async = true;
+        script.dataset.mzEditorSpans = '1';
+        document.head.appendChild(script);
+      }
+    } catch(_){
+      // Worker fallback
+      try { if (typeof importScripts === 'function') importScripts('js/ui/editor/spans.js'); } catch(__){}
+    }
+  })();
+
   const rootId = 'mz-editor-modal-root';
   function ensureRoot(){
     let r = document.getElementById(rootId);
@@ -253,7 +292,7 @@ try {
         __setSpans(gx,gy,spans);
         try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
         try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'add', key:`${gx},${gy},${y}`, t: 6 }]); } } catch(_){ }
-        if (typeof showTopNotification === 'function') showTopNotification('Lock placed');
+  // Suppressed noisy notification: Lock placed
         return true;
       }
     } catch(_){ }
@@ -292,7 +331,7 @@ try {
           }
           // Replicate portal metadata
           try { if (window.mpSendPortalOps) mpSendPortalOps([{ op:'set', k:key, dest }]); } catch(_){ }
-          if (typeof showTopNotification === 'function') showTopNotification('Portal → ' + dest);
+          // Suppressed noisy notification: Portal placement summary
           return true;
         }
         return false;
@@ -457,7 +496,7 @@ try {
         __setSpans(gx,gy,out);
         try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
         try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 6 }]); } } catch(_){ }
-        if (typeof showTopNotification === 'function') showTopNotification('Lock removed');
+  // Suppressed noisy notification: Lock removed
         return true;
       }
     } catch(_){ }
@@ -474,7 +513,7 @@ try {
               const key = `${gx},${gy}`;
               try { if (window.portalDestinations instanceof Map) window.portalDestinations.delete(key); } catch(_){ }
               try { if (window.mpSendPortalOps) mpSendPortalOps([{ op:'remove', k:key }]); } catch(_){ }
-              if (typeof showTopNotification === 'function') showTopNotification('Portal removed');
+              // Suppressed noisy notification: Portal removed
               return true;
             }
           } else {
@@ -486,7 +525,7 @@ try {
               __setSpans(gx,gy,spans);
               try { if (typeof rebuildInstances === 'function') rebuildInstances(); } catch(_){ }
               try { if (window.mpSendMapOps){ mpSendMapOps([{ op:'remove', key:`${gx},${gy},${y}`, t: 5 }]); } } catch(_){ }
-              if (typeof showTopNotification === 'function') showTopNotification('Elevated portal removed');
+              // Suppressed noisy notification: Elevated portal removed
               return true;
             }
           }

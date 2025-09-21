@@ -204,7 +204,7 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     channelRow.appendChild(btnApplyChannel);
     channelWrap.appendChild(channelLabel);
     channelWrap.appendChild(channelRow);
-    // Audio section (Music + SFX volume)
+  // Audio section (Music + SFX volume)
     const audioWrap = document.createElement('div');
     audioWrap.className = 'mz-section';
     const audioTitle = document.createElement('div');
@@ -292,7 +292,36 @@ if (typeof onToggleAltControlLock === 'function' && ALT_LOCK_BTN){
     actions.appendChild(btnReturn);
     card.appendChild(h);
   card.appendChild(channelWrap);
+  // Server settings section
+  const serverWrap = document.createElement('div');
+  serverWrap.className = 'mz-section';
+  const serverTitle = document.createElement('div');
+  serverTitle.textContent = 'Server / Networking';
+  serverTitle.className = 'mz-section-title';
+  const serverRow1 = document.createElement('div'); serverRow1.className='mz-field-row';
+  const offLabel = document.createElement('label'); offLabel.textContent = 'Run as Offline'; offLabel.className='mz-field-label';
+  const offToggle = document.createElement('input'); offToggle.type='checkbox'; offToggle.className='mz-checkbox';
+  try { offToggle.checked = (window.mpForceOffline === true); } catch(_){ }
+  offToggle.addEventListener('change', ()=>{
+    try { if (typeof window.setForceOffline === 'function') setForceOffline(offToggle.checked); else { window.mpForceOffline = offToggle.checked; } } catch(_){ }
+  });
+  serverRow1.appendChild(offLabel); serverRow1.appendChild(offToggle);
+  const serverRow2 = document.createElement('div'); serverRow2.className='mz-field-row';
+  const cacheBtn = document.createElement('button'); cacheBtn.type='button'; cacheBtn.textContent='Clear Local Map Cache'; cacheBtn.className='mz-btn-inline';
+  cacheBtn.addEventListener('click', ()=>{
+    try {
+      const ok = (typeof window.mpClearLocalMapCache === 'function') ? mpClearLocalMapCache() : false;
+      cacheBtn.textContent = ok ? 'Cleared' : 'Failed';
+      setTimeout(()=>{ cacheBtn.textContent = 'Clear Local Map Cache'; }, 1600);
+    } catch(_){ }
+  });
+  serverRow2.appendChild(cacheBtn);
+  serverWrap.appendChild(serverTitle);
+  serverWrap.appendChild(serverRow1);
+  serverWrap.appendChild(serverRow2);
+
   card.appendChild(audioWrap);
+  card.appendChild(serverWrap);
   card.appendChild(actions);
     ov.appendChild(card);
     document.body.appendChild(ov);
