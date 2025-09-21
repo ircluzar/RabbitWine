@@ -155,37 +155,3 @@ gl.bindBuffer(gl.ARRAY_BUFFER, null);
  * @const {Object}
  */
 const offscreen = createRenderTarget(BASE_WIDTH, BASE_HEIGHT);
-
-// Cached uniform locations (avoid per-frame getUniformLocation cost)
-const __blit_u_tex = gl.getUniformLocation(blitProgram, 'u_tex');
-const __blit_u_topMix = gl.getUniformLocation(blitProgram, 'u_topMix');
-const __blit_u_topLevels = gl.getUniformLocation(blitProgram, 'u_topLevels');
-const __blit_u_topDither = gl.getUniformLocation(blitProgram, 'u_topDither');
-const __blit_u_topPixel = gl.getUniformLocation(blitProgram, 'u_topPixel');
-
-let __blitUniformSetCount = 0;
-if (typeof window !== 'undefined'){
-  window.__blitPerf = ()=>({ uniformSets: __blitUniformSetCount });
-}
-// Provide helper to apply uniforms (called each frame from bootstrap)
-function blitApplyUniforms(state){
-  // Called after program bound & texture unit 0 set
-  if (__blit_u_tex) gl.uniform1i(__blit_u_tex, 0);
-  if (__blit_u_topMix) gl.uniform1f(__blit_u_topMix, state.topPosterizeMix || 0.0);
-  if (__blit_u_topLevels) gl.uniform1f(__blit_u_topLevels, state.topPosterizeLevels || 6.0);
-  if (__blit_u_topDither) gl.uniform1f(__blit_u_topDither, state.topDitherAmt || 0.0);
-  if (__blit_u_topPixel) gl.uniform1f(__blit_u_topPixel, state.topPixelSize || 0.0);
-  __blitUniformSetCount++;
-}
-if (typeof window !== 'undefined') window.blitApplyUniforms = blitApplyUniforms;
-
-// Expose accessors (optional) for debugging / hot-reload scenarios
-if (typeof window !== 'undefined'){
-  window.__blitUniforms = {
-    u_tex: __blit_u_tex,
-    u_topMix: __blit_u_topMix,
-    u_topLevels: __blit_u_topLevels,
-    u_topDither: __blit_u_topDither,
-    u_topPixel: __blit_u_topPixel
-  };
-}

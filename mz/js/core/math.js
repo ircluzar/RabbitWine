@@ -91,15 +91,31 @@ function mat4RotateY(rad){
 function mat4Scale(sx,sy,sz){
   const m = mat4Identity(); m[0]=sx; m[5]=sy; m[10]=sz; return m;
 }
+
+// Export all matrix functions to global scope for cross-module access
+window.mat4Identity = mat4Identity;
+window.mat4Multiply = mat4Multiply;
+window.mat4Perspective = mat4Perspective;
+window.mat4LookAt = mat4LookAt;
+window.deg2rad = deg2rad;
+window.smoothstep = smoothstep;
+window.normalizeAngle = normalizeAngle;
+window.mat4Translate = mat4Translate;
+window.mat4RotateY = mat4RotateY;
+window.mat4Scale = mat4Scale;
+
+// ------------------------------------------------------------
+// In-place / into-buffer variants to reduce allocations.
+// These are additive; existing API untouched to avoid regressions.
+// ------------------------------------------------------------
 function mat4MultiplyInto(out,a,b){
-  // out = a * b; out may alias neither a nor b ideally, but allow aliasing with temp usage.
-  const a0=a[0],a1=a[1],a2=a[2],a3=a[3], a4=a[4],a5=a[5],a6=a[6],a7=a[7], a8=a[8],a9=a[9],a10=a[10],a11=a[11], a12=a[12],a13=a[13],a14=a[14],a15=a[15];
-  for (let c=0;c<4;c++){
-    const bi0=b[c*4+0], bi1=b[c*4+1], bi2=b[c*4+2], bi3=b[c*4+3];
-    out[c*4+0] = a0*bi0 + a4*bi1 + a8*bi2 + a12*bi3;
-    out[c*4+1] = a1*bi0 + a5*bi1 + a9*bi2 + a13*bi3;
-    out[c*4+2] = a2*bi0 + a6*bi1 + a10*bi2 + a14*bi3;
-    out[c*4+3] = a3*bi0 + a7*bi1 + a11*bi2 + a15*bi3;
+  // out = a * b (column-major)
+  for(let r=0;r<4;r++){
+    const a0=a[0*4+r], a1=a[1*4+r], a2=a[2*4+r], a3=a[3*4+r];
+    out[0*4+r] = a0*b[0*4+0] + a1*b[0*4+1] + a2*b[0*4+2] + a3*b[0*4+3];
+    out[1*4+r] = a0*b[1*4+0] + a1*b[1*4+1] + a2*b[1*4+2] + a3*b[1*4+3];
+    out[2*4+r] = a0*b[2*4+0] + a1*b[2*4+1] + a2*b[2*4+2] + a3*b[2*4+3];
+    out[3*4+r] = a0*b[3*4+0] + a1*b[3*4+1] + a2*b[3*4+2] + a3*b[3*4+3];
   }
   return out;
 }
@@ -115,9 +131,11 @@ function mat4PerspectiveInto(out, fovYRad, aspect, near, far){
 function mat4LookAtInto(out, eye, center, up){
   const ex=eye[0], ey=eye[1], ez=eye[2];
   const cx=center[0], cy=center[1], cz=center[2];
-  let zx=ex-cx, zy=ey-cy, zz=ez-cz; let len=Math.hypot(zx,zy,zz)||1; zx/=len; zy/=len; zz/=len;
   const ux=up[0], uy=up[1], uz=up[2];
-  let xx=uy*zz-uz*zy, xy=uz*zx-ux*zz, xz=ux*zy-uy*zx; len=Math.hypot(xx,xy,xz)||1; xx/=len; xy/=len; xz/=len;
+  let zx=ex-cx, zy=ey-cy, zz=ez-cz;
+  let len=Math.hypot(zx,zy,zz)||1; zx/=len; zy/=len; zz/=len;
+  let xx=uy*zz-uz*zy, xy=uz*zx-ux*zz, xz=ux*zy-uy*zx;
+  len=Math.hypot(xx,xy,xz)||1; xx/=len; xy/=len; xz/=len;
   const yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
   out[0]=xx; out[1]=yx; out[2]=zx; out[3]=0;
   out[4]=xy; out[5]=yy; out[6]=zy; out[7]=0;
@@ -128,30 +146,7 @@ function mat4LookAtInto(out, eye, center, up){
   out[15]=1;
   return out;
 }
-
-// Projection cache utility: keyed by fov+aspect+near+far string.
-const __projCache = new Map();
-function mat4PerspectiveCached(fovYRad, aspect, near, far){
-  const key = ((fovYRad*1000)|0)+"|"+((aspect*1000)|0)+"|"+near+"|"+far;
-  let m = __projCache.get(key);
-  if (!m){ m = new Float32Array(16); mat4PerspectiveInto(m, fovYRad, aspect, near, far); __projCache.set(key,m); }
-  return m;
-}
-function mat4PerspectiveCacheClear(){ __projCache.clear(); }
-
-// Export all matrix functions to global scope for cross-module access
-window.mat4Identity = mat4Identity;
-window.mat4Multiply = mat4Multiply;
-window.mat4Perspective = mat4Perspective;
-window.mat4LookAt = mat4LookAt;
-window.deg2rad = deg2rad;
-window.smoothstep = smoothstep;
-window.normalizeAngle = normalizeAngle;
-window.mat4Translate = mat4Translate;
-window.mat4RotateY = mat4RotateY;
-window.mat4Scale = mat4Scale;
+// Export in-place variants
 window.mat4MultiplyInto = mat4MultiplyInto;
 window.mat4PerspectiveInto = mat4PerspectiveInto;
 window.mat4LookAtInto = mat4LookAtInto;
-window.mat4PerspectiveCached = mat4PerspectiveCached;
-window.mat4PerspectiveCacheClear = mat4PerspectiveCacheClear;

@@ -41,6 +41,9 @@ This document lists potential performance optimizations for the `mz` portion of 
 **Expected Gain**: Reduced GC & minor CPU saving (5-8% of math cost in scenes with stable aspect).
 **Validation**: Measure minor GC events count drop in Performance Profiler.
 
+### Status Update (Implemented)
+In-place matrix helpers (`mat4MultiplyInto`, `mat4PerspectiveInto`, `mat4LookAtInto`) added to `core/math.js` and a perspective matrix cache introduced in `app/bootstrap.js` (`getCachedPerspective`). Instrumentation exposed via `window.__matStats.perspRebuilds` to count projection recomputes. Render loop camera branches now use cached projection matrices and allocate only transient `Float32Array(16)` objects for view + mvp (next step could reuse preallocated scratch to eliminate those too). This should reduce per-frame GC pressure, especially in split-view mode.
+
 ## 4. Avoid Repeated `getUniformLocation` Calls in `bootstrap.js` Blit Phase (Med Impact, Effort S, Category CPU)
 **Why**: Uniform locations for blit program looked up every frame (u_tex, u_topMix, u_topLevels, u_topDither, u_topPixel). Each lookup is a hash map query in driver.
 **Current**: Per-frame calls just before `gl.uniform`.

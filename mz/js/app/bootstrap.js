@@ -81,6 +81,29 @@ if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'f
 // ---------------------------------------------------------------------------
 (function(){
   if (typeof window === 'undefined') return;
+  // Matrix stats & perspective cache (perf optimization Item 3)
+  if (!window.__matStats) window.__matStats = { perspRebuilds: 0 };
+  if (!window.__perspCache) window.__perspCache = new Map();
+  // Declare outer-scoped variable so later code (render loop) can call directly.
+  if (typeof getCachedPerspective === 'undefined'){
+    // eslint-disable-next-line no-global-assign
+    getCachedPerspective = function getCachedPerspective(fovDeg, aspect, near, far){
+      if (!Number.isFinite(aspect) || aspect <= 0) aspect = 1;
+      const key = fovDeg+':'+aspect.toFixed(4)+':'+near+':'+far;
+      let m = window.__perspCache.get(key);
+      if (!m){
+        m = new Float32Array(16);
+        if (window.mat4PerspectiveInto){
+          window.mat4PerspectiveInto(m, (window.deg2rad?window.deg2rad(fovDeg):fovDeg*Math.PI/180), aspect, near, far);
+        } else {
+          const tmp = mat4Perspective((window.deg2rad?window.deg2rad(fovDeg):fovDeg*Math.PI/180), aspect, near, far); m.set(tmp);
+        }
+        window.__perspCache.set(key, m);
+        window.__matStats.perspRebuilds++;
+      }
+      return m;
+    };
+  }
   if (!window.__renderLoopMeta){
     window.__renderLoopMeta = {
       startedAt: performance.now(),
@@ -133,48 +156,6 @@ if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'f
   wrapOnce('drawTallColumns');
 })();
 
-// Cached scratch matrices & arrays for in-place math (added for perf)
-const __tmpView = new Float32Array(16);
-const __tmpProj = new Float32Array(16); // rarely used directly now (projections cached)
-const __tmpMVP = new Float32Array(16);
-// Eye/center temp arrays reused to avoid allocations
-const __eye = [0,0,0];
-const __center = [0,0,0];
-
-function __getProjCached(fovDeg, aspect, near, far){
-  return mat4PerspectiveCached(deg2rad(fovDeg), Math.max(0.1, aspect), near, far);
-}
-// Invalidate projection cache on resize via hook (if resizeCanvasToViewport called)
-if (typeof window !== 'undefined'){
-  if (!window.__invalidateProjCache){
-    window.__invalidateProjCache = ()=>{ if (typeof mat4PerspectiveCacheClear === 'function') mat4PerspectiveCacheClear(); };
-  }
-}
-// Wrap original resize to clear projection cache if function exists
-if (typeof resizeCanvasToViewport === 'function' && !resizeCanvasToViewport.__wrapped){
-  const __orig = resizeCanvasToViewport;
-  resizeCanvasToViewport = function(){
-    try { window.__invalidateProjCache && window.__invalidateProjCache(); } catch(_){ }
-    return __orig.apply(this, arguments);
-  };
-  resizeCanvasToViewport.__wrapped = true;
-}
-
-let __lastSeamRatio = null;
-let __projCacheInvalidations = 0;
-function __maybeInvalidateForSeam(){
-  try {
-    if (__lastSeamRatio === null) __lastSeamRatio = state.seamRatio;
-    else if (state.seamRatio !== __lastSeamRatio){
-      __lastSeamRatio = state.seamRatio;
-      if (window.__invalidateProjCache){ window.__invalidateProjCache(); __projCacheInvalidations++; }
-    }
-  } catch(_) {}
-}
-if (typeof window !== 'undefined' && !window.__projPerf){
-  window.__projPerf = ()=>({ invalidations: __projCacheInvalidations, cacheSize: (typeof mat4PerspectiveCached==='function' && (window.__projCache? window.__projCache.size: undefined)) });
-}
-
 /**
  * Main render function called every frame by requestAnimationFrame
  * Handles game state updates, camera management, and the complete rendering pipeline.
@@ -182,7 +163,6 @@ if (typeof window !== 'undefined' && !window.__projPerf){
  * @param {number} now - Current timestamp in milliseconds from requestAnimationFrame
  */
 function render(now) {
-  __maybeInvalidateForSeam();
   // --- Instrumentation (frame entry) ---
   try {
     const m = window.__renderLoopMeta;
@@ -269,109 +249,166 @@ function render(now) {
   const botH = Math.max(1, H - seamY);
   if (state.snapBottomFull) {
     // Full-screen bottom camera
-    state.cameraKindCurrent = 'bottom';
+  state.cameraKindCurrent = 'bottom';
     gl.viewport(0, 0, W, H);
     const mvAspectBot = W / H;
     renderGridViewport(0, 0, W, H, 'bottom');
-    const proj = __getProjCached(48, mvAspectBot, 0.1, 150.0);
+  const proj = getCachedPerspective(48, Math.max(0.1, mvAspectBot), 0.1, 150.0);
     const fx = state.camFollow.x, fz = state.camFollow.z;
-    __eye[0]=fx; __eye[1]=state.bottomCamY + (state.bottomCamOffset || 14.4); __eye[2]=fz;
-    __center[0]=fx; __center[1]=state.bottomCamY; __center[2]=fz;
-    mat4LookAtInto(__tmpView, __eye, __center, [0,0,-1]);
-    mat4MultiplyInto(__tmpMVP, proj, __tmpView);
-    const mvp = __tmpMVP; // alias for readability
-    window._lastMVP = mvp;
-    window._mvpBottom = mvp;
+  const eye = [fx, state.bottomCamY + (state.bottomCamOffset || 14.4), fz];
+  const center = [fx, state.bottomCamY, fz];
+  const view = (window.mat4LookAtInto? window.mat4LookAtInto(new Float32Array(16), eye, center, [0,0,-1]) : mat4LookAt(eye, center, [0,0,-1]));
+  const mvp = (window.mat4MultiplyInto? window.mat4MultiplyInto(new Float32Array(16), proj, view) : mat4Multiply(proj, view));
+  // Expose a simple visibility test for world-space points in current camera
+  window._lastMVP = mvp;
+  window._mvpBottom = mvp;
     window.isWorldPointVisible = function(x,y,z){
-      try { const m = window._lastMVP; if (!m) return false; const v0=x, v1=y, v2=z, v3=1; const clipX = v0*m[0]+v1*m[4]+v2*m[8] +v3*m[12]; const clipY = v0*m[1]+v1*m[5]+v2*m[9] +v3*m[13]; const clipZ = v0*m[2]+v1*m[6]+v2*m[10]+v3*m[14]; const clipW = v0*m[3]+v1*m[7]+v2*m[11]+v3*m[15]; if (!clipW) return false; const nx=clipX/clipW, ny=clipY/clipW, nz=clipZ/clipW; return nx>=-1 && nx<=1 && ny>=-1 && ny<=1 && nz>=-1 && nz<=1; } catch(_){ return false; } };
-    drawTiles(mvp, 'open');
-    drawWalls(mvp, 'bottom');
-    drawTallColumns(mvp, 'bottom');
-    if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
-    if (typeof drawItems === 'function') drawItems(mvp);
-    if (typeof drawFxLines === 'function') drawFxLines(mvp);
-    drawPlayerAndTrail(mvp);
-    // Draw ghosts in this viewport
-    if (typeof drawGhosts === 'function') drawGhosts(mvp);
-    if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
-    drawGridOverlay(mvp, __eye, false);
-    if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, __eye, false);
+      try {
+        const m = window._lastMVP; if (!m) return false;
+        const v = [x,y,z,1];
+        const clipX = v[0]*m[0] + v[1]*m[4] + v[2]*m[8]  + v[3]*m[12];
+        const clipY = v[0]*m[1] + v[1]*m[5] + v[2]*m[9]  + v[3]*m[13];
+        const clipZ = v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14];
+        const clipW = v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15];
+        if (clipW === 0) return false;
+        const nx = clipX/clipW, ny = clipY/clipW, nz = clipZ/clipW;
+        return nx>=-1 && nx<=1 && ny>=-1 && ny<=1 && nz>=-1 && nz<=1;
+      } catch(_){ return false; }
+    };
+  drawTiles(mvp, 'open');
+  drawWalls(mvp, 'bottom');
+  drawTallColumns(mvp, 'bottom');
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
+  drawPlayerAndTrail(mvp);
+  // Draw ghosts in this viewport
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
+  drawGridOverlay(mvp, eye, false);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, false);
   } else if (state.snapTopFull) {
     // Full-screen top camera
-    state.cameraKindCurrent = 'top';
+  state.cameraKindCurrent = 'top';
     gl.viewport(0, 0, W, H);
     const mvAspectTop = W / H;
     renderGridViewport(0, 0, W, H, 'top');
-    const proj = __getProjCached(60, mvAspectTop, 0.1, 150.0);
-    let fx = state.camFollow.x, fz = state.camFollow.z;
-    // If editing, lock top camera onto the modal origin
-    if (state.editor && state.editor.modalOpen && state.editor.modalOrigin && state.editor.modalOrigin.gx >= 0) {
-      const o = state.editor.modalOrigin; fx = (o.gx - MAP_W * 0.5 + 0.5); fz = (o.gy - MAP_H * 0.5 + 0.5); }
-    let eye, center;
+  const proj = getCachedPerspective(60, Math.max(0.1, mvAspectTop), 0.1, 150.0);
+      let fx = state.camFollow.x, fz = state.camFollow.z;
+      // If editing, lock top camera onto the modal origin
+      if (state.editor && state.editor.modalOpen && state.editor.modalOrigin && state.editor.modalOrigin.gx >= 0) {
+        const o = state.editor.modalOrigin;
+        fx = (o.gx - MAP_W * 0.5 + 0.5);
+        fz = (o.gy - MAP_H * 0.5 + 0.5);
+      }
+  let eye, center;
     if (state.editor && state.editor.mode === 'fps' && !state.editor.modalOpen){
       // True first-person camera using FPS yaw+pitch
-      const e = state.editor.fps; const dirX = Math.sin(e.yaw) * Math.cos(e.pitch); const dirY = Math.sin(e.pitch); const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch); eye = [e.x, e.y, e.z]; center = [e.x + dirX, e.y + dirY, e.z + dirZ];
+      const e = state.editor.fps;
+  const dirX = Math.sin(e.yaw) * Math.cos(e.pitch);
+  const dirY = Math.sin(e.pitch);
+  const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch);
+      eye = [e.x, e.y, e.z];
+      center = [e.x + dirX, e.y + dirY, e.z + dirZ];
     } else {
-      const dirX = Math.sin(state.camYaw); const dirZ = -Math.cos(state.camYaw); const dist = 4.0 * 1.69; const baseHeight = 2.6; eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist]; center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
+      const dirX = Math.sin(state.camYaw);
+      const dirZ = -Math.cos(state.camYaw);
+  const dist = 4.0 * 1.69; // 33% further when top view is fullscreen
+      const baseHeight = 2.6;
+      eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
+      center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
     }
-    mat4LookAtInto(__tmpView, eye, center, [0,1,0]);
-    window._lastTopEye = eye;
-    mat4MultiplyInto(__tmpMVP, proj, __tmpView);
-    const mvp = __tmpMVP;
-    window._lastMVP = mvp;
-    window._mvpTop = mvp;
-    drawTiles(mvp, 'open'); drawWalls(mvp, 'top'); drawTallColumns(mvp, 'top');
-    if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
-    if (typeof drawItems === 'function') drawItems(mvp);
-    if (typeof drawFxLines === 'function') drawFxLines(mvp);
-    drawPlayerAndTrail(mvp);
-    if (typeof drawGhosts === 'function') drawGhosts(mvp);
-    if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
-    drawGridOverlay(mvp, eye, true);
-    if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
+  const view = (window.mat4LookAtInto? window.mat4LookAtInto(new Float32Array(16), eye, center, [0,1,0]) : mat4LookAt(eye, center, [0,1,0]));
+  // Expose eye for top view so pipelines can bind camera-centric uniforms
+  window._lastTopEye = eye;
+  const mvp = (window.mat4MultiplyInto? window.mat4MultiplyInto(new Float32Array(16), proj, view) : mat4Multiply(proj, view));
+  window._lastMVP = mvp;
+  window._mvpTop = mvp;
+  drawTiles(mvp, 'open');
+  drawWalls(mvp, 'top');
+  drawTallColumns(mvp, 'top');
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
+  drawPlayerAndTrail(mvp);
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
+  drawGridOverlay(mvp, eye, true);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
   } else {
-    // Split view
-    // Bottom viewport
-    state.cameraKindCurrent = 'bottom';
+    // Bottom viewport (lower half in pixels 0..seam)
+  state.cameraKindCurrent = 'bottom';
     gl.viewport(0, 0, W, botH);
     const mvAspectBot = W / botH;
+    // Clear and optional grid first so scene draws on top
     renderGridViewport(0, 0, W, botH, 'bottom');
-    const projBot = __getProjCached(48, mvAspectBot, 0.1, 150.0);
-    const fxB = state.camFollow.x, fzB = state.camFollow.z;
-    __eye[0]=fxB; __eye[1]=state.bottomCamY + (state.bottomCamOffset || 14.4); __eye[2]=fzB;
-    __center[0]=fxB; __center[1]=state.bottomCamY; __center[2]=fzB;
-    mat4LookAtInto(__tmpView, __eye, __center, [0,0,-1]);
-    mat4MultiplyInto(__tmpMVP, projBot, __tmpView); const mvpBot = __tmpMVP;
-    window._lastMVP = mvpBot; window._mvpBottom = mvpBot;
-    drawTiles(mvpBot, 'open'); drawWalls(mvpBot, 'bottom'); drawTallColumns(mvpBot, 'bottom');
-    if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvpBot);
-    if (typeof drawItems === 'function') drawItems(mvpBot);
-    if (typeof drawFxLines === 'function') drawFxLines(mvpBot);
-    drawPlayerAndTrail(mvpBot); if (typeof drawGhosts === 'function') drawGhosts(mvpBot);
-    if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvpBot);
-    drawGridOverlay(mvpBot, __eye, false); if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvpBot, __eye, false);
-
-    // Top viewport
-    state.cameraKindCurrent = 'top';
+    // Recompute bottom camera MVP (reuse function’s math inline for tiles)
+    {
+  const proj = getCachedPerspective(48, Math.max(0.1, mvAspectBot), 0.1, 150.0);
+      const fx = state.camFollow.x, fz = state.camFollow.z;
+  const eye = [fx, state.bottomCamY + (state.bottomCamOffset || 14.4), fz];
+    const center = [fx, state.bottomCamY, fz];
+    const view = (window.mat4LookAtInto? window.mat4LookAtInto(new Float32Array(16), eye, center, [0,0,-1]) : mat4LookAt(eye, center, [0,0,-1]));
+    const mvp = (window.mat4MultiplyInto? window.mat4MultiplyInto(new Float32Array(16), proj, view) : mat4Multiply(proj, view));
+  window._lastMVP = mvp;
+  window._mvpBottom = mvp;
+    // Draw floor tiles then 3D walls
+  drawTiles(mvp, 'open');
+  drawWalls(mvp, 'bottom');
+  drawTallColumns(mvp, 'bottom');
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
+  drawPlayerAndTrail(mvp);
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
+  drawGridOverlay(mvp, eye, false);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, false);
+    }
+    // Top viewport (upper half in pixels seam..H)
+  state.cameraKindCurrent = 'top';
     gl.viewport(0, H - seamY, W, topH);
     const mvAspectTop = W / topH;
+    // Clear and optional grid first so scene draws on top
     renderGridViewport(0, H - seamY, W, topH, 'top');
-    const projTop = __getProjCached(60, mvAspectTop, 0.1, 150.0);
-    let fxT = state.camFollow.x, fzT = state.camFollow.z; let eyeT, centerT;
-    if (state.editor && state.editor.mode === 'fps' && !state.editor.modalOpen){
-      const e = state.editor.fps; const dirX = Math.sin(e.yaw) * Math.cos(e.pitch); const dirY = Math.sin(e.pitch); const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch); eyeT = [e.x, e.y, e.z]; centerT = [e.x + dirX, e.y + dirY, e.z + dirZ];
-    } else {
-      const dirX = Math.sin(state.camYaw); const dirZ = -Math.cos(state.camYaw); const dist = 4.0; const baseHeight = 2.6; eyeT = [fxT - dirX * dist, state.camFollow.y + baseHeight, fzT - dirZ * dist]; centerT = [fxT + dirX * 1.2, state.camFollow.y + 0.6, fzT + dirZ * 1.2];
+    {
+  const proj = getCachedPerspective(60, Math.max(0.1, mvAspectTop), 0.1, 150.0);
+      let fx = state.camFollow.x, fz = state.camFollow.z;
+      // If editing with a modal, keep origin lock (set above in full-top path), else FPS first-person
+      let eye, center;
+      if (state.editor && state.editor.mode === 'fps' && !state.editor.modalOpen){
+        const e = state.editor.fps;
+  const dirX = Math.sin(e.yaw) * Math.cos(e.pitch);
+  const dirY = Math.sin(e.pitch);
+  const dirZ = -Math.cos(e.yaw) * Math.cos(e.pitch);
+        eye = [e.x, e.y, e.z];
+        center = [e.x + dirX, e.y + dirY, e.z + dirZ];
+      } else {
+        const dirX = Math.sin(state.camYaw);
+        const dirZ = -Math.cos(state.camYaw);
+        const dist = 4.0;
+        const baseHeight = 2.6;
+        eye = [fx - dirX * dist, state.camFollow.y + baseHeight, fz - dirZ * dist];
+        center = [fx + dirX * 1.2, state.camFollow.y + 0.6, fz + dirZ * 1.2];
+      }
+  const view = (window.mat4LookAtInto? window.mat4LookAtInto(new Float32Array(16), eye, center, [0,1,0]) : mat4LookAt(eye, center, [0,1,0]));
+  window._lastTopEye = eye;
+  const mvp = (window.mat4MultiplyInto? window.mat4MultiplyInto(new Float32Array(16), proj, view) : mat4Multiply(proj, view));
+  drawTiles(mvp, 'open');
+  drawWalls(mvp, 'top');
+  drawTallColumns(mvp, 'top');
+  window._mvpTop = mvp;
+  if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvp);
+  if (typeof drawItems === 'function') drawItems(mvp);
+  if (typeof drawFxLines === 'function') drawFxLines(mvp);
+  drawPlayerAndTrail(mvp);
+  if (typeof drawGhosts === 'function') drawGhosts(mvp);
+  if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvp);
+  drawGridOverlay(mvp, eye, true);
+  if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvp, eye, true);
     }
-    mat4LookAtInto(__tmpView, eyeT, centerT, [0,1,0]); window._lastTopEye = eyeT; mat4MultiplyInto(__tmpMVP, projTop, __tmpView); const mvpTop = __tmpMVP;
-    drawTiles(mvpTop, 'open'); drawWalls(mvpTop, 'top'); drawTallColumns(mvpTop, 'top'); window._mvpTop = mvpTop;
-    if (typeof drawRemoveDebug === 'function') drawRemoveDebug(mvpTop);
-    if (typeof drawItems === 'function') drawItems(mvpTop);
-    if (typeof drawFxLines === 'function') drawFxLines(mvpTop);
-    drawPlayerAndTrail(mvpTop); if (typeof drawGhosts === 'function') drawGhosts(mvpTop);
-    if (typeof drawEditorVisorAndPreview === 'function') drawEditorVisorAndPreview(mvpTop);
-    drawGridOverlay(mvpTop, eyeT, true); if (typeof drawBoundaryGrid === 'function') drawBoundaryGrid(mvpTop, eyeT, true);
   }
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   // 2) Present offscreen texture to screen with letterboxing and NEAREST scaling
@@ -413,15 +450,17 @@ function render(now) {
   gl.useProgram(blitProgram);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, offscreen.tex);
-  if (typeof blitApplyUniforms === 'function') {
-    blitApplyUniforms(state);
-  } else {
-    if (typeof __blit_u_tex !== 'undefined' && __blit_u_tex) gl.uniform1i(__blit_u_tex, 0); else { const loc = gl.getUniformLocation(blitProgram, 'u_tex'); gl.uniform1i(loc, 0); }
-    if (typeof __blit_u_topMix !== 'undefined' && __blit_u_topMix) gl.uniform1f(__blit_u_topMix, state.topPosterizeMix || 0.0); else { const u = gl.getUniformLocation(blitProgram, 'u_topMix'); gl.uniform1f(u, state.topPosterizeMix || 0.0); }
-    if (typeof __blit_u_topLevels !== 'undefined' && __blit_u_topLevels) gl.uniform1f(__blit_u_topLevels, state.topPosterizeLevels || 6.0); else { const u = gl.getUniformLocation(blitProgram, 'u_topLevels'); gl.uniform1f(u, state.topPosterizeLevels || 6.0); }
-    if (typeof __blit_u_topDither !== 'undefined' && __blit_u_topDither) gl.uniform1f(__blit_u_topDither, state.topDitherAmt || 0.0); else { const u = gl.getUniformLocation(blitProgram, 'u_topDither'); gl.uniform1f(u, state.topDitherAmt || 0.0); }
-    if (typeof __blit_u_topPixel !== 'undefined' && __blit_u_topPixel) gl.uniform1f(__blit_u_topPixel, state.topPixelSize || 0.0); else { const u = gl.getUniformLocation(blitProgram, 'u_topPixel'); gl.uniform1f(u, state.topPixelSize || 0.0); }
-  }
+  const loc = gl.getUniformLocation(blitProgram, 'u_tex');
+  gl.uniform1i(loc, 0);
+  // Set top posterize mix
+  const uTopMix = gl.getUniformLocation(blitProgram, 'u_topMix');
+  gl.uniform1f(uTopMix, state.topPosterizeMix || 0.0);
+  const uTopLevels = gl.getUniformLocation(blitProgram, 'u_topLevels');
+  gl.uniform1f(uTopLevels, state.topPosterizeLevels || 6.0);
+  const uTopDither = gl.getUniformLocation(blitProgram, 'u_topDither');
+  gl.uniform1f(uTopDither, state.topDitherAmt || 0.0);
+  const uTopPixel = gl.getUniformLocation(blitProgram, 'u_topPixel');
+  gl.uniform1f(uTopPixel, state.topPixelSize || 0.0);
   
   gl.bindVertexArray(blitVAO);
   gl.viewport(offX, offY, destW, destH);
