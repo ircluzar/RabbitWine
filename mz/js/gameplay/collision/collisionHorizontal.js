@@ -10,7 +10,7 @@
  * @param {object} p - Player object
  * @param {number} stepX - Intended X movement this frame
  * @param {number} stepZ - Intended Z movement this frame
- * @returns {object} Result containing { newX, newZ, hitWall, collidedFenceRail, collidedSolidSpan, collidedNoClimb }
+ * @returns {object} Result containing { newX, newZ, hitWall, collidedFenceRail, collidedSolidSpan, collidedNoClimb, collidedWorldBoundary }
  */
 function processHorizontalCollision(dt, p, stepX, stepZ) {
   const oldX = p.x, oldZ = p.z;
@@ -19,10 +19,12 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
   let lastHitFenceRail = false; // set by isWallAt() on its last evaluation
   let lastHitSolidSpan = false; // set when solid block/span caused return
   let lastHitNoClimb = false;   // set when the blocking solid was a NOCLIMB ground tile
+  let lastHitWorldBoundary = false; // set when block cause was world boundary (out of map bounds treated as wall)
   let lastHitFenceRailDir = null; // 'N'|'S'|'E'|'W' when rail hit
   let collidedFenceRail = false; // aggregated when a move is finally blocked
   let collidedSolidSpan = false; // aggregated when a move is finally blocked
   let collidedNoClimb = false;   // aggregated NOCLIMB contact across axis checks
+  let collidedWorldBoundary = false; // aggregated world boundary contact across axis checks
   
   // Resolution targets to pop out of thin rail voxels toward center
   let lastResolveX = null; // world X to snap to if X is blocked by a rail
@@ -85,10 +87,23 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
     } else {
       // Portal check before treating as collision
       if (!tryPortalAt(p.x, newZ, p, 'Z')) {
+        // Determine collision classification for this attempted move
+        (function classifyZ(){
+          const gzNewCell = Math.floor(newZ + MAP_H*0.5);
+          const gxCurCell = Math.floor(p.x + MAP_W*0.5);
+          if (gzNewCell < 0 || gzNewCell >= MAP_H){
+            lastHitWorldBoundary = true; return; }
+          try {
+            const tile = map[mapIdx(gxCurCell, gzNewCell)];
+            if (tile === TILE.NOCLIMB) lastHitNoClimb = true;
+            // FENCE/BADFENCE classification already handled elsewhere via lastHitFenceRail
+          } catch(_){ }
+        })();
         const zRailHit = lastHitFenceRail; 
         const zSolidHit = lastHitSolidSpan; 
         const zRailDir = lastHitFenceRailDir; 
         const zNoClimbHit = lastHitNoClimb;
+        const zWorldBoundaryHit = lastHitWorldBoundary;
         const zResolveTarget = lastResolveZ;
         
         // Attempt step-up onto small ledges
@@ -103,6 +118,7 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
           collidedFenceRail = collidedFenceRail || zRailHit; 
           collidedSolidSpan = collidedSolidSpan || zSolidHit; 
           collidedNoClimb = collidedNoClimb || zNoClimbHit;
+          collidedWorldBoundary = collidedWorldBoundary || zWorldBoundaryHit;
           
           // Rail collision nudging and snapping
           if (zRailHit && zRailDir){
@@ -128,10 +144,22 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
     } else {
       // Portal check before treating as collision
       if (!tryPortalAt(newX, p.z, p, 'X')) {
+        // Determine collision classification for this attempted move
+        (function classifyX(){
+          const gxNewCell = Math.floor(newX + MAP_W*0.5);
+          const gzCurCell = Math.floor(p.z + MAP_H*0.5);
+          if (gxNewCell < 0 || gxNewCell >= MAP_W){
+            lastHitWorldBoundary = true; return; }
+          try {
+            const tile = map[mapIdx(gxNewCell, gzCurCell)];
+            if (tile === TILE.NOCLIMB) lastHitNoClimb = true;
+          } catch(_){ }
+        })();
         const xRailHit = lastHitFenceRail; 
         const xSolidHit = lastHitSolidSpan; 
         const xRailDir = lastHitFenceRailDir; 
         const xNoClimbHit = lastHitNoClimb;
+        const xWorldBoundaryHit = lastHitWorldBoundary;
         const xResolveTarget = lastResolveX;
         
         // Attempt step-up onto small ledges
@@ -146,6 +174,7 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
           collidedFenceRail = collidedFenceRail || xRailHit; 
           collidedSolidSpan = collidedSolidSpan || xSolidHit; 
           collidedNoClimb = collidedNoClimb || xNoClimbHit;
+          collidedWorldBoundary = collidedWorldBoundary || xWorldBoundaryHit;
           
           // Rail collision nudging and snapping
           if (xRailHit && xRailDir){
@@ -166,7 +195,8 @@ function processHorizontalCollision(dt, p, stepX, stepZ) {
     hitWall,
     collidedFenceRail,
     collidedSolidSpan,
-    collidedNoClimb
+    collidedNoClimb,
+    collidedWorldBoundary
   };
 
   // Helper functions

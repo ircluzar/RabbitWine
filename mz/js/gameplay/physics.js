@@ -739,6 +739,40 @@ function moveAndCollide(dt){
   const collidedFenceRail = horizontalResult.collidedFenceRail;
   const collidedSolidSpan = horizontalResult.collidedSolidSpan;
   const collidedNoClimb = horizontalResult.collidedNoClimb;
+  const collidedWorldBoundary = horizontalResult.collidedWorldBoundary;
+
+  // -------------------------------------------------------------------------
+  // Centralized walljump eligibility logic
+  // Conditions:
+  //  - Surface must NOT be: fence rail, NOCLIMB, world boundary
+  //  - Player must have walljump ability enabled (p.canWallJump)
+  //  - For standard (non-dash) walljump: player must be ascending (vy >= ascendMin)
+  //    Ascending defined by current vy >= WALLJUMP_ASCEND_MIN_VY (default >0)
+  //  - For dash collision: dash overrides ascend requirement (allowed even if vy <= 0)
+  //  - Must have travelled sufficient vertical distance since jump start (height threshold)
+  //  - Respect cooldown (p.wallJumpCooldown <= 0)
+  // Returns boolean
+  const WALLJUMP_ASCEND_MIN_VY = (typeof window.__WALLJUMP_ASCEND_MIN_VY === 'number') ? window.__WALLJUMP_ASCEND_MIN_VY : 0.05;
+  const WALLJUMP_MIN_RISE = (typeof window.__WALLJUMP_MIN_RISE === 'number') ? window.__WALLJUMP_MIN_RISE : 1.5;
+
+  function canWallJumpDecision(opts){
+    const { dashCollision } = opts || {};
+    if (!p.canWallJump) return false;
+    if (!hitWall) return false;
+    if (collidedFenceRail || collidedNoClimb || collidedWorldBoundary) return false;
+    if (p.grounded) return false;
+    if ((p.wallJumpCooldown||0) > 0) return false;
+    const rise = p.y - (p.jumpStartY || 0);
+    if (rise < WALLJUMP_MIN_RISE) return false;
+    if (!dashCollision){
+      // Standard walljump path requires ascending
+      if (p.vy < WALLJUMP_ASCEND_MIN_VY) return false;
+    }
+    return true;
+  }
+
+  // Track previous vertical speed (can be referenced by other systems later)
+  p._prevVy = p._prevVy === undefined ? p.vy : p._prevVy;
 
   // If dash hit a wall this frame, cancel any movement and jump immediately
   if (hitWall && wasDashing){
@@ -749,7 +783,8 @@ function moveAndCollide(dt){
       if (p.speed > max2) p.speed = max2; 
       return;
     }
-    if (!state.player.canWallJump || collidedNoClimb) {
+    // Dash-triggered walljump path: dash overrides ascend requirement but still blocks on forbidden surfaces
+    if (!canWallJumpDecision({ dashCollision:true })) {
       // If walljump disabled, just cancel dash and stop against wall
       state.player.isDashing = false;
       const base2 = 3.0; const max2 = base2;
@@ -776,9 +811,7 @@ function moveAndCollide(dt){
     return;
   }
 
-  if (p.canWallJump && !p.isDashing && hitWall && !p.grounded && p.vy > 0.0 && (p.wallJumpCooldown || 0) <= 0.0 && (p.y - (p.jumpStartY || 0)) >= 1.5) {
-  // Prevent wall-jump if the blocking contact involved any fence or NOCLIMB
-  if (collidedFenceRail || collidedNoClimb) { return; }
+  if (!p.isDashing && canWallJumpDecision({ dashCollision:false })) {
     p.angle += Math.PI;
     p.vy = 8.5;
     p.grounded = false;
