@@ -208,3 +208,24 @@ Expose tuning knobs via `window.__LOCK_*` already present:
 ---
 ## Summary
 Most overhead comes from per-level allocation + buffer uploads and excessive state churn for outline-only lock spans. Consolidating into batched instanced draws with persistent buffers and GPU-computed alpha will yield the largest performance gains while simplifying CPU logic. Secondary improvements (buffer reuse, quantization, multiplayer batching) compound further savings. Implement iteratively with instrumentation gates to quantify each step.
+
+---
+## Multiplayer Sync Note (Sept 2025)
+Issue Observed: Lock voxel deletions (t:6) appeared to revert after a reconnect / server echo.
+
+Cause: `mpSendMapOps` stripped the `t` field for `remove` operations, while adds preserved type (and were stored as `key#6`). Untyped removes could leave typed `key#6` entries intact server-side or allow later reconciliation code to resurrect them.
+
+Fix Applied: Modified `mpSendMapOps` to include `t` metadata for BOTH add and remove ops (types 1,2,3,4,5,6,9). This allows precise server-side deletion of typed lock adds and prevents resurrection during diff rebuild or reconciliation.
+
+Client Impact: No functional change for earlier adds; removals now reliably propagate. Backwards-compatible if server ignores `t` on remove (hint caching still updates locally).
+
+Recommended Server Follow-Up (Optional): Ensure remove ops with `t` purge both `key` and `key#t` entries to avoid any stale diff accumulation.
+
+Instrumentation Suggestion: Temporarily log incoming `map_edit` remove ops containing `t:6` to verify end-to-end propagation.
+
+### Server Patch Applied
+The server (`multi_server.py`) was updated to:
+- Log explicit removal of previously-added Lock voxels.
+- Clean up any overlapping adds/removes to prevent resurrection after reload.
+- Warn during persistence if an overlap invariant is violated.
+These diagnostics will help confirm that a Lock removal both deletes the add entry and records the removal, ensuring it does not reappear on refresh.

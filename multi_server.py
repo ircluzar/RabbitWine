@@ -425,6 +425,13 @@ def db_persist_level(level: str, diff: MapDiff):
                 print(f"[DB] Persisting level '{level}' v{diff.version} with {lock_count} lock voxels (adds={len(diff.adds)}, removes={len(diff.removes)})")
         except Exception:
             pass
+        # Additional invariant: no key should be persisted in adds if also present in removes
+        try:
+            overlaps = [k for k in diff.adds.keys() if k in diff.removes]
+            if overlaps:
+                print(f"[DB][WARN] overlap adds+removes count={len(overlaps)} sample={overlaps[:5]} level={level}")
+        except Exception:
+            pass
         _db_conn.execute(
             "REPLACE INTO map_diffs(level, version, adds, removes, updated) VALUES (?,?,?,?,?)",
             (level, diff.version, json.dumps(sorted(enc_adds)), json.dumps(sorted(diff.removes)), now_ms())
@@ -567,6 +574,13 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
         else:  # remove
             changed = False
             if key in md.adds:
+                # Diagnostic: log when removing a lock voxel previously present
+                try:
+                    prev_t = md.adds.get(key)
+                    if prev_t == 6:
+                        print(f"[MAP] remove LOCK key={key} level={level} (was add) pre-version={md.version}")
+                except Exception:
+                    pass
                 md.adds.pop(key, None)
                 changed = True
             if key not in md.removes:
@@ -574,6 +588,23 @@ def apply_edit_ops_to_level(level: str, raw_ops: List[Dict[str, Any]]) -> List[D
                 changed = True
             if changed:
                 net.append({ 'op':'remove', 'key': key })
+    # Post-pass cleanup: ensure no key exists in both adds and removes (shouldn't happen, but guard)
+    if net:
+        dirty_cleanup = False
+        for r in list(md.removes):
+            if r in md.adds:
+                try:
+                    print(f"[MAP][WARN] cleanup: key in both adds+removes key={r} level={level}; dropping add")
+                except Exception:
+                    pass
+                md.adds.pop(r, None)
+                dirty_cleanup = True
+        if dirty_cleanup:
+            # bump version to reflect cleanup even if no new net ops created for that
+            try:
+                print(f"[MAP] cleanup applied level={level} v={md.version+1}")
+            except Exception:
+                pass
     if net:
         md.version += 1
         db_persist_level(level, md)

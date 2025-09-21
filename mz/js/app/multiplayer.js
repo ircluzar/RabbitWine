@@ -1388,13 +1388,15 @@ window.mpSendMapOps = function(ops){
     for (const o of ops){
       if (!o || (o.op!=='add' && o.op!=='remove')) continue;
       if (typeof o.key !== 'string' || !o.key || o.key.length > 64) continue;
-  const rec = { op:o.op, key:o.key };
-    if (o.op==='add' && (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5 || o.t===6 || o.t===9)){
-      rec.t = (o.t|0);
-      // Record a local type hint for this key for a short window, in case the server strips type
-      __mp_hintSet(o.key, rec.t);
-    }
-  clean.push(rec);
+      const rec = { op:o.op, key:o.key };
+      const validTyped = (o.t===1 || o.t===2 || o.t===3 || o.t===4 || o.t===5 || o.t===6 || o.t===9);
+      // Include type metadata for both add AND remove so server (and future logic) can precisely target typed voxel keys (#6 etc.)
+      if (validTyped){
+        rec.t = (o.t|0);
+        // Record a local type hint for this key for a short window, in case the server strips type on echo
+        try { __mp_hintSet(o.key, rec.t); } catch(_){ }
+      }
+      clean.push(rec);
       if (clean.length >= 512) break; // clamp
     }
     if (!clean.length) return false;
@@ -1646,10 +1648,11 @@ window.__mp_replayPersistedLocks = function(){
     }
     if (!set.size) return false;
     // Determine which are missing from mpMap.adds (no #6 suffix) & not already represented by an existing lock span
-    const toSend = [];
-    let suppressed = 0;
-    let alreadySpan = 0;
-    let applied = 0;
+  const toSend = [];
+  let suppressed = 0;       // already had typed diff entry
+  let alreadySpan = 0;       // span already existed, so diff not needed
+  let applied = 0;           // diff entry newly added
+  let skippedRemoved = 0;    // persisted key skipped because removal exists
     // Precompute quick presence map for lock spans by voxel key
     const lockSpanVox = new Set();
     try {
@@ -1663,6 +1666,8 @@ window.__mp_replayPersistedLocks = function(){
     for (const baseKey of set){
       if (typeof baseKey !== 'string') continue;
       const typedKey = baseKey+'#6';
+      // If this voxel was removed (present in removes set), do NOT re-add; mark for pruning.
+      if (mpMap.removes && mpMap.removes.has(baseKey)) { skippedRemoved++; continue; }
       if (mpMap.adds.has(typedKey)){ suppressed++; continue; }
       if (lockSpanVox.has(baseKey)){ alreadySpan++; continue; }
       // Local insert
@@ -1674,15 +1679,17 @@ window.__mp_replayPersistedLocks = function(){
     }
     if (toSend.length){ try { window.mpSendMapOps(toSend); } catch(_){ } }
     try {
-      console.log(`[MP] replay: locks applied=${applied} suppressedDiff=${suppressed} skippedSpan=${alreadySpan} totalPersisted=${set.size} level=${MP_LEVEL}`);
+      console.log(`[MP] replay: locks applied=${applied} suppressedDiff=${suppressed} skippedSpan=${alreadySpan} skippedRemoved=${skippedRemoved} totalPersisted=${set.size} level=${MP_LEVEL}`);
     } catch(_){ }
     // Record stats for external inspection
-    try { window.__mp_lockReplayStats = { applied, suppressedDiff: suppressed, skippedSpan: alreadySpan, total:set.size, at: Date.now() }; } catch(_){ }
+    try { window.__mp_lockReplayStats = { applied, suppressedDiff: suppressed, skippedSpan: alreadySpan, skippedRemoved, total:set.size, at: Date.now() }; } catch(_){ }
     // Prune persisted set: remove any baseKey whose typed version now exists (to avoid future reprocessing)
     try {
       let removed = 0; const remaining = [];
       for (const baseKey of set){
         if (mpMap.adds.has(baseKey+'#6')) { removed++; continue; }
+        // Also prune if a removal exists for this key (user deleted it later)
+        if (mpMap.removes && mpMap.removes.has(baseKey)) { removed++; continue; }
         remaining.push(baseKey);
       }
       if (removed>0){
