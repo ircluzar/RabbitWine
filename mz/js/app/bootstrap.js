@@ -154,6 +154,42 @@ if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'f
   }
   wrapOnce('drawWalls');
   wrapOnce('drawTallColumns');
+
+  // -----------------------------------------------------------------------
+  // LockFast Aggressive Optimization Helper
+  // Enables all current experimental lock rendering optimizations & tuning.
+  // User can disable auto-enable by setting window.__LOCK_FAST_AUTO=0 before bootstrap runs.
+  // -----------------------------------------------------------------------
+  if (!window.enableAllLockFastOptimizations){
+    window.enableAllLockFastOptimizations = function(enable=true){
+      try {
+        if (!enable){ return false; }
+        // Core fast column aggregation
+        window.__LOCK_FAST_COLUMN = 1;
+        // Anticipated future tasks (culling, fade precompute, buffer reuse, LOD)
+        window.__LOCK_MAX_DRAW_DIST = (typeof window.__LOCK_MAX_DRAW_DIST_OVERRIDE === 'number') ? window.__LOCK_MAX_DRAW_DIST_OVERRIDE : Infinity;
+        // Level-of-detail stride (higher => fewer vertical samples). 1 = full detail.
+        window.__LOCK_LEVEL_STRIDE = (typeof window.__LOCK_LEVEL_STRIDE_OVERRIDE === 'number') ? window.__LOCK_LEVEL_STRIDE_OVERRIDE : 1;
+        // Alpha / fade aggressiveness knobs (allow smaller baseline at high cam)
+        if (window.__LOCK_WORLD_ALPHA_REST === undefined) window.__LOCK_WORLD_ALPHA_REST = 0.28;
+        if (window.__LOCK_WORLD_ALPHA_HICAM === undefined) window.__LOCK_WORLD_ALPHA_HICAM = 0.05;
+        if (window.__LOCK_LEVEL_FADE_BAND === undefined) window.__LOCK_LEVEL_FADE_BAND = 2.0;
+        // Future precompute toggle placeholder
+        window.__LOCK_PRECOMPUTE_FADES = 1;
+        // LOD placeholder flags
+        window.__LOCK_LOD = 1; // (Task 8 future) currently no-op
+        // Visual lock mode alpha cap tuning
+        if (window.__LOCK_WORLD_LOCKMODE_ALPHA === undefined) window.__LOCK_WORLD_LOCKMODE_ALPHA = 0.05;
+        // Buffer reuse placeholder flags (Task 5 future)
+        window.__LOCK_BUFFER_REUSE = 1;
+        // Confirm
+        return true;
+      } catch(err){ console.warn('[LockFast][enableAll] failed', err); return false; }
+    };
+  }
+  try {
+    if (window.__LOCK_FAST_AUTO !== 0){ window.enableAllLockFastOptimizations(true); }
+  } catch(_){ }
 })();
 
 /**

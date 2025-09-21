@@ -35,11 +35,12 @@ Store raw notes in `perf-notes/lockfast-baseline.md`.
 - Success Criteria: For fragmented scenarios, number of lock span records decreases ≥30% without changing visual output. (Pending measurement)
 
 ### Task 3: Per-Column Aggregation (Replace Per-Level Loop)
-- [ ] Subtask 3.1: Introduce new instance format for locks: (x, y, base, height, packedFlags) in a dedicated VBO.
-- [ ] Subtask 3.2: New shader path (reusing trailCube or separate minimal program) that draws vertical outline stack procedurally using instanced geometry + height loop in shader (vertex expands lines per level or uses cylinder-like extrusion of edges).
-- [ ] Subtask 3.3: Feature flag `window.__LOCK_FAST_COLUMN=1` fallback to legacy path when disabled.
-- [ ] Subtask 3.4: Maintain identical fade computations in shader (pass uniform arrays or param functions) or approximate within 5% alpha difference.
-- Success Criteria: Draw call reduction: old ≈ 2 * (sum heights) vs new ≈ batches of ≤4 calls (depends on voxel off loops). CPU timeLockRenderMs reduced ≥50%.
+### Task 3: Per-Column Aggregation (Replace Per-Level Loop)
+- [ ] Subtask 3.1: Introduce new instance format for locks: (x, y, base, height, packedFlags) in a dedicated VBO. (In progress: placeholder still uses per-level loop but batched collection implemented.)
+- [ ] Subtask 3.2: New shader path (reusing trailCube or separate minimal program) that draws vertical outline stack procedurally using instanced geometry + height loop in shader (vertex expands lines per level or uses cylinder-like extrusion of edges). (Pending)
+- [x] Subtask 3.3: Feature flag `window.__LOCK_FAST_COLUMN=1` fallback to legacy path when disabled.
+- [ ] Subtask 3.4: Maintain identical fade computations in shader (pass uniform arrays or param functions) or approximate within 5% alpha difference. (Placeholder alpha logic; full parity to be handled with Task 4.)
+- Success Criteria: Draw call reduction: old ≈ 2 * (sum heights) vs new ≈ batches of ≤4 calls (depends on voxel off loops). CPU timeLockRenderMs reduced ≥50%. (Not yet measured – awaiting shader instancing completion.)
 
 ### Task 4: Alpha & Fade Precomputation
 - [ ] Subtask 4.1: Precompute per-level fade factors once per frame up to `maxVisibleLockHeight` (derived from tallest lock span in frustum) – store in small float array uniform or UBO.
@@ -100,6 +101,40 @@ Store raw notes in `perf-notes/lockfast-baseline.md`.
 
 ## Metrics After Each Major Task
 Capture: `timeLockRenderMs / frame`, drawCallsLock, bufferBytesUploadedLock, spanLock count, lockTiles, GPU frame time (if available). Append to a running table in `perf-notes/lockfast-progress.md`.
+
+## Aggressive Mode (Temporary for Non-Benchmark Devices)
+When local benchmarking is unavailable, all current optimizations can be force-enabled:
+
+Helper: `enableAllLockFastOptimizations(true)` (auto-runs on bootstrap unless `__LOCK_FAST_AUTO=0`).
+
+Flags / Tunables Set:
+- `__LOCK_FAST_COLUMN = 1` enable aggregated lock path.
+- `__LOCK_LEVEL_STRIDE = 1` (can raise to 2/3 for more speed, less vertical fidelity).
+- `__LOCK_MAX_DRAW_DIST = Infinity` (set `__LOCK_MAX_DRAW_DIST_OVERRIDE` before bootstrap to clamp).
+- `__LOCK_WORLD_ALPHA_REST` / `__LOCK_WORLD_ALPHA_HICAM` baseline & high-cam alpha targets (0.28 / 0.05 default if unset).
+- `__LOCK_LEVEL_FADE_BAND = 2.0` fade band for near-ground attenuation.
+- `__LOCK_PRECOMPUTE_FADES = 1` placeholder for Task 4 integration.
+- `__LOCK_LOD = 1` (future LOD, currently no-op placeholder).
+- `__LOCK_BUFFER_REUSE = 1` placeholder for Task 5.
+- `__LOCK_WORLD_LOCKMODE_ALPHA = 0.05` clamp when lock mode active.
+
+Distance & Stride Overrides (set before auto-run to override):
+- `__LOCK_LEVEL_STRIDE_OVERRIDE` (integer ≥1)
+- `__LOCK_MAX_DRAW_DIST_OVERRIDE` (world units radius; squared check per column batch)
+
+Disable auto-mode: set `window.__LOCK_FAST_AUTO = 0` before scripts finish loading.
+
+NOTE: Aggressive Mode is intended for interim performance validation; final tuned values will be established after Tasks 3–5 metrics.
+
+### Gameplay Lock Visibility Policy
+As of post-optimization change, lock (t:6) spans are hidden during normal gameplay (both top & bottom views) to eliminate their render cost. They remain visible inside the editor.
+
+Overrides:
+- `__LOCK_FORCE_RENDER = 1` force show locks even in gameplay.
+- `__LOCK_FORCE_HIDE = 1` force hide locks even in editor (for visual testing).
+
+Debug policy snapshot available at `window.__lockRenderPolicy` with fields:
+`{ inEditor:boolean, forceRender:boolean, forceHide:boolean, policy:'render'|'hide' }`.
 
 ## Immediate Next Steps (Sprint 1)
 1. Implement Task 1 instrumentation (Subtasks 1.1–1.3).

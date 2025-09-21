@@ -1035,6 +1035,8 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale, color){
 }
 
 function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
+  // Reset lock fast batch each frame before potential population
+  try { if (typeof window !== 'undefined' && Array.isArray(window.__lockFastBatched)) window.__lockFastBatched.length = 0; } catch(_){ }
   // Optional lightweight instrumentation for lock span performance
   // Enable by setting window.__PROFILE_LOCK = true in the console.
   // Accumulates counters on window.__lockProfile for inspection.
@@ -1059,12 +1061,34 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   /** @type {Map<string, {h:number,b:number,pts:Array<[number,number]>,t?:number}>>} */
   const fracGroups = new Map();
   if (hasSpans){
+    // Lock Render Policy --------------------------------------------------
+    // Hide lock (t:6) spans in normal gameplay (both top & bottom views) while still
+    // showing them inside the editor so creators can modify them.
+    // Overrides:
+    //   window.__LOCK_FORCE_RENDER = 1  -> always render locks
+    //   window.__LOCK_FORCE_HIDE   = 1  -> never render locks
+    // Detection of editor: presence of state.editor with an active mode (e.g., 'fps') or editor modal.
+    let inEditor = false;
+    try {
+      // Stricter: only treat as editor when explicit FPS/editor building mode active
+      inEditor = !!(state && state.editor && state.editor.mode === 'fps');
+    } catch(_){ }
+    let forceRender = (typeof window !== 'undefined' && window.__LOCK_FORCE_RENDER)==1;
+    let forceHide   = (typeof window !== 'undefined' && window.__LOCK_FORCE_HIDE)==1;
+    const lockPolicy = (forceHide) ? 'hide' : (forceRender ? 'render' : (inEditor? 'render' : 'hide'));
+    try { if (typeof window !== 'undefined') window.__lockRenderPolicy = { inEditor, forceRender, forceHide, policy: lockPolicy }; } catch(_){ }
+    const allowLockRender = (lockPolicy === 'render');
+    // If policy hides locks, ensure no stale fast-batched data remains
+    if (!allowLockRender && typeof window !== 'undefined' && Array.isArray(window.__lockFastBatched)){
+      window.__lockFastBatched.length = 0;
+    }
     for (const [key, spans] of columnSpans.entries()){
       if (!Array.isArray(spans)) continue;
       const [gx,gy] = key.split(',').map(n=>parseInt(n,10));
       if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
       for (const s of spans){
   if (!s) continue; const hF = Number(s.h)||0; const b=(s.b|0); const t=(s.t|0)||0; if (hF<=0) continue; if (t===2 || t===3) continue; // skip fence spans (2=normal,3=bad)
+        if (t===6 && !allowLockRender) continue; // policy: skip lock spans in gameplay
         if (__prof){ __prof.spanTotal++; if (t===6) __prof.spanLock++; }
         const full = Math.floor(hF);
         const frac = hF - full;
@@ -1177,6 +1201,101 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     // Optimization Item 1: Reduce per-frame allocations by reusing scratch buffers and
     // collapsing repeated bufferData calls inside the per-level loop.
     if ((g.t|0) === 6){
+      // Task 3 feature flag: allow alternate aggregated column path
+      if (typeof window !== 'undefined' && window.__LOCK_FAST_COLUMN){
+        // Collect for batched instanced draw after loop (height aggregated per group already)
+  // Task 3 (LockFast): Fast column aggregated pass for lock spans (t:6)
+  if (typeof window !== 'undefined' && window.__LOCK_FAST_COLUMN && Array.isArray(window.__lockFastBatched) && window.__lockFastBatched.length){
+    try {
+      const batches = window.__lockFastBatched;
+      // Lazy init simple shader/program (placeholder using existing trailCubeProgram for now)
+      // TODO Task 3.2: dedicated minimal shader that expands vertical stack procedurally
+      if (!window.trailCubeProgram){ batches.length = 0; } else {
+        const baseCol = [0.65, 0.80, 1.0];
+        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.useProgram(window.trailCubeProgram);
+        gl.uniformMatrix4fv(tc_u_mvp, false, mvp);
+        const tNow_local2 = state.nowSec || (performance.now()/1000);
+        gl.uniform1f(tc_u_now, tNow_local2);
+        gl.uniform1f(tc_u_ttl, 1.0);
+        gl.uniform1i(tc_u_dashMode, 0);
+        gl.uniform3f(tc_u_lineColor, baseCol[0], baseCol[1], baseCol[2]);
+        if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
+        gl.bindVertexArray(trailCubeVAO);
+        if (!window.__lockFastInst){ window.__lockFastInst = new Float32Array(0); }
+        const instBuf = window.__lockFastInst;
+        // Intermediate optimization: single buffer upload & draw per column batch (still per-level data expanded CPU-side)
+        // Future (Task 3.2): replace with one instance per column + shader expansion of vertical stack.
+        const cam = (state && state.camera) ? state.camera : {}; const camY = (cam.position && cam.position[1]) || cam.y || 0;
+        const camFadeStart = (window.__LOCK_FADE_CAM_START !== undefined) ? window.__LOCK_FADE_CAM_START : 10.0;
+        const camFadeEnd   = (window.__LOCK_FADE_CAM_END   !== undefined) ? window.__LOCK_FADE_CAM_END   : 40.0;
+        let camT = 0.0; if (camY > camFadeStart){ camT = Math.min(1.0, (camY - camFadeStart) / Math.max(0.0001, camFadeEnd - camFadeStart)); camT = camT*camT*(3.0-2.0*camT); }
+        const alphaBaseRest = (window.__LOCK_WORLD_ALPHA_REST !== undefined) ? window.__LOCK_WORLD_ALPHA_REST : 0.30;
+        const alphaBaseHiCam = (window.__LOCK_WORLD_ALPHA_HICAM !== undefined) ? window.__LOCK_WORLD_ALPHA_HICAM : 0.05;
+        const alphaCamBase = alphaBaseRest * (1.0 - camT) + alphaBaseHiCam * camT;
+        const stride = (typeof window.__LOCK_LEVEL_STRIDE === 'number' && window.__LOCK_LEVEL_STRIDE > 1) ? (window.__LOCK_LEVEL_STRIDE|0) : 1;
+        const maxDrawDist = (typeof window.__LOCK_MAX_DRAW_DIST === 'number') ? window.__LOCK_MAX_DRAW_DIST : Infinity;
+        const camRefX = (state?.camFollow?.x)||0; const camRefZ = (state?.camFollow?.z)||0;
+        for (const col of batches){
+          const pts = col.pts; const countTiles = pts.length; if (!countTiles) continue;
+          const totalLevels = col.h|0; if (totalLevels<=0) continue;
+          // Distance skip: if all tiles in this column batch beyond max distance, skip
+          if (maxDrawDist < Infinity){
+            let nearOK=false; const md2 = maxDrawDist*maxDrawDist;
+            for (let i=0;i<countTiles && !nearOK;i++){ const gx=pts[i][0]-MAP_W*0.5+0.5; const gz=pts[i][1]-MAP_H*0.5+0.5; const dx=gx-camRefX, dz=gz-camRefZ; if ((dx*dx+dz*dz) <= md2) nearOK=true; }
+            if (!nearOK) continue;
+          }
+          const effLevels = stride===1? totalLevels : Math.max(1, Math.ceil(totalLevels/stride));
+          const totalInstances = countTiles * effLevels;
+          const needed = totalInstances * 4;
+          if (instBuf.length < needed){ window.__lockFastInst = new Float32Array(needed*1.3|0); }
+          const useArr = window.__lockFastInst;
+          let w = 0;
+          for (let level=0; level<totalLevels; level+=stride){
+            const yCenter = (col.b + level) + 0.5;
+            for (let i=0;i<countTiles;i++){
+              const gx = pts[i][0]; const gy = pts[i][1];
+              const cx = (gx - MAP_W*0.5 + 0.5); const cz = (gy - MAP_H*0.5 + 0.5);
+              useArr[w*4+0]=cx; useArr[w*4+1]=yCenter; useArr[w*4+2]=cz; useArr[w*4+3]=tNow_local2; w++;
+            }
+          }
+          let finalAlpha = alphaCamBase; // TODO Task 3.4: refine bottom + level fade parity
+          if (typeof window.__LOCK_WORLD_ALPHA_MUL === 'number'){ finalAlpha *= window.__LOCK_WORLD_ALPHA_MUL; }
+          if (finalAlpha <= 0.005) continue;
+          gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
+          gl.bufferData(gl.ARRAY_BUFFER, useArr.subarray(0, totalInstances*4), gl.DYNAMIC_DRAW);
+          gl.depthMask(false);
+          gl.uniform1f(tc_u_mulAlpha, finalAlpha);
+          gl.uniform1f(tc_u_scale, 1.02); gl.drawArraysInstanced(gl.LINES, 0, 24, totalInstances);
+          gl.uniform1f(tc_u_scale, 1.05); gl.drawArraysInstanced(gl.LINES, 0, 24, totalInstances);
+        }
+        gl.depthMask(true);
+        // Restore wall program & VAO so subsequent uniform calls target correct program
+        try {
+          gl.bindVertexArray(wallVAO);
+          gl.useProgram(wallProgram);
+          gl.bindBuffer(gl.ARRAY_BUFFER, state.cameraKindCurrent === 'top' ? wallVBO_PosJitter : wallVBO_PosBase);
+          gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+          gl.uniformMatrix4fv(wall_u_mvp, false, mvp);
+          gl.uniform2f(wall_u_origin, -MAP_W*0.5, -MAP_H*0.5);
+          gl.uniform1f(wall_u_scale, 1.0);
+          gl.uniform1f(wall_u_height, 1.0);
+          const wallCol3p = (typeof getLevelWallColorRGB === 'function') ? getLevelWallColorRGB() : [0.06,0.45,0.48];
+          gl.uniform3fv(wall_u_color, new Float32Array(wallCol3p));
+          gl.uniform1f(wall_u_alpha, 0.65);
+          gl.uniform1i(wall_u_glitterMode, 0);
+          gl.uniform3f(wall_u_voxCount, 1,1,1);
+        } catch(_){ }
+        // TODO (LockFast refactor): Move batched fast-column draw outside the per-group loop to reduce repeated program switches.
+      }
+    } catch(err){ console.warn('[LockFast][fastColumn] failed', err); }
+    finally { window.__lockFastBatched.length = 0; }
+  }
+        if (!window.__lockFastBatched){ window.__lockFastBatched = []; }
+        window.__lockFastBatched.push({ b: g.b, h: g.h, pts: g.pts });
+        // Skip legacy per-level path when fast column mode enabled
+        continue;
+      }
       const __tLockStart = (__prof ? performance.now() : 0);
       const pts = g.pts;
       const countTiles = pts.length;
