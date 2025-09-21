@@ -174,15 +174,12 @@ let __wallInitDone = false;
           window.wallVAO = wallVAO;
           window.wallWireVAO = wallWireVAO;
         } catch(_) {}
-        console.log('[WALLS] Initialized (deferred)');
         return;
       }
     }
     retries++;
     if (retries < MAX_RETRIES){
       setTimeout(tick, 100);
-    } else {
-      console.warn('[WALLS] Initialization gave up after waiting for dependencies.');
     }
   }
   // Delay first tick slightly to allow earlier pipeline scripts to register
@@ -1227,7 +1224,6 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
             if (window.__DEBUG_LOCK_ALPHA){
               if (!window.___dbgLockOnce){
                 window.___dbgLockOnce = true;
-                console.log('[lock-blocks] Camera lock detected: applying alpha cap to lock blocks (finalAlpha=', finalAlpha, ')');
               }
             } else if (window.___dbgLockOnce){
               // Reset one-shot if debugging turned off or lock released later

@@ -36,7 +36,6 @@ function loadFromMemory() {
 
         // If no data in memory.js, try to migrate from old localStorage
         if (!activeTasks && !completedTasks) {
-            console.log('Migrating data from localStorage to memory.js...');
             try {
                 const oldActiveTasks = JSON.parse(localStorage.getItem('scroll_active_tasks') || '[]');
                 const oldCompletedTasks = JSON.parse(localStorage.getItem('scroll_completed_tasks') || '[]');

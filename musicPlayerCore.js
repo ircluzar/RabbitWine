@@ -78,7 +78,7 @@ class MusicPlayerCore {
                     }
                 });
             } catch (error) {
-                console.log('Seek action not supported');
+                // Seek action not supported on this platform
             }
         }
     }
@@ -328,12 +328,9 @@ class MusicPlayerCore {
         const state = memory.read('Jams', 'playerState');
         if (!state || !state.playlist || !state.playlist.length) return false;
         
-        console.log('Loading saved player state:', state);
-        
         // Check if state is not too old (7 days)
         const maxAge = 7 * 24 * 60 * 60 * 1000;
         if (Date.now() - state.timestamp > maxAge) {
-            console.log('State too old, clearing...');
             this.clearState();
             return false;
         }
@@ -349,7 +346,6 @@ class MusicPlayerCore {
         });
         
         if (hasMalformedUrls) {
-            console.log('Found malformed URLs in saved state, clearing...');
             this.clearState();
             return false;
         }

@@ -233,7 +233,7 @@ body {
     -webkit-background-clip: unset; /* Disable background clip */
     -webkit-text-fill-color: unset; /* Re-enable text fill color */
     background: none; /* Remove background gradient */
-    text-shadow: none; /* Temporarily remove text shadow for a cleaner fade */
+    text-shadow: none;
 }
 
 .button-group { display: flex; gap: 10px; align-items: center; }

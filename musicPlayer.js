@@ -2,15 +2,11 @@
 
 class JamsPlayer {
     constructor() {
-        console.log('JamsPlayer constructor starting...');
-        
         // Initialize the core player (non-headless mode for jams page)
         this.core = new MusicPlayerCore({
             headless: false,
             onStateChange: (state) => this.handleCoreStateChange(state)
         });
-        
-        console.log('Core player initialized:', this.core);
         
         // UI-specific properties
         this.artists = [];
@@ -44,32 +40,6 @@ class JamsPlayer {
             // Ensure mini player visibility is updated after potential state loading
             this.updateMiniPlayerVisibility();
         }, 150);
-        
-        console.log('JamsPlayer constructor completed');
-    }
-    
-    // Debug method to check tracklist state
-    debugTracksList() {
-        console.log('=== TRACKLIST DEBUG ===');
-        console.log('tracksList element:', this.tracksList);
-        console.log('tracksList exists in DOM:', !!document.getElementById('tracksList'));
-        console.log('current playlist length:', this.currentPlaylist?.length || 0);
-        console.log('current page:', this.currentPage);
-        
-        if (this.tracksList) {
-            console.log('tracksList children count:', this.tracksList.children.length);
-            console.log('tracksList innerHTML length:', this.tracksList.innerHTML.length);
-            console.log('tracksList visibility:', window.getComputedStyle(this.tracksList).display);
-            console.log('tracksList parent visibility:', window.getComputedStyle(this.tracksList.parentElement).display);
-        }
-        
-        // Check if player page is active
-        const playerPage = document.getElementById('playerPage');
-        if (playerPage) {
-            console.log('playerPage has active class:', playerPage.classList.contains('active'));
-        }
-        
-        console.log('=== END DEBUG ===');
     }
     
     // Handle state changes from the core player

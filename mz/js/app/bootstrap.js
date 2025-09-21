@@ -349,15 +349,6 @@ function render(now) {
   const uTopPixel = gl.getUniformLocation(blitProgram, 'u_topPixel');
   gl.uniform1f(uTopPixel, state.topPixelSize || 0.0);
   
-  // Debug: log values when they change
-  if (state.topPosterizeMix > 0.0 && state.frames % 60 === 0) {
-    console.log('Bitcrush state:', {
-      mix: state.topPosterizeMix,
-      levels: state.topPosterizeLevels,
-      dither: state.topDitherAmt,
-      pixel: state.topPixelSize
-    });
-  }
   gl.bindVertexArray(blitVAO);
   gl.viewport(offX, offY, destW, destH);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -381,11 +372,10 @@ try {
     if (!window.wallProgram) {
       const ok = (typeof initWallResources === 'function') ? initWallResources() : false;
       if (ok) {
-        console.log('[BOOT] Wall resources initialized eagerly');
       }
     }
   }
-} catch(e){ console.warn('[BOOT] Early wall init attempt failed:', e); }
+} catch(e){ }
 
 requestAnimationFrame(render);
 
