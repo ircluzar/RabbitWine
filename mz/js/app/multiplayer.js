@@ -438,6 +438,8 @@ function __mp_rebuildWorldFromDiff(){
     const sameType = (a,b)=>(((a|0)||0) === ((b|0)||0));
     // Start from existing spans, normalized by merging same-type overlaps/adjacency
   let merged = (window.columnSpans.get(cellK) || []).map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===6||s.t===9)?(s.t|0):0) }));
+    // Task 2 (LockFast): enhanced same-type merge w/ instrumentation for lock (t:6) coalescing
+    try { if (typeof window !== 'undefined' && typeof window.__lockSpanMerged !== 'number') window.__lockSpanMerged = 0; } catch(_){ }
     const mergeSameType = ()=>{
       merged.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
       const out=[];
@@ -446,6 +448,9 @@ function __mp_rebuildWorldFromDiff(){
         const t = out[out.length-1];
         const sT=((s.t|0)||0), tT=((t.t|0)||0);
         if (sameType(sT,tT) && s.b <= t.b + t.h + 1e-6){
+          if (sT === 6){
+            try { window.__lockSpanMerged = (window.__lockSpanMerged|0) + 1; } catch(_){ }
+          }
           const top = Math.max(t.b + t.h, s.b + s.h); t.h = top - t.b;
         } else { out.push({ ...s }); }
       }
@@ -527,6 +532,47 @@ function __mp_rebuildWorldFromDiff(){
     window.__mp_getSpanStats = function(){ try { return { ...window.__mp_spanStats }; } catch(_){ return null; } };
   }
 }
+
+  // ---------------------------------------------------------------------------
+  // Task 2.2 (LockFast): One-time full-map lock span compaction helper
+  // Merges contiguous lock (t:6) spans within each column after large loads.
+  // Safe to call multiple times (idempotent); only coalesces adjacency/overlap.
+  try {
+    if (typeof window !== 'undefined' && !window.compactAllLockSpans){
+      window.compactAllLockSpans = function(){
+        if (!window.columnSpans || typeof window.columnSpans.entries !== 'function') return 0;
+        let mergedCount = 0; let touchedCols = 0;
+        try { if (typeof window.__lockSpanMerged !== 'number') window.__lockSpanMerged = 0; } catch(_){ }
+        for (const [key, spans] of window.columnSpans.entries()){
+          if (!Array.isArray(spans) || !spans.length) continue;
+          // Filter lock spans
+          const others = [];
+          const locks = [];
+          for (const s of spans){ ((s&& (s.t|0)===6)? locks : others).push(s); }
+          if (locks.length < 2){ continue; }
+          locks.sort((a,b)=> a.b - b.b);
+          const outLocks=[];
+          for (const s of locks){
+            if (!outLocks.length){ outLocks.push({ ...s }); continue; }
+              const t = outLocks[outLocks.length-1];
+              if (s.b <= t.b + t.h + 1e-6){
+                // merge
+                const top = Math.max(t.b + t.h, s.b + s.h); t.h = top - t.b;
+                mergedCount++;
+                try { window.__lockSpanMerged = (window.__lockSpanMerged|0) + 1; } catch(_){ }
+              } else { outLocks.push({ ...s }); }
+          }
+          if (outLocks.length !== locks.length){
+            touchedCols++;
+            window.columnSpans.set(key, [...others, ...outLocks]);
+          }
+        }
+        try { console.log('[LockFast][compactAllLockSpans] merged=', mergedCount, 'colsTouched=', touchedCols); } catch(_){ }
+        try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
+        return mergedCount;
+      };
+    }
+  } catch(_){ }
 
 // --- Local snapshot helpers for single-player persistence ---
 // NOTE: A snapshot is a plain object { version:number, adds:string[], removes:string[] }

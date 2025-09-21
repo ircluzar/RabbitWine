@@ -29,10 +29,10 @@ Store raw notes in `perf-notes/lockfast-baseline.md`.
 - Success Criteria: Can reliably compare before/after per-frame metrics across 300 frames; overhead < 2% when profiling disabled.
 
 ### Task 2: Span Coalescing (Data-Level Reduction)
-- [ ] Subtask 2.1: In span merge logic (`multiplayer.js` region ~440–504), detect contiguous same `(t,b,h)` vertical neighbors for t:6 and merge into singular larger h.
-- [ ] Subtask 2.2: Provide optional one-time compaction pass `compactAllLockSpans()` to run after bulk loads.
-- [ ] Subtask 2.3: Add debug counter `window.__lockSpanMerged` (# merges performed).
-- Success Criteria: For fragmented scenarios, number of lock span records decreases ≥30% without changing visual output.
+- [x] Subtask 2.1: In span merge logic (`multiplayer.js` region ~440–504), detect contiguous same `(t,b,h)` vertical neighbors for t:6 and merge into singular larger h.
+- [x] Subtask 2.2: Provide optional one-time compaction pass `compactAllLockSpans()` to run after bulk loads.
+- [x] Subtask 2.3: Add debug counter `window.__lockSpanMerged` (# merges performed).
+- Success Criteria: For fragmented scenarios, number of lock span records decreases ≥30% without changing visual output. (Pending measurement)
 
 ### Task 3: Per-Column Aggregation (Replace Per-Level Loop)
 - [ ] Subtask 3.1: Introduce new instance format for locks: (x, y, base, height, packedFlags) in a dedicated VBO.
