@@ -105,6 +105,30 @@ function __mp_hintSet(key, t){
   } catch(_){ }
 }
 function mpApplyFullMap(version, ops){
+  // If we've previously applied a full snapshot for this level, restore the pristine
+  // baseline geometry (captured at initial map build) before overlaying the diff.
+  try {
+    const lvl = (typeof MP_LEVEL === 'string' && MP_LEVEL.trim()) ? MP_LEVEL.trim() : (typeof window !== 'undefined' && typeof window.MP_LEVEL === 'string') ? window.MP_LEVEL : 'ROOT';
+    if (window && window.__mp_fullAppliedOnce && window.__mp_baselines && window.__mp_baselines[lvl] && window.columnSpans instanceof Map){
+      const base = window.__mp_baselines[lvl];
+      // Clear current geometry collections
+      try { if (window.columnSpans && window.columnSpans.clear) window.columnSpans.clear(); } catch(_){ }
+      try { if (window.extraColumns) window.extraColumns.length = 0; } catch(_){ }
+      try { if (window.columnHeights && window.columnHeights.clear) window.columnHeights.clear(); } catch(_){ }
+      try { if (window.columnBases && window.columnBases.clear) window.columnBases.clear(); } catch(_){ }
+      // Reapply baseline spans via applyHeightData()
+      try {
+        if (base && base.columnSpans && typeof window.applyHeightData === 'function'){
+          const mapObj = new Map();
+          for (const k in base.columnSpans){ if (!Object.prototype.hasOwnProperty.call(base.columnSpans,k)) continue; const arr = base.columnSpans[k]; if (Array.isArray(arr) && arr.length) mapObj.set(k, arr.map(s=>({ b:(s.b|0), h:Number(s.h)||0, t:(s.t|0)||0 })).filter(s=>s.h>0)); }
+          window.applyHeightData({ columnSpans: mapObj, extraColumns: [], columnHeights: new Map(), removeVolumes: [] }, true);
+          console.log('[MP][baseline] Restored baseline spans for level', lvl, 'cells=', mapObj.size);
+        }
+      } catch(err){ try { console.warn('[MP][baseline] restore failed', err); } catch(_){ } }
+    } else if (window && window.__mp_fullAppliedOnce) {
+      try { console.log('[MP][baseline] No baseline available for level or restore conditions unmet'); } catch(_){ }
+    }
+  } catch(_){ }
   mpMap.adds.clear(); mpMap.removes.clear();
   let sawLock = false;
   for (const op of (ops||[])){
@@ -144,6 +168,7 @@ function mpApplyFullMap(version, ops){
     }
   } catch(_){ }
   try { __mp_clearBootWatch(); } catch(_){ }
+  try { if (window) window.__mp_fullAppliedOnce = true; } catch(_){ }
 }
 function mpApplyOps(version, ops){
   let sawLock = false;
@@ -280,6 +305,50 @@ function mpApplyTileOps(version, ops){
 // Rebuild columnSpans from current diff each time (simple; can be optimized later)
 function __mp_rebuildWorldFromDiff(){
   if (typeof window === 'undefined' || !window.columnSpans || !window.setSpansAt) return;
+  // Instrumentation & idempotency helpers ----------------------------------
+  try {
+    if (!window.__mp_spanStats){
+      window.__mp_spanStats = {
+        rebuilds: 0,
+        duplicateHashRebuilds: 0,
+        lastHash: null,
+        spanTotal: 0,
+        lastSpanTotal: 0,
+        prunedNonSolids: 0,
+        addedNonSolids: 0,
+        cellsTouchedLast: 0,
+        lastWarningAt: 0
+      };
+    }
+  } catch(_){ }
+  let _cellsTouched = new Set();
+  // Stable hash of current diff to detect repeated identical rebuilds
+  let diffHash = null;
+  try {
+    const addsArr = Array.from(mpMap.adds.values()).sort();
+    const remsArr = Array.from(mpMap.removes.values()).sort();
+    let h = 0; const mix = (s)=>{ for (let i=0;i<s.length;i++){ h = (h*131 + s.charCodeAt(i)) >>> 0; } };
+    for (const a of addsArr) mix(a);
+    mix('#');
+    for (const r of remsArr) mix(r);
+    diffHash = 'h'+h.toString(16);
+  } catch(_){ }
+  const _stats = window.__mp_spanStats || null;
+  if (_stats){
+    _stats.rebuilds++;
+    if (diffHash && _stats.lastHash === diffHash){
+      _stats.duplicateHashRebuilds++;
+      // Soft warn occasionally if spans keep growing with same hash
+      if (_stats.spanTotal > _stats.lastSpanTotal && (performance.now() - (_stats.lastWarningAt||0)) > 4000){
+        console.warn('[MP][span] Rebuild with identical diff hash produced more spans (possible accumulation).', { hash: diffHash, spanTotal: _stats.spanTotal, last: _stats.lastSpanTotal });
+        _stats.lastWarningAt = performance.now();
+      }
+    }
+    _stats.lastHash = diffHash;
+    _stats.lastSpanTotal = _stats.spanTotal;
+    _stats.addedNonSolids = 0; // will accumulate
+    _stats.prunedNonSolids = 0; // reset each rebuild
+  }
   // Start from original base map? For now we assume base map already loaded and we overlay diffs add/remove.
   // We'll apply adds (voxels) then removes (carves) on top of existing spans.
   // Each key format: gx,gy,y
@@ -306,7 +375,10 @@ function __mp_rebuildWorldFromDiff(){
     // Expand and sort by y
     const arrObjs = Array.from(ys.values()).map(s=>{ try { return JSON.parse(s); } catch(_) { return null; } }).filter(o=>o && Number.isFinite(o.y));
     arrObjs.sort((a,b)=>a.y-b.y);
-    const spans = [];
+  const spans = [];
+  // Track duplicates for non-solid markers (portal:5, lock:6, half-slab:4) to avoid stacking
+  const nonSolidSeen = new Set(); // key `${t}@${y}` or for slabs `${t}@${y}`
+  let suppressedNonSolid = 0;
     if (arrObjs.length){
   // Separate unit voxels vs markers:
   //  - HALF-SLAB (t=4) handled as individual half-height spans
@@ -327,30 +399,38 @@ function __mp_rebuildWorldFromDiff(){
         }
         spans.push(curType? { b, h: (prev - b + 1), t:curType } : { b, h:(prev - b + 1) });
       }
-      // Build contiguous portal spans independently (pure triggers, non-solid)
+      // Build contiguous portal spans independently (pure triggers, non-solid) with dedupe
       if (portalUnits.length){
         let b = portalUnits[0].y|0; let prev = portalUnits[0].y|0;
         for (let i=1;i<portalUnits.length;i++){
           const yObj = portalUnits[i]; const y = yObj.y|0;
           if (y === prev + 1){ prev = y; continue; }
-          spans.push({ b, h:(prev - b + 1), t:5 });
+          const keyNS = `5@${b}@${prev}`; // range key
+          if (!nonSolidSeen.has(keyNS)){ spans.push({ b, h:(prev - b + 1), t:5 }); nonSolidSeen.add(keyNS); } else suppressedNonSolid++;
           b = y; prev = y;
         }
-        spans.push({ b, h:(prev - b + 1), t:5 });
+        const keyNS = `5@${b}@${prev}`;
+        if (!nonSolidSeen.has(keyNS)){ spans.push({ b, h:(prev - b + 1), t:5 }); nonSolidSeen.add(keyNS); } else suppressedNonSolid++;
       }
-      // Build contiguous lock spans independently (non-solid visual, outline-only)
+      // Build contiguous lock spans independently (non-solid visual, outline-only) with dedupe
       if (lockUnits.length){
         let b = lockUnits[0].y|0; let prev = lockUnits[0].y|0;
         for (let i=1;i<lockUnits.length;i++){
           const yObj = lockUnits[i]; const y = yObj.y|0;
           if (y === prev + 1){ prev = y; continue; }
-          spans.push({ b, h:(prev - b + 1), t:6 });
+          const keyNS = `6@${b}@${prev}`;
+          if (!nonSolidSeen.has(keyNS)){ spans.push({ b, h:(prev - b + 1), t:6 }); nonSolidSeen.add(keyNS); } else suppressedNonSolid++;
           b = y; prev = y;
         }
-        spans.push({ b, h:(prev - b + 1), t:6 });
+        const keyNS = `6@${b}@${prev}`;
+        if (!nonSolidSeen.has(keyNS)){ spans.push({ b, h:(prev - b + 1), t:6 }); nonSolidSeen.add(keyNS); } else suppressedNonSolid++;
       }
-      // Add half-slabs individually (b=y, h=0.5)
-      for (const s of slabs){ spans.push({ b: s.y|0, h: 0.5 }); }
+      // Add half-slabs individually (b=y, h=0.5) with dedupe key
+      for (const s of slabs){
+        const yv = s.y|0; const keyNS = `4@${yv}`;
+        if (!nonSolidSeen.has(keyNS)){ spans.push({ b: yv, h: 0.5 }); nonSolidSeen.add(keyNS); } else suppressedNonSolid++;
+      }
+      if (suppressedNonSolid>0){ try { console.log('[MP][dedupe] suppressed', suppressedNonSolid, 'non-solid spans at cell', cellK); } catch(_){ } }
     }
     // Merge with existing spans: insert without cross-type infection
     const [gx,gy] = cellK.split(',').map(n=>parseInt(n,10));
@@ -374,6 +454,12 @@ function __mp_rebuildWorldFromDiff(){
     mergeSameType();
     // Insert each new span
   const newSpans = spans.map(s=>({ b: s.b|0, h: (typeof s.h==='number'? s.h : (s.h|0)), t: ((s.t===1||s.t===2||s.t===3||s.t===4||s.t===5||s.t===6||s.t===9)?(s.t|0):0) }));
+    // Idempotency improvement: remove pre-existing non-solid spans (t=4/5/6) so they are re-derived solely from diff once.
+    // This prevents accumulation when the same diff is reapplied repeatedly (e.g., during offline/online toggles triggering rebuilds).
+    const beforeLen = merged.length;
+    merged = merged.filter(s => ![4,5,6].includes((s.t|0)) );
+    const pruned = beforeLen - merged.length;
+    if (pruned > 0 && _stats){ _stats.prunedNonSolids += pruned; }
     for (const s of newSpans){
       if (!(s.h > 0)) continue;
       const sT=((s.t|0)||0);
@@ -429,6 +515,17 @@ function __mp_rebuildWorldFromDiff(){
     if (out.length){ window.setSpansAt(gx,gy,out); } else { window.setSpansAt(gx,gy,[]); }
   }
   try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
+  // Final span total accounting
+  try {
+    if (_stats && window.columnSpans && typeof window.columnSpans.values === 'function'){
+      let total = 0; let cells = 0; for (const v of window.columnSpans.values()){ if (Array.isArray(v)){ total += v.length; cells++; } }
+      _stats.spanTotal = total; _stats.cellsTouchedLast = _cellsTouched.size;
+    }
+  } catch(_){ }
+  // Debug accessor
+  if (typeof window !== 'undefined' && !window.__mp_getSpanStats){
+    window.__mp_getSpanStats = function(){ try { return { ...window.__mp_spanStats }; } catch(_){ return null; } };
+  }
 }
 
 // --- Local snapshot helpers for single-player persistence ---
@@ -456,6 +553,32 @@ function __mp_applyMapSnapshot(snap){
 // Expose snapshot API for save system
 window.__mp_getMapSnapshot = __mp_getMapSnapshot;
 window.__mp_applyMapSnapshot = __mp_applyMapSnapshot;
+
+// Debug: scan for tiles where both a ground cube (in instWall) would render and a base-0 solid span exists.
+try {
+  if (typeof window !== 'undefined' && !window.__mp_scanGroundOverlap){
+    window.__mp_scanGroundOverlap = function(){
+      const out = [];
+      try {
+        if (!window.columnSpans || typeof window.columnSpans.entries !== 'function') return out;
+        for (const [key, spans] of window.columnSpans.entries()){
+          if (!Array.isArray(spans)) continue;
+          const solidBase0 = spans.some(s=> s && (s.h>0) && (s.b===0) && ![2,3,5,6].includes((s.t|0)||0));
+          if (!solidBase0) continue;
+          // Determine if ground cube would normally appear (tile is wall-like and not hidden) by checking map value.
+          const parts = key.split(','); const gx=parseInt(parts[0],10), gy=parseInt(parts[1],10);
+          if (!Number.isFinite(gx)||!Number.isFinite(gy) || typeof mapIdx!=='function' || typeof TILE==='undefined') continue;
+          const cell = map[mapIdx(gx,gy)];
+          if (cell===TILE.WALL || cell===TILE.BAD || cell===TILE.FILL || cell===TILE.NOCLIMB){
+            out.push(key);
+          }
+        }
+      } catch(err){ console.warn('[MP][scanOverlap] failed', err); }
+      console.log('[MP][scanOverlap] overlaps=', out.length, out.slice(0,25));
+      return out;
+    };
+  }
+} catch(_){ }
 
 // Extracted time sync constants and object are now provided by config.js
 
@@ -530,6 +653,24 @@ async function mpLoadOfflineLevel(levelName){
     const lvl = (typeof levelName==='string' && levelName.trim()) ? levelName.trim() : 'ROOT';
     // Avoid refetch spam for same level unless explicitly switching
     if (__mp_offlineLoadedForLevel === lvl) return false;
+    // Theory 4: restore baseline geometry before applying offline snapshot to prevent accumulation
+    try {
+      if (window && window.__mp_baselines && window.__mp_baselines[lvl] && window.columnSpans instanceof Map){
+        const base = window.__mp_baselines[lvl];
+        try { if (window.columnSpans.clear) window.columnSpans.clear(); } catch(_){ }
+        try { if (window.extraColumns) window.extraColumns.length = 0; } catch(_){ }
+        try { if (window.columnHeights && window.columnHeights.clear) window.columnHeights.clear(); } catch(_){ }
+        try { if (window.columnBases && window.columnBases.clear) window.columnBases.clear(); } catch(_){ }
+        if (base && base.columnSpans && typeof window.applyHeightData==='function'){
+          const mapObj = new Map();
+          for (const k in base.columnSpans){ if (!Object.prototype.hasOwnProperty.call(base.columnSpans,k)) continue; const arr = base.columnSpans[k]; if (Array.isArray(arr) && arr.length) mapObj.set(k, arr.map(s=>({ b:(s.b|0), h:Number(s.h)||0, t:(s.t|0)||0 })).filter(s=>s.h>0)); }
+          window.applyHeightData({ columnSpans: mapObj, extraColumns: [], columnHeights: new Map(), removeVolumes: [] }, true);
+          console.log('[MP][offline][baseline] restored baseline before offline snapshot', lvl, 'cells=', mapObj.size);
+        }
+      } else {
+        console.log('[MP][offline][baseline] no baseline available for', lvl);
+      }
+    } catch(err){ try { console.warn('[MP][offline][baseline] restore failed', err); } catch(_){ } }
     const base = (window.__MP_MAPS_BASE || 'maps');
     const url = `${base}/${encodeURIComponent(lvl)}.json`;
     console.log('[MP][offline] loading', url);
@@ -1504,22 +1645,55 @@ window.__mp_replayPersistedLocks = function(){
       window.__mp_lockVoxelSet = set;
     }
     if (!set.size) return false;
-    // Determine which are missing from mpMap.adds (no #6 suffix)
+    // Determine which are missing from mpMap.adds (no #6 suffix) & not already represented by an existing lock span
     const toSend = [];
+    let suppressed = 0;
+    let alreadySpan = 0;
+    let applied = 0;
+    // Precompute quick presence map for lock spans by voxel key
+    const lockSpanVox = new Set();
+    try {
+      if (window.columnSpans && typeof window.columnSpans.entries === 'function'){
+        for (const [cellK, spans] of window.columnSpans.entries()){
+          if (!Array.isArray(spans)) continue; const parts = cellK.split(','); if (parts.length!==2) continue; const gx=parseInt(parts[0],10), gy=parseInt(parts[1],10); if (!Number.isFinite(gx)||!Number.isFinite(gy)) continue;
+          for (const s of spans){ if (!s) continue; if (((s.t|0)||0)!==6) continue; const b=(s.b|0), h=(s.h|0); if (h<=0) continue; for (let y=b; y<b+h; y++){ lockSpanVox.add(`${gx},${gy},${y}`); } }
+        }
+      }
+    } catch(_){ }
     for (const baseKey of set){
       if (typeof baseKey !== 'string') continue;
       const typedKey = baseKey+'#6';
-      if (!mpMap.adds.has(typedKey)){
-        // Local insert
-        if (mpMap.adds.has(baseKey)) mpMap.adds.delete(baseKey);
-        mpMap.adds.add(typedKey);
-        toSend.push({ op:'add', key: baseKey, t:6 });
-        if (toSend.length >= 480){ try { window.mpSendMapOps(toSend.splice(0,toSend.length)); } catch(_){ } }
-      }
+      if (mpMap.adds.has(typedKey)){ suppressed++; continue; }
+      if (lockSpanVox.has(baseKey)){ alreadySpan++; continue; }
+      // Local insert
+      if (mpMap.adds.has(baseKey)) mpMap.adds.delete(baseKey);
+      mpMap.adds.add(typedKey);
+      toSend.push({ op:'add', key: baseKey, t:6 });
+      applied++;
+      if (toSend.length >= 480){ try { window.mpSendMapOps(toSend.splice(0,toSend.length)); } catch(_){ } }
     }
     if (toSend.length){ try { window.mpSendMapOps(toSend); } catch(_){ } }
-    if (toSend.length){ try { console.log('[MP] replay: sent persisted Lock ops', toSend.length, 'level=', MP_LEVEL); } catch(_){ } }
-    return true;
+    try {
+      console.log(`[MP] replay: locks applied=${applied} suppressedDiff=${suppressed} skippedSpan=${alreadySpan} totalPersisted=${set.size} level=${MP_LEVEL}`);
+    } catch(_){ }
+    // Record stats for external inspection
+    try { window.__mp_lockReplayStats = { applied, suppressedDiff: suppressed, skippedSpan: alreadySpan, total:set.size, at: Date.now() }; } catch(_){ }
+    // Prune persisted set: remove any baseKey whose typed version now exists (to avoid future reprocessing)
+    try {
+      let removed = 0; const remaining = [];
+      for (const baseKey of set){
+        if (mpMap.adds.has(baseKey+'#6')) { removed++; continue; }
+        remaining.push(baseKey);
+      }
+      if (removed>0){
+        // Rewrite localStorage entry with remaining keys only
+        try { localStorage.setItem(lvlKey, JSON.stringify(remaining)); } catch(_){ }
+        // Update in-memory set
+        try { set.clear(); for (const k of remaining) set.add(k); } catch(_){ }
+        try { console.log('[MP] replay: pruned persisted lock entries removed=', removed, 'remaining=', remaining.length); } catch(_){ }
+      }
+    } catch(_){ }
+    return (applied>0);
   } catch(err){ try { console.warn('[MP] replay persisted locks failed', err); } catch(_){ } return false; }
 };
 

@@ -292,6 +292,28 @@ try {
   buildSampleMap(); // Fallback to sample map on any initialization error
 }
 
+// Capture a deep-copied baseline snapshot of geometry spans for this level so
+// multiplayer full-map diffs can be applied in a pure "replace" model later
+// without accumulating duplicate spans. We store under window.__mp_baselines[level]
+// only if not already present (first load / cold boot) to avoid overwriting a
+// canonical baseline with mutated runtime state.
+try {
+  if (typeof window !== 'undefined'){
+    const lvlKey = (typeof window.MP_LEVEL === 'string' && window.MP_LEVEL.trim()) ? window.MP_LEVEL.trim() : 'ROOT';
+    if (!window.__mp_baselines) window.__mp_baselines = Object.create(null);
+    if (!window.__mp_baselines[lvlKey] && window.columnSpans instanceof Map){
+      const spansObj = {};
+      for (const [k, arr] of window.columnSpans.entries()){
+        if (!Array.isArray(arr) || !arr.length) continue;
+        spansObj[k] = arr.map(s=>({ b:(s.b|0), h: Number(s.h)||0, t: (s.t|0)||0 })).filter(s=>s.h>0);
+      }
+      const baseline = { columnSpans: spansObj };
+      window.__mp_baselines[lvlKey] = baseline;
+      try { console.log('[BASELINE] captured geometry for level', lvlKey, Object.keys(spansObj).length, 'cells'); } catch(_){ }
+    }
+  }
+} catch(_){ }
+
 /**
  * Export map builder function for runtime level switching and dynamic content
  */

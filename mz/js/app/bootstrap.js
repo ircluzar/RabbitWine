@@ -68,6 +68,71 @@ if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'f
   };
 }
 
+// ---------------------------------------------------------------------------
+// Render Loop Instrumentation & Single-Start Guard
+// ---------------------------------------------------------------------------
+// Goal: Detect accidental creation of multiple main render loops (e.g. script
+// reinjection or re-bootstrap during online/offline flip-flopping).
+// Provides lightweight statistics accessible via console:
+//   window.__getRenderLoopStats()
+//   window.__renderLoopMeta (live object)
+// Logs a warning if multiple loops attempt to start or if two frames are
+// rendered with (near) identical RAF timestamps (heuristic duplicate).
+// ---------------------------------------------------------------------------
+(function(){
+  if (typeof window === 'undefined') return;
+  if (!window.__renderLoopMeta){
+    window.__renderLoopMeta = {
+      startedAt: performance.now(),
+      startCount: 0,
+      frameCount: 0,
+      duplicateFrameCount: 0,
+      lastNow: -1,
+      lastFrameDurationMs: 0,
+      multiStartStacks: [],
+      perFrame: {
+        drawWalls: 0,
+        drawTallColumns: 0
+      },
+      totals: {
+        drawWalls: 0,
+        drawTallColumns: 0
+      },
+      lastFramePerFrame: { drawWalls: 0, drawTallColumns: 0 }
+    };
+  }
+  // Expose accessor
+  if (!window.__getRenderLoopStats){
+    window.__getRenderLoopStats = function(){
+      const m = window.__renderLoopMeta;
+      const uptimeSec = (performance.now() - m.startedAt)/1000;
+      return {
+        uptimeSec: +uptimeSec.toFixed(2),
+        startCount: m.startCount,
+        frameCount: m.frameCount,
+        duplicateFrameCount: m.duplicateFrameCount,
+        duplicatePct: m.frameCount ? +(100*m.duplicateFrameCount/m.frameCount).toFixed(2) : 0,
+        avgFPS: m.frameCount/Math.max(0.001, uptimeSec),
+        lastFrameDurationMs: +m.lastFrameDurationMs.toFixed(3),
+        lastFramePerFrame: m.lastFramePerFrame,
+        totals: m.totals
+      };
+    };
+  }
+  // Instrument drawWalls / drawTallColumns only once
+  function wrapOnce(fnName){
+    if (typeof window[fnName] === 'function' && !window['__orig_'+fnName]){
+      window['__orig_'+fnName] = window[fnName];
+      window[fnName] = function(){
+        const m = window.__renderLoopMeta; if (m){ m.perFrame[fnName]++; m.totals[fnName]++; }
+        return window['__orig_'+fnName].apply(this, arguments);
+      };
+    }
+  }
+  wrapOnce('drawWalls');
+  wrapOnce('drawTallColumns');
+})();
+
 /**
  * Main render function called every frame by requestAnimationFrame
  * Handles game state updates, camera management, and the complete rendering pipeline.
@@ -75,6 +140,31 @@ if (typeof window !== 'undefined' && typeof window.isWorldPointVisibleAny !== 'f
  * @param {number} now - Current timestamp in milliseconds from requestAnimationFrame
  */
 function render(now) {
+  // --- Instrumentation (frame entry) ---
+  try {
+    const m = window.__renderLoopMeta;
+    if (m){
+      // Detect duplicate frame invocation (same or near-identical RAF timestamp)
+      if (m.lastNow >= 0){
+        const dtMs = now - m.lastNow;
+        m.lastFrameDurationMs = dtMs;
+        if (dtMs <= 0.15){ // 0.15ms threshold – essentially same RAF quantum
+          m.duplicateFrameCount++;
+          if (!m._dupWarnedOnce){
+            console.warn('[LOOP][dup] Potential duplicate main loop invocation detected (Δt=', dtMs.toFixed(4),'ms).');
+            m._dupWarnedOnce = true; // Spam guard; remove if full log desired
+          }
+        }
+      }
+      m.lastNow = now;
+      m.frameCount++;
+      // Reset per-frame counters
+      m.lastFramePerFrame = { drawWalls: m.perFrame.drawWalls, drawTallColumns: m.perFrame.drawTallColumns };
+      m.perFrame.drawWalls = 0;
+      m.perFrame.drawTallColumns = 0;
+    }
+  } catch(_){ }
+
   // Update frame counter and calculate delta time
   state.frames++;
   const dt = Math.min(0.05, Math.max(0, (now - state.timePrev) / 1000));
@@ -378,6 +468,25 @@ try {
 } catch(e){ }
 
 requestAnimationFrame(render);
+// Guard against multiple bootstrap starts (script reinjection)
+try {
+  if (typeof window !== 'undefined'){
+    const m = window.__renderLoopMeta;
+    if (m){
+      m.startCount++;
+      if (m.startCount > 1){
+        m.multiStartStacks.push(new Error('Multi-start '+m.startCount).stack);
+        console.warn('[LOOP][warn] render loop start attempted again; ignoring additional start. startCount=', m.startCount);
+      }
+    }
+    if (window.__MAIN_LOOP_ACTIVE){
+      console.warn('[LOOP] Additional bootstrap.js execution detected; main loop already active.');
+    } else {
+      window.__MAIN_LOOP_ACTIVE = true;
+      // First legitimate start already scheduled above (requestAnimationFrame(render))
+    }
+  }
+} catch(_){ }
 
 // If a save restored player position, sync camera follow point immediately
 try {

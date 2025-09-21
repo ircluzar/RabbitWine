@@ -265,6 +265,8 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
   const filteredBadFence = [];
   const filteredLevelChange = [];
   const filteredNoClimb = [];
+    // Instrumentation: collect ground + base0 span overlaps (Theory 3)
+    let overlapCount = 0;
     for (let i=0; i<data.length; i+=2){
       const x = data[i], y = data[i+1];
       const key = `${x},${y}`;
@@ -299,6 +301,23 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         }
       }
       if (!hideGroundWall){
+        // If we kept the ground wall but also have a base-0 solid span, flag overlap
+        try {
+          if (hasSpans){
+            const spans = columnSpans.get(key);
+            if (Array.isArray(spans) && spans.some(s=> s && ((s.t|0)||0)!==2 && ((s.t|0)||0)!==3 && ((s.t|0)||0)!==5 && ((s.t|0)||0)!==6 && ((s.b|0)===0) && (s.h>0))){
+              overlapCount++;
+              if (!window.__wallOverlapCells) window.__wallOverlapCells = new Set();
+              window.__wallOverlapCells.add(key);
+              if (window.__AUTO_HIDE_OVERLAP_SPANS){
+                // Force hide ground wall in auto-fix mode
+                hideGroundWall = true;
+              }
+            }
+          }
+        } catch(_){ }
+      }
+      if (!hideGroundWall){
         if (cell === TILE.FENCE) filteredFence.push(x,y);
         else if (cell === TILE.BADFENCE) filteredBadFence.push(x,y);
         else if (cell === TILE.NOCLIMB) filteredNoClimb.push(x,y);
@@ -307,6 +326,7 @@ function drawWalls(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         else filteredNormal.push(x,y);
       }
     }
+    if (overlapCount>0){ try { console.log('[WALLS][overlap] ground+base0 span overlaps this frame =', overlapCount); } catch(_){ } }
   wallsNormal = new Float32Array(filteredNormal);
   wallsBad = new Float32Array(filteredBad);
   wallsHalf = new Float32Array(filteredHalf);
