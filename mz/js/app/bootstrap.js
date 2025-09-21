@@ -450,17 +450,26 @@ function render(now) {
   gl.useProgram(blitProgram);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, offscreen.tex);
-  const loc = gl.getUniformLocation(blitProgram, 'u_tex');
-  gl.uniform1i(loc, 0);
-  // Set top posterize mix
-  const uTopMix = gl.getUniformLocation(blitProgram, 'u_topMix');
-  gl.uniform1f(uTopMix, state.topPosterizeMix || 0.0);
-  const uTopLevels = gl.getUniformLocation(blitProgram, 'u_topLevels');
-  gl.uniform1f(uTopLevels, state.topPosterizeLevels || 6.0);
-  const uTopDither = gl.getUniformLocation(blitProgram, 'u_topDither');
-  gl.uniform1f(uTopDither, state.topDitherAmt || 0.0);
-  const uTopPixel = gl.getUniformLocation(blitProgram, 'u_topPixel');
-  gl.uniform1f(uTopPixel, state.topPixelSize || 0.0);
+  // Optimized uniform path (Item 4). Cache from __blitUniforms if available.
+  if (!window.__uniformStats) window.__uniformStats = { blitSetCount:0, blitFallbackLookups:0 };
+  const U = window.__blitUniforms;
+  if (U){
+    if (U.u_tex) gl.uniform1i(U.u_tex, 0);
+    if (U.u_topMix) gl.uniform1f(U.u_topMix, state.topPosterizeMix || 0.0);
+    if (U.u_topLevels) gl.uniform1f(U.u_topLevels, state.topPosterizeLevels || 6.0);
+    if (U.u_topDither) gl.uniform1f(U.u_topDither, state.topDitherAmt || 0.0);
+    if (U.u_topPixel) gl.uniform1f(U.u_topPixel, state.topPixelSize || 0.0);
+    window.__uniformStats.blitSetCount++;
+  } else {
+    // Fallback (should not happen after core/blit.js loads first)
+    const loc = gl.getUniformLocation(blitProgram, 'u_tex');
+    gl.uniform1i(loc, 0);
+    gl.uniform1f(gl.getUniformLocation(blitProgram, 'u_topMix'), state.topPosterizeMix || 0.0);
+    gl.uniform1f(gl.getUniformLocation(blitProgram, 'u_topLevels'), state.topPosterizeLevels || 6.0);
+    gl.uniform1f(gl.getUniformLocation(blitProgram, 'u_topDither'), state.topDitherAmt || 0.0);
+    gl.uniform1f(gl.getUniformLocation(blitProgram, 'u_topPixel'), state.topPixelSize || 0.0);
+    window.__uniformStats.blitFallbackLookups++;
+  }
   
   gl.bindVertexArray(blitVAO);
   gl.viewport(offX, offY, destW, destH);

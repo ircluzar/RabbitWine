@@ -117,6 +117,16 @@ void main(){
  */
 const blitProgram = createProgram(BLIT_VS, BLIT_FS);
 
+// Cache uniform locations once to avoid per-frame lookup overhead.
+const __blitUniforms = {
+  u_tex: gl.getUniformLocation(blitProgram, 'u_tex'),
+  u_topMix: gl.getUniformLocation(blitProgram, 'u_topMix'),
+  u_topLevels: gl.getUniformLocation(blitProgram, 'u_topLevels'),
+  u_topDither: gl.getUniformLocation(blitProgram, 'u_topDither'),
+  u_topPixel: gl.getUniformLocation(blitProgram, 'u_topPixel')
+};
+if (typeof window !== 'undefined') window.__blitUniforms = __blitUniforms;
+
 /**
  * Vertex Array Object for full-screen quad rendering
  * Contains vertex attribute setup for position data

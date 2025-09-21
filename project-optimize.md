@@ -50,6 +50,8 @@ In-place matrix helpers (`mat4MultiplyInto`, `mat4PerspectiveInto`, `mat4LookAtI
 **Recommendation**: Cache locations in module scope right after program creation.
 **Expected Gain**: Small CPU improvement; meaningful when combined with others.
 **Validation**: Profile CPU self time in render tail section.
+### Status Update (Implemented)
+Uniform locations for blit pass (`u_tex`, `u_topMix`, `u_topLevels`, `u_topDither`, `u_topPixel`) are now cached once in `core/blit.js` (exported to `window.__blitUniforms`). The per-frame blit section in `bootstrap.js` uses these cached handles and records stats in `window.__uniformStats` (`blitSetCount`, `blitFallbackLookups`). Fallback path with dynamic lookups remains for safety if load order changes. This removes 5+ uniform location queries per frame.
 
 ## 5. Consolidate Redundant Visibility Functions (Med Impact, Effort S, Category CPU)
 **Why**: Multiple per-frame redefinitions: `window.isWorldPointVisible` inside camera branches, plus global `isWorldPointVisibleAny` in header. Redefinition allocates closures & can confuse inlined JIT optimizations.
