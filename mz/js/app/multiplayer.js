@@ -104,16 +104,6 @@ function __mp_hintSet(key, t){
     }
   } catch(_){ }
 }
-
-// ╔════════════════════════════════════════════════════════════╗
-// ║ SEGMENT: mp-mapDiff                                         ║
-// ║ CONDEMNED: Extracted to app/multiplayer/mapDiff.js         ║
-// ║ Functions: mpApplyFullMap, mpApplyOps, __mp_rebuildWorldFromDiff ║
-// ╚════════════════════════════════════════════════════════════╝
-
-// Map diff processing now provided by mapDiff.js module
-// Global exports maintained for compatibility via window object
-
 function mpApplyFullMap(version, ops){
   mpMap.adds.clear(); mpMap.removes.clear();
   let sawLock = false;
@@ -469,12 +459,25 @@ window.__mp_applyMapSnapshot = __mp_applyMapSnapshot;
 
 // Extracted time sync constants and object are now provided by config.js
 
-// ╔════════════════════════════════════════════════════════════╗
-// ║ SEGMENT: mp-connection (delegated)                          ║
-// ║ CONDEMNED: Variables now in app/multiplayer/connection.js  ║
-// ╚════════════════════════════════════════════════════════════╝
-// Connection state managed by connection.js; legacy references should
-// use window-scoped variables exposed there.
+// WebSocket connection state and helpers
+let mpWS = null;
+let mpWSState = 'closed'; // 'closed' | 'connecting' | 'open'
+let mpNextConnectAt = 0;   // wall-clock ms for next allowed connect attempt
+let __mp_cooldownActive = false;
+let __mp_retryMs = MP_FAIL_BASE_MS; // exponential backoff that caps at MP_FAIL_COOLDOWN_MS
+let __mp_pingTimer = null;         // keep-alive/time-sync ping timer
+let __mp_sendWatchTimer = null;    // watchdog to ensure updates resume
+let __mp_lastSendReal = 0;         // last real-time send moment
+// One-shot callbacks waiting for a music_pos reply
+let __mp_musicPosWaiters = [];
+// Level loading freeze management
+let __mp_levelLoading = false;     // true while waiting for server data after level switch
+let __mp_levelUnfreezeTimer = null;// fallback unfreeze timer id
+// Offline fallback flags
+let __mp_offlineLoadedForLevel = null; // tracks last level loaded from local maps to avoid refetch spam
+// Boot-time aggressive fallback watchdogs
+let __mp_bootConnectWatch = null;
+let __mp_bootMapWatch = null;
 
 function __mp_clearBootWatch(){
   try { if (__mp_bootConnectWatch){ clearTimeout(__mp_bootConnectWatch); __mp_bootConnectWatch = null; } } catch(_){ }
@@ -612,15 +615,6 @@ function __mp_unfreezePlayer(){
 }
 
 // mpComputeOffset function is now provided by config.js module
-
-// ╔════════════════════════════════════════════════════════════╗
-// ║ SEGMENT: mp-connection                                      ║
-// ║ CONDEMNED: Extracted to app/multiplayer/connection.js      ║
-// ║ Functions: mpEnsureWS, setupWebSocketHandlers               ║
-// ╚════════════════════════════════════════════════════════════╝
-
-// Connection management now provided by connection.js module
-// Global exports maintained for compatibility via window object
 
 function mpEnsureWS(nowMs){
   if (mpWSState === 'open' || mpWSState === 'connecting') return;
