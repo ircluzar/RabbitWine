@@ -7,6 +7,46 @@
 
 // Rendering for player and trail (uses pipeline globals)
 
+// ---------------------------------------------------------------------------
+// Trail instance data pooling (Item 1 optimization)
+// Replaces per-frame allocation of a brand new Float32Array and full buffer
+// re-specification with a grow-only pooled typed array + gl.bufferSubData.
+// Design goals:
+//  - Zero behavior change (identical data layout: [x,y,z,birth])
+//  - Never shrink (avoids frequent reallocations); grow to next power-of-two
+//  - Maintain instrumentation for debugging / perf validation
+//  - Fall back safely to original path if WebGL objects unavailable
+// ---------------------------------------------------------------------------
+let __trailInstPool = null;          // Float32Array backing store (capacity >= needed floats)
+let __trailInstPoolCap = 0;          // Capacity in floats
+let __trailInstReallocs = 0;         // How many times we grew the pool
+// Helper: ensure capacity (floats). Returns true if resized.
+function __ensureTrailInstCapacity(neededFloats){
+  if (neededFloats <= __trailInstPoolCap) return false;
+  // Grow to next power of two to amortize cost (min 16 floats)
+  let cap = __trailInstPoolCap || 16;
+  while (cap < neededFloats) cap <<= 1;
+  __trailInstPool = new Float32Array(cap);
+  __trailInstPoolCap = cap;
+  __trailInstReallocs++;
+  return true;
+}
+// Instrumentation object (attached lazily so production minifiers can strip)
+function __trailPerfUpdate(meta){
+  try {
+    if (typeof window === 'undefined') return;
+    if (!window.__trailPerf) window.__trailPerf = { inst: {} };
+    const prev = window.__trailPerf.inst || {};
+    const merged = Object.assign({
+      capFloats: __trailInstPoolCap,
+      reallocs: __trailInstReallocs,
+      frame: (prev.frame||0)+1
+    }, meta || {});
+    if (merged.strategy && merged.strategy.indexOf('fallback') !== -1) merged.lastFrameFallback = true; else merged.lastFrameFallback = false;
+    window.__trailPerf.inst = merged;
+  } catch(_){}
+}
+
 /**
  * Handle swipe-based turning (placeholder for future multi-touch support)
  * Main logic is in pointer event handlers
@@ -32,14 +72,16 @@ function drawPlayerAndTrail(mvp){
   // Render movement trail as instanced wireframe cubes
   const pts = state.trail.points;
   if (pts.length >= 1){
-    // Prepare instance data: [x, y, z, birth_time] for each trail point
-    const inst = new Float32Array(pts.length * 4);
-    for (let i = 0; i < pts.length; i++){ 
-      const p = pts[i]; 
-      inst[i * 4 + 0] = p[0]; // x
-      inst[i * 4 + 1] = p[1]; // y  
-      inst[i * 4 + 2] = p[2]; // z
-      inst[i * 4 + 3] = p[3]; // birth time
+    // Prepare instance data (pooled): [x, y, z, birth_time] each
+    const neededFloats = pts.length * 4;
+    const resized = __ensureTrailInstCapacity(neededFloats);
+    // Fill only the active portion
+    for (let i = 0, o = 0; i < pts.length; i++, o += 4){
+      const p = pts[i];
+      __trailInstPool[o+0] = p[0];
+      __trailInstPool[o+1] = p[1];
+      __trailInstPool[o+2] = p[2];
+      __trailInstPool[o+3] = p[3];
     }
     
     // Update trail edge jitter animation (16ms intervals)
@@ -65,7 +107,25 @@ function drawPlayerAndTrail(mvp){
     // Upload instance data
     gl.bindVertexArray(trailCubeVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, trailCubeVBO_Inst);
-    gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+    // Allocate or update GPU buffer
+    try {
+      const view = __trailInstPool.subarray(0, neededFloats);
+      if (resized){
+        // Provide actual data on (re)allocation to satisfy drivers that reject size-only allocs for instanced attrib streams.
+        gl.bufferData(gl.ARRAY_BUFFER, view, gl.DYNAMIC_DRAW);
+        __trailPerfUpdate({ lastPts: pts.length, uploadedFloats: neededFloats, strategy: 'realloc-bufferData' });
+      } else {
+        // Normal fast path: partial update only.
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, view);
+        __trailPerfUpdate({ lastPts: pts.length, uploadedFloats: neededFloats, strategy: 'subData' });
+      }
+    } catch(e){
+      // Ultimate fallback: always succeed with legacy pattern (slower but safe)
+      try {
+        gl.bufferData(gl.ARRAY_BUFFER, __trailInstPool.subarray(0, neededFloats), gl.DYNAMIC_DRAW);
+      } catch(_){ }
+      __trailPerfUpdate({ lastPts: pts.length, uploadedFloats: neededFloats, strategy: 'fallback-bufferData', error: ''+e });
+    }
     
     // Handle per-instance corner offsets for different camera views
     if (typeof trailCubeVBO_Corners !== 'undefined'){
