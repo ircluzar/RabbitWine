@@ -1035,6 +1035,15 @@ function drawOutlinesForTileArray(mvp, tileArray, yCenter, baseScale, color){
 }
 
 function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
+  // Optional lightweight instrumentation for lock span performance
+  // Enable by setting window.__PROFILE_LOCK = true in the console.
+  // Accumulates counters on window.__lockProfile for inspection.
+  let __prof = null;
+  if (typeof window !== 'undefined' && window.__PROFILE_LOCK){
+    __prof = window.__lockProfile || (window.__lockProfile = { frames:0, spanTotal:0, spanLock:0, groupTotal:0, lockTiles:0, timeGroupMs:0, timeLockRenderMs:0 });
+    __prof.frames++;
+  }
+  let __tGroupStart = (__prof ? performance.now() : 0);
   // Update persistent polygon point jitter
     if (state.cameraKindCurrent === 'top' && typeof ensureWallGeomJitterTick === 'function') {
       ensureWallGeomJitterTick(state.nowSec || (performance.now()/1000));
@@ -1056,17 +1065,20 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       if (!Number.isFinite(gx) || !Number.isFinite(gy)) continue;
       for (const s of spans){
   if (!s) continue; const hF = Number(s.h)||0; const b=(s.b|0); const t=(s.t|0)||0; if (hF<=0) continue; if (t===2 || t===3) continue; // skip fence spans (2=normal,3=bad)
+        if (__prof){ __prof.spanTotal++; if (t===6) __prof.spanLock++; }
         const full = Math.floor(hF);
         const frac = hF - full;
         if (full > 0){
           const gkey = `${full}@${b}@${t}`;
           let g = groups.get(gkey); if (!g){ g = { h: full, b, pts: [], t }; groups.set(gkey, g); }
           g.pts.push([gx, gy]);
+          if (__prof){ __prof.groupTotal++; if (t===6) __prof.lockTiles++; }
         }
         if (frac > 0){
           const fkey = `${frac.toFixed(3)}@${b+full}@${t}`;
           let fg = fracGroups.get(fkey); if (!fg){ fg = { h: frac, b: b+full, pts: [], t }; fracGroups.set(fkey, fg); }
           fg.pts.push([gx, gy]);
+          if (__prof){ __prof.groupTotal++; if (t===6) __prof.lockTiles++; }
         }
       }
     }
@@ -1090,6 +1102,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       }
     }
   }
+  if (__prof){ __prof.timeGroupMs += performance.now() - __tGroupStart; }
   if (groups.size === 0) return;
 
   // Ensure wall resources are initialized before drawing
@@ -1164,6 +1177,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
     // Optimization Item 1: Reduce per-frame allocations by reusing scratch buffers and
     // collapsing repeated bufferData calls inside the per-level loop.
     if ((g.t|0) === 6){
+      const __tLockStart = (__prof ? performance.now() : 0);
       const pts = g.pts;
       const countTiles = pts.length;
       if (!countTiles){ continue; }
@@ -1289,6 +1303,7 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
       gl.uniform1f(wall_u_alpha, 0.65);
       gl.uniform1i(wall_u_glitterMode, 0);
       gl.uniform3f(wall_u_voxCount, 1,1,1);
+      if (__prof){ __prof.timeLockRenderMs += performance.now() - __tLockStart; }
       continue;
     }
     // Special rendering for portal spans (t==5): orange, semi-transparent, glitter

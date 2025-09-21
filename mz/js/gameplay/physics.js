@@ -50,6 +50,8 @@ try {
  * @returns {number} Ground height (0.0 for empty space, 1.0+ for elevated surfaces)
  */
 function groundHeightAt(x, z){
+  const __profOn = (typeof window !== 'undefined' && window.__PROFILE_LOCK===true);
+  let __tStart = __profOn ? performance.now() : 0;
   // Convert world coordinates to grid coordinates
   const gx = Math.floor(x + MAP_W*0.5);
   const gz = Math.floor(z + MAP_H*0.5);
@@ -79,10 +81,26 @@ function groundHeightAt(x, z){
   });
   
   /** @type {Array<{b:number,h:number}>} */
-  let spanList = Array.isArray(spans) ? spans.slice() : [];
-  
-  // Filter out non-solid decorative spans (fences, portals, locks) from ground computation
-  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5) && (((s.t|0)||0) !== 6)));
+  // Use cached solid spans if available
+  let spanList = [];
+  const cachedSolids = (typeof window !== 'undefined' && window.getSolidSpansCached) ? window.getSolidSpansCached(key) : null;
+  if (cachedSolids){
+    spanList = cachedSolids;
+    if (__profOn){ // approximate profiling counts without iteration
+      const P = (window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 }));
+      P.spanTotal += (Array.isArray(spans)? spans.length : spanList.length);
+      P.spanSolid += spanList.length;
+      if (Array.isArray(spans)){
+        for (let i=0;i<spans.length;i++){ const s=spans[i]; if (s && ((s.t|0)||0)===6) P.spanLock++; }
+      }
+    }
+  } else if (Array.isArray(spans)){
+    for (let i=0;i<spans.length;i++){
+      const s = spans[i]; if (!s) continue; const t=((s.t|0)||0);
+      if (__profOn){ const P = (window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 })); P.spanTotal++; if (t===6) P.spanLock++; }
+      if (t===2||t===3||t===5||t===6) continue; spanList.push(s); if (__profOn){ window.__lockPhysProfile.spanSolid++; }
+    }
+  }
   
   // ============================================================================
   // Rail Platform System (Special Narrow Walkways)
@@ -192,6 +210,11 @@ function groundHeightAt(x, z){
   if (railGroundCandidate !== -Infinity) return railGroundCandidate;
   if (isGroundWall) return 1.0;
   if (isGroundHalf) return 0.5;
+  if (__profOn){
+    const P = window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 });
+    P.frames++;
+    P.timeSpanMs += (performance.now() - __tStart);
+  }
   return 0.0;
 }
 
@@ -271,6 +294,8 @@ function landingHeightAt(x, z, py, maxRise){
  * @returns {number} Ceiling height (bottom of span) or +Infinity if none
  */
 function ceilingHeightAt(x, z, py){
+  const __profOn = (typeof window !== 'undefined' && window.__PROFILE_LOCK===true);
+  let __tStart = __profOn ? performance.now() : 0;
   const gx = Math.floor(x + MAP_W*0.5);
   const gz = Math.floor(z + MAP_H*0.5);
   if (gx<0||gz<0||gx>=MAP_W||gz>=MAP_H) return Infinity;
@@ -283,9 +308,23 @@ function ceilingHeightAt(x, z, py){
   } catch(_){ spans = null; }
   const spansAllNonSolidCH = Array.isArray(spans) && spans.length>0 && spans.every(s => { if (!s) return false; const t=((s.t|0)||0); return (t===2||t===3||t===5||t===6); });
   /** @type {Array<{b:number,h:number}>} */
-  let spanList = Array.isArray(spans) ? spans.slice() : [];
-  // Remove fence spans (t==2/t==3), portal spans (t==5), and Lock spans (t==6) from ceiling computation; they are non-solid visuals
-  spanList = spanList.filter(s => s && ((((s.t|0)||0) !== 2) && (((s.t|0)||0) !== 3) && (((s.t|0)||0) !== 5) && (((s.t|0)||0) !== 6)));
+  let spanList = [];
+  const cachedSolids = (typeof window !== 'undefined' && window.getSolidSpansCached) ? window.getSolidSpansCached(key) : null;
+  if (cachedSolids){
+    spanList = cachedSolids;
+    if (__profOn){
+      const P = (window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 }));
+      P.spanTotal += (Array.isArray(spans)? spans.length : spanList.length);
+      P.spanSolid += spanList.length;
+      if (Array.isArray(spans)) for (let i=0;i<spans.length;i++){ const s=spans[i]; if (s && ((s.t|0)||0)===6) P.spanLock++; }
+    }
+  } else if (Array.isArray(spans)) {
+    for (let i=0;i<spans.length;i++){
+      const s = spans[i]; if (!s) continue; const t=((s.t|0)||0);
+      if (__profOn){ const P = (window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 })); P.spanTotal++; if (t===6) P.spanLock++; }
+      if (t===2||t===3||t===5||t===6) continue; spanList.push(s); if (__profOn){ window.__lockPhysProfile.spanSolid++; }
+    }
+  }
   // Rail-platform ceilings (bottom faces) only if in inner center bands to avoid sudden clips
   let railCeilCandidate = Infinity;
   try {
@@ -356,7 +395,13 @@ function ceilingHeightAt(x, z, py){
     if (!s) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
     if (b > py + eps && b < best) best = b;
   }
-  return Math.min(best, railCeilCandidate);
+  const res = Math.min(best, railCeilCandidate);
+  if (__profOn){
+    const P = window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 });
+    P.frames++;
+    P.timeSpanMs += (performance.now() - __tStart);
+  }
+  return res;
 }
 
 /**
@@ -367,6 +412,8 @@ function ceilingHeightAt(x, z, py){
  * @returns {boolean} True if there's a solid wall/obstacle at the position
  */
 function isWallAt(x, z) {
+  const __profOn = (typeof window !== 'undefined' && window.__PROFILE_LOCK===true);
+  let __tStart = __profOn ? performance.now() : 0;
   const gx = Math.floor(x + MAP_W*0.5);
   const gz = Math.floor(z + MAP_H*0.5);
   if (gx < 0 || gz < 0 || gx >= MAP_W || gz >= MAP_H) return true; // border = wall
@@ -383,17 +430,19 @@ function isWallAt(x, z) {
           : null;
   } catch(_){ spans = null; }
   
-  if (Array.isArray(spans) && spans.length) {
-    for (const s of spans) {
-      if (!s) continue;
-      const b = (s.b || 0), h = (s.h || 0), t = ((s.t|0) || 0);
-      if (h <= 0) continue;
-      
-      // Portal (t==5) and Lock (t==6) are non-solid
-      if (t === 5 || t === 6) continue;
-      
-      // Check if player Y intersects this span
-      if (py > b - 0.02 && py < b + h - 0.02) return true;
+  const cachedSolids = (typeof window !== 'undefined' && window.getSolidSpansCached) ? window.getSolidSpansCached(key) : null;
+  if (cachedSolids){
+    if (__profOn){ const P = (window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 })); P.spanSolid += cachedSolids.length; }
+    for (let i=0;i<cachedSolids.length;i++){
+      const s = cachedSolids[i]; const b=s.b||0, h=s.h||0; if (h<=0) continue; if (py > b - 0.02 && py < b + h - 0.02){ if (__profOn){ const P=window.__lockPhysProfile; P.frames++; P.timeSpanMs += (performance.now()-__tStart); } return true; }
+    }
+  } else if (Array.isArray(spans) && spans.length) {
+    for (let i=0;i<spans.length;i++){
+      const s = spans[i]; if (!s) continue; const b=(s.b||0), h=(s.h||0), t=((s.t|0)||0);
+      if (__profOn){ const P = (window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 })); P.spanTotal++; if (t===6) P.spanLock++; }
+      if (h<=0) continue; if (t===5||t===6||t===2||t===3) continue; // skip non-solid & fences
+      if (__profOn){ window.__lockPhysProfile.spanSolid++; }
+      if (py > b - 0.02 && py < b + h - 0.02){ if (__profOn){ const P=window.__lockPhysProfile; P.frames++; P.timeSpanMs += (performance.now()-__tStart); } return true; }
     }
   }
   
@@ -416,6 +465,7 @@ function isWallAt(x, z) {
     if (py > -0.1 && py < 1.5 - EPS) return true;
   }
   
+  if (__profOn){ const P = window.__lockPhysProfile || (window.__lockPhysProfile = { frames:0, spanTotal:0, spanLock:0, spanSolid:0, timeSpanMs:0 }); P.frames++; P.timeSpanMs += (performance.now() - __tStart); }
   return false;
 }
 
