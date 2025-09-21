@@ -31,6 +31,8 @@ This document lists potential performance optimizations for the `mz` portion of 
 - If cube geometry is trivial cost, leave—but combine uniform setup (avoid re-binding identical uniforms & textures between passes).
 **Expected Gain**: Moderate GPU time reduction & CPU state changes; fewer uniform calls.
 **Validation**: GPU frame capture before/after, draw call count.
+### Status Update (Partially Implemented)
+First optimization phase applied: redundant uniform/texture re-binding between the two player passes removed. Matrices, texture binding, and base color uniform now set once; second pass only toggles stipple + minimal state. Instrumentation via `window.__playerDrawStats` tracks `passes`, `uniformSets` (should be 1 per frame when active), and `reuse` (second pass leveraging prior state). Full single-pass merge (shader-based occlusion visualization) left as optional future step to preserve current visual behavior.
 
 ## 3. Matrix Multiplication Allocation in Camera Setup (Med-High Impact, Effort S, Category CPU/Memory)
 **Why**: Frequent allocation of new `Float32Array(16)` per matrix operation inside render loop (`mat4Multiply`, `mat4Perspective`, `mat4LookAt`). GC churn influences long sessions.

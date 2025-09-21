@@ -118,69 +118,41 @@ function drawPlayerAndTrail(mvp){
   const inBall = !!p.isBallMode;
   const flash = inBall && nowSec <= (p._ballFlashUntilSec || 0);
   
+  // Player dual-pass (visible + occluded) with uniform reuse instrumentation
+  if (!window.__playerDrawStats) window.__playerDrawStats = { passes:0, uniformSets:0, reuse:0 };
   if (!inBall || flash){
-    // === First Pass: Visible Player Geometry ===
-    // Draw only the visible (not occluded) parts, write to depth buffer
     gl.useProgram(playerProgram);
+    // Set once per frame for both passes
     gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
     gl.uniformMatrix4fv(pl_u_model, false, model);
-    
-    // Bind player texture array
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
     if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-    
-    // Configure color effects: white when frozen, red flash on ball mode enter
-    if (pl_u_forceWhite) {
-      gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
-    }
-    
-    // Disable stipple pattern for first pass
-    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) {
-      gl.uniform1i(pl_u_stipple, 0);
-    }
-    
-    // Render with depth testing and writing
+    if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
+    window.__playerDrawStats.uniformSets++;
+
+    // First (visible) pass
+    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 0);
     gl.bindVertexArray(playerVAO);
     gl.depthFunc(gl.LEQUAL);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.drawArrays(gl.TRIANGLES, 0, 36);
-    gl.bindVertexArray(null);
-  }
+    window.__playerDrawStats.passes++;
 
-  // === Second Pass: Occluded Player Geometry ===
-  // Draw occluded fragments with checkerboard stipple pattern
-  if (!inBall || flash){
-    gl.useProgram(playerProgram);
-    gl.uniformMatrix4fv(pl_u_mvp, false, mvp);
-    gl.uniformMatrix4fv(pl_u_model, false, model);
-    
-    // Bind player texture array
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, playerTexArray);
-    if (pl_u_tex) gl.uniform1i(pl_u_tex, 0);
-    
-    // Configure color effects
-    if (pl_u_forceWhite) {
-      gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0)));
-    }
-    
-    // Enable stipple pattern for occluded parts
-    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) {
-      gl.uniform1i(pl_u_stipple, 1);
-    }
-    
-    // Render only occluded fragments with alpha blending
-    gl.bindVertexArray(playerVAO);
+    // Second (occluded) pass reuses same bound program, textures & matrices
+    if (typeof pl_u_stipple !== 'undefined' && pl_u_stipple) gl.uniform1i(pl_u_stipple, 1);
+    if (pl_u_forceWhite) gl.uniform1i(pl_u_forceWhite, (flash ? 2 : (state.player.isFrozen ? 1 : 0))); // minimal state churn
+    window.__playerDrawStats.reuse++;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.depthFunc(gl.GREATER); // Only draw where player is behind existing geometry
-    gl.depthMask(false);      // Don't modify depth buffer
+    gl.depthFunc(gl.GREATER);
+    gl.depthMask(false);
     gl.drawArrays(gl.TRIANGLES, 0, 36);
+    window.__playerDrawStats.passes++;
     gl.depthMask(true);
     gl.disable(gl.BLEND);
-    gl.depthFunc(gl.LESS);    // Restore normal depth testing
+    gl.depthFunc(gl.LESS);
     gl.bindVertexArray(null);
   }
 
