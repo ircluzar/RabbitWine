@@ -267,7 +267,13 @@ function spawnRootBaselineItemsIfEmpty(){
       const x = (it.gx + 0.5) - W * 0.5;
       const z = (it.gy + 0.5) - H * 0.5;
       const y = (typeof it.y === 'number') ? it.y : 0.75;
-      try { window.spawnItemWorld(x, y, z, it.payload || '', { ghost:false }); } catch(_){ }
+      // Determine ghost state from save data so collected abilities reappear gray offline
+      let ghost = false;
+      try {
+        if (window.gameSave && it.payload && gameSave.isYellowPayloadCollected && gameSave.isYellowPayloadCollected(it.payload)) ghost = true;
+        else if (window.gameSave && !it.payload && gameSave.isItemCollected && gameSave.isItemCollected(x, z)) ghost = true; // legacy fallback
+      } catch(_){ }
+      try { window.spawnItemWorld(x, y, z, it.payload || '', { ghost }); } catch(_){ }
     }
     try { console.info('[ROOT][baseline-items] Injected baseline ability items (authoritative snapshot empty)'); } catch(_){ }
   } catch(_){ }
