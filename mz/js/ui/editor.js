@@ -846,10 +846,25 @@ try {
           }
         } catch(_){ }
         ev.preventDefault();
+        // Continuous removal for items currently not implemented (rarer) – treat as single action
+        state.editor._rmbDown = false;
         return;
       }
-      removeBlockAtVisor(); ev.preventDefault(); return; }
+      // First removal immediately
+      removeBlockAtVisor();
+      // Enable continuous removal mode: while RMB held & visor moves, new blocks are removed.
+      state.editor._rmbDown = true;
+      state.editor._lastRemovedKeyRMB = (state.editor.visor && state.editor.visor.gx>=0) ? (state.editor.visor.gx+','+state.editor.visor.gy+','+(state.editor.visor.base|0)) : null;
+      ev.preventDefault();
+      return; }
   });
+
+  // Global mouseup to cancel continuous right-button removal
+  window.addEventListener('mouseup', (ev)=>{
+    if (ev.button === 2){
+      if (state && state.editor){ state.editor._rmbDown = false; }
+    }
+  }, true);
 
   function raycastGridFromEditor(){
     // Raycast from camera through view direction (yaw + pitch), updating visor to match flying height and aim
@@ -886,6 +901,23 @@ try {
       outBase = Math.max(0, Math.floor(e.y));
     }
     state.editor.visor = { gx: outGX, gy: outGY, yCenter: outBase + 0.5, base: outBase, height: 1 };
+    // If continuous RMB removal enabled, attempt removal on newly hovered cell (one per cell layer)
+    try {
+      if (state.editor._rmbDown && !state.editor.modalOpen && state.editor.mode === 'fps'){
+        const vs = state.editor.visor;
+        if (vs && vs.gx >=0){
+          const keyR = vs.gx+','+vs.gy+','+(vs.base|0);
+            if (keyR !== state.editor._lastRemovedKeyRMB){
+              if (removeBlockAtVisor()){
+                state.editor._lastRemovedKeyRMB = keyR;
+              } else {
+                // If nothing removed (already empty) allow next attempt immediately when base changes again
+                state.editor._lastRemovedKeyRMB = keyR; // still mark to avoid tight loop on same empty cell
+              }
+            }
+        }
+      }
+    } catch(_){ }
   }
 
   // Modal builder

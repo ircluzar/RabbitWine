@@ -252,14 +252,19 @@ function drawBoundaryGrid(mvp, camEye, isThirdPerson){
   // We mirror the detection logic used for lock block alpha capping so visuals stay consistent.
   let lockModeActive = false;
   try {
+    // New stricter definition: only treat visuals as in "Lock" mode when the game has actually
+    // engaged a lock block transition (forced camera) – not merely when the player manually
+    // fixed the camera (lockCameraYaw) or has pointer/look lock. This prevents unintended
+    // boundary recoloring + world fade when user toggles a normal fixed camera.
+    // Sources of truth:
+    //   state.lockedCameraForced -> set on entering a lock span, cleared on exit
+    //   state._inLockNow         -> per-frame flag from physics identifying presence in lock span
+    // Debug / manual overrides remain available via window.__FORCE_LOCK_VISUALS or legacy __CAMERA_LOCKED.
     if (state) {
-      if (state._inLockNow) lockModeActive = true; // direct flag when inside a lock span
-      else if (state.camera && (state.camera.isLocked || state.camera.lockMode)) lockModeActive = true;
-      else if (state.lockCameraYaw) lockModeActive = true;
+      if (state.lockedCameraForced || state._inLockNow) lockModeActive = true;
     }
     if (!lockModeActive && typeof window !== 'undefined') {
-      if (window.__CAMERA_LOCKED) lockModeActive = true; // manual override
-      if (!lockModeActive && state?.editor?.pointerLocked) lockModeActive = true; // pointer lock implies look lock
+      if (window.__FORCE_LOCK_VISUALS || window.__CAMERA_LOCKED) lockModeActive = true; // explicit override only
     }
   } catch(_){ }
 

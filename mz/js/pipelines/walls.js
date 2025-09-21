@@ -1247,7 +1247,14 @@ function drawTallColumns(mvp, viewKind /* 'bottom' | 'top' | undefined */){
         let finalAlpha = alphaCamBase * levelFade * bottomFade;
         // Lock camera alpha cap logic
         try {
-          const lockModeActive = (()=>{ try { if (!state) return false; if (state.camera && (state.camera.isLocked || state.camera.lockMode)) return true; if (state.editor?.pointerLocked) return true; if (state.lockCameraYaw) return true; if (window.__CAMERA_LOCKED) return true; } catch(_){ } return false; })();
+          // Stricter lock visual gating:
+          // Only treat the world as in "Lock" visual mode when we are actually inside a lock span
+          // (state._inLockNow) or the physics system has forced the locked camera state
+          // (state.lockedCameraForced). Manual fixed-camera actions (e.g. user toggling
+          // lockCameraYaw, pointer lock, or editor look lock) NO LONGER trigger the heavy
+          // alpha reduction intended for puzzle lock sequences. Debug overrides remain via:
+          //   window.__FORCE_LOCK_VISUALS (new) or legacy window.__CAMERA_LOCKED.
+          const lockModeActive = (()=>{ try { if (!state) return false; if (state.lockedCameraForced || state._inLockNow) return true; if (window.__FORCE_LOCK_VISUALS || window.__CAMERA_LOCKED) return true; } catch(_){ } return false; })();
           if (lockModeActive && state.cameraKindCurrent === 'top'){
             if (window.__LOCK_WORLD_LOCKMODE_ALPHA !== undefined){
               const cap = window.__LOCK_WORLD_LOCKMODE_ALPHA; if (finalAlpha > cap) finalAlpha = cap;
