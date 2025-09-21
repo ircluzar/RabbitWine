@@ -1,186 +1,153 @@
-# NOCLIMB Walljump / Climb Persistence Theories
+# NOCLIMB Wall-Jump Bug: Ranked Theories
 
-This document captures hypotheses explaining why walljumps (or unintended vertical advancement) can still occur on `NOCLIMB` blocks or at world boundaries despite recent gating logic. The list is ordered from MOST likely to LEAST likely to resolve the issue quickly.
+Goal: Explain why players can still wall‑jump off NOCLIMB blocks that are intended to be the only surface disallowing wall‑jump, and list most likely fixes in order.
 
 ---
-## 1. Collision Classification Happens Too Late (State Leakage Between Axes)
-**Likelihood:** High
+## TL;DR (Top 3 Suspects)
+1. Missing span-level NOCLIMB classification in `collisionHorizontal.js` (elevated spans with `t:9` never set `collidedNoClimb`).
+2. `isWallAt()` does not treat base tile `TILE.NOCLIMB` as solid, so only span form is solid; logic divergence causes inconsistent detection paths and missed flags.
+3. Axis resolution + classification order can drop the NOCLIMB flag if the blocking collision that finally sets `hitWall` is a different axis / surface than the earlier NOCLIMB touch.
 
-### Explanation
-`processHorizontalCollision` runs Z then X axis sequentially. Shared temp flags (`lastHitNoClimb`, `lastHitSolidSpan`, `lastHitWorldBoundary`, etc.) are updated inside each axis attempt but not fully reset between axis passes. A wall-touch on one axis may be overridden or not properly captured when the final aggregated `hitWall` is true, causing `collidedNoClimb` to be false even though the blocking face was a `NOCLIMB` tile.
+---
+## Detailed Ranked Theories
+Each theory includes: Why it matters, Evidence from code, Reproduction hint, and Proposed fix.
 
-### Evidence Pointers
-- Flags defined at top of function and mutated inside axis blocks.
-- Classification IIFE added (our patch) sets `lastHitNoClimb` but does not clear it on non-collision frames before the other axis runs.
-- If second axis succeeds (no block) the aggregated state might end up with `hitWall=true` from first axis, but `collidedNoClimb=false` if not OR'ed correctly.
+### 1. (Most Likely) Elevated NOCLIMB spans (t:9) never set `lastHitNoClimb`
+**Why**: Wall-jump gating relies on `collidedNoClimb` from `processHorizontalCollision()`. That flag is set ONLY when `classifyX()` / `classifyZ()` see the *base map tile* `map[mapIdx(...)] === TILE.NOCLIMB`. Elevated NOCLIMB walls are implemented as spans with `t:9` (see editor comments and rendering pipeline), but classification never inspects spans for `t:9` when deciding collision type.
 
-### Fix Approach
-- Explicitly reset per-axis temporary flags before each axis check.
-- Introduce dedicated per-axis locals (e.g. `zNoClimbHitLocal`) capturing classification before any subsequent axis can overwrite shared variables.
-- Return early after first confirmed blocking axis? (Optional simplification if gameplay allows.)
+**Evidence**:
+- In `collisionHorizontal.js`, inside `classifyZ()` / `classifyX()`:
+  ```js
+  const tile = map[mapIdx(gxCurCell, gzNewCell)];
+  if (tile === TILE.NOCLIMB) lastHitNoClimb = true;
+  ```
+  No scan of `columnSpans` array for `t===9`.
+- `isWallAt()` (in `physics.js`) counts spans as solid unless `t` is 5,6,2,3 — so `t:9` *will* make `isWallAt()` return true (thus `hitWall = true`) without marking `collidedNoClimb`.
+- Result: `hitWall === true` while `collidedNoClimb === false` ⇒ `canWallJumpDecision()` passes the `if (collidedFenceRail || collidedNoClimb || ...) return false;` guard and wall-jump is allowed.
 
-### Quick Patch Sketch
+**Repro Hint**: Place an elevated NOCLIMB span (`t:9`) (not a ground tile 9) and attempt a wall-jump: succeeds. Compare with a pure ground tile 9 (if base tile variant even collides—see Theory 2).
+
+**Proposed Fix** (minimal): In both `classifyX()` and `classifyZ()`, after reading `tile`, iterate spans for that cell; if any span has `t===9` overlapping player Y, set `lastHitNoClimb = true`.
+
+### 2. Base tile NOCLIMB not treated as solid in `isWallAt()`
+**Why**: The base NOCLIMB tile (value 9) is declared "solid, disables walljump" (see comments), but `isWallAt()` only treats `WALL`, `BAD`, `FILL`, `HALF`, `FENCE/BADFENCE` as solid. `TILE.NOCLIMB` is omitted. If ground NOCLIMB tiles aren't recognized as walls, they won't trigger wall collision logic; paradoxically, player might not even get a wall-jump attempt there, pushing design to rely on spans only, which then fail Theory 1.
+
+**Evidence**:
+```js
+if (cv === TILE.WALL || cv === TILE.BAD || cv === TILE.FILL) {...}
+if (cv === TILE.HALF) {...}
+if (cv === TILE.FENCE || cv === TILE.BADFENCE) {...}
+// NO branch for TILE.NOCLIMB
 ```
-// Before Z axis:
-lastHitNoClimb = false; lastHitWorldBoundary = false; lastHitFenceRail = false; lastHitSolidSpan = false;
-// Capture into zNoClimbHitLocal etc. right after classification and before step-up logic.
-```
+Comments elsewhere: `# 9 = NOCLIMB marker (solid, disables walljump)`.
 
----
-## 2. Step-Up Logic Circumventing NOCLIMB Intent
-**Likelihood:** High
+**Impact**: Inconsistency between tile spec and collision logic; may create maps where designers think a ground NOCLIMB tile works but only elevated spans matter, compounding confusion.
 
-### Explanation
-`tryStepUp()` is called after detecting a horizontal block. It uses `landingHeightAt()` which treats `NOCLIMB` like a solid (top=1.0). This allows the player to mount the top lip even when lateral walljump should be forbidden. Once on top, future walljump gating is irrelevant because the player is considered grounded or on the ledge.
+**Proposed Fix**: Add `|| cv === TILE.NOCLIMB` to the first solid block condition.
 
-### Evidence Pointers
-- In `landingHeightAt()`, code path: `if (cv === TILE.WALL || cv === TILE.BAD || cv === TILE.NOCLIMB) candidates.push(1.0);`
-- No special filtering to disallow stepping up onto NOCLIMB surfaces.
+### 3. Axis Ordering / Mixed Collision Surfaces Drops NOCLIMB Flag
+**Why**: `collidedNoClimb` is aggregated only when an axis movement actually resolves into a wall (`!stepped`). If the first axis (say Z) contacts a NOCLIMB surface but then successfully steps or adjusts, and the second axis (X) finally collides with a normal wall, the final `hitWall` will be true while `collidedNoClimb` remains false.
 
-### Fix Approach
-- Prevent `NOCLIMB` tiles from being eligible in `landingHeightAt()` (either remove or gate by flag).
-- Alternate: Add a parameter `allowNoClimbStep` default true; pass false from horizontal collision for step-up trials.
+**Evidence**:
+- Aggregation code only executed inside the `if (!stepped)` block of each axis.
+- Potential for first axis to attempt `tryStepUp()` (returns true) preventing aggregation of the NOCLIMB flag.
 
-### Quick Patch Sketch
-```
-function landingHeightAt(x,z,py,maxRise, opts={}){
-  const allowNoClimb = opts.allowNoClimb !== false; // default true
-  ...
-  if (cv === TILE.NOCLIMB && !allowNoClimb) { /* skip */ } else if (...) { ... }
-}
-// call: tryStepUp(newX,p.z,p,0.5+1e-3,{allowNoClimb:false});
-```
+**Repro Hint**: Approach a NOCLIMB corner on a shallow angle allowing a partial step adjustment on one axis, then collide fully on the perpendicular axis.
 
----
-## 3. Walljump Condition Uses Upward Velocity Check (Sign Confusion)
-**Likelihood:** Medium
+**Proposed Fix**: Record NOCLIMB contact pre-step (classification phase) and aggregate even if the step succeeds OR add a separate boolean for "touchedNoClimbThisFrame" used by wall-jump gating.
 
-### Explanation
-Standard walljump branch: `if (... !p.grounded && p.vy > 0.0 ...)`. Depending on physics integration direction (positive vy may actually be upward or downward depending on convention). If convention mismatch occurs `p.vy > 0` could permit walljump attempts when player is ascending along a wall due to slight vertical jitter from step-up attempts, even after NOCLIMB gating is intended.
+### 4. Step-Up Logic Permitting Micro-Penetration Before Flag
+**Why**: `tryStepUp()` runs before setting `hitWall`. If a NOCLIMB surface allows a small vertical step (within 0.5 + epsilon), movement proceeds without collision; next frame player is adjacent to wall but not flagged as collidedNoClimb and might still manage to trigger a wall-jump off an adjacent non-NOCLIMB voxel.
 
-### Evidence Pointers
-- Need to verify sign convention: earlier code sets `p.vy = 8.5` on jump implying positive is upward (OK). Less likely root cause, but could allow early bounce before classification catches up.
+**Evidence**: Step height threshold `0.5 + 1e-3`; NOCLIMB design intent may not anticipate step-ups.
 
-### Fix Approach
-- Add a check that player vertical delta since `jumpStartY` is positive AND vertical speed is currently downward or near zero to ensure true wall contact friction scenario, or simply allow only when `p.vy < someSmallDownwardThreshold`.
+**Proposed Fix**: Disallow step-up attempts when base tile or span is NOCLIMB; early-return false in `tryStepUp()` when encountering t:9 or tile==NOCLIMB.
 
-### Patch Concept
-```
-if (p.canWallJump && hitWall && !p.grounded && p.vy <= 0.2 && ...)
-```
+### 5. Dash Collision Path Masks Missing NOCLIMB Flag
+**Why**: Dash-triggered wall-jumps bypass the ascend check. If dash hits an elevated NOCLIMB span (unflagged per Theory 1), wall-jump triggers more easily, making the bug more noticeable.
 
----
-## 4. World Boundary Treated as Generic Solid Before Classification
-**Likelihood:** Medium
+**Evidence**: `canWallJumpDecision({ dashCollision:true })` skips the ascend velocity check but still relies on `collidedNoClimb` (which is false due to Theory 1), enabling the jump.
 
-### Explanation
-`isWallAt()` returns `true` immediately for out-of-bounds positions. Our classification logic occurs only after failing the portal test inside each axis block. If the attempt is OOB, we mark world boundary, but depending on axis ordering the second axis may overwrite or not OR it into the aggregate.
+**Proposed Fix**: Same fix as Theory 1 automatically resolves; optionally add a secondary runtime assertion logging when `hitWall && spanIsNoClimb && !collidedNoClimb`.
 
-### Fix Approach
-- Early classification: if `outZ` or `outX` is true set a local `boundaryHit` and aggregate before any possibility to step up.
-- Prevent `tryStepUp()` from running for out-of-bounds collisions.
+### 6. Lack of Vertical Context for NOCLIMB (Player Y vs Span Y)
+**Why**: If the player collides at a Y outside the span's vertical band (e.g., brushing the top pixel), classification might see the span as solid (via generic span solidity rule) but a dedicated t:9 check would require overlap—so it was never attempted.
 
----
-## 5. Fence Rail Misclassification Masking NOCLIMB Flag
-**Likelihood:** Medium-Low
+**Evidence**: Generic solidity check for spans does not store t value; once any solid span blocks, detailed type info is lost unless classification had already tagged it.
 
-### Explanation
-Fence rail detection may set `lastHitFenceRail` first; later logic deciding OR of `collidedNoClimb` may skip if early return / branch triggered (e.g. rail snapping path). Player then still hits the wall (rail adjacent to NOCLIMB) and obtains a walljump because gating only checks `collidedFenceRail` OR `collidedNoClimb` not the underlying tile.
+**Proposed Fix**: Pass back surface metadata (type code) from `isWallAt()` or refactor to a `traceWallAt()` returning `{ solid:bool, types:Set }` so gating logic has precise context.
 
-### Fix Approach
-- Collect full collision bitmask before any early returns or snapping.
-- Introduce unified collision descriptor object with flags: `{ fence, noclimb, boundary, solidSpan }`.
+### 7. Potential Timing/Race With External Collision Module Load
+**Why**: Physics logs: `console.log('[PHYSICS] Using extracted horizontal collision module');` If races occur (one frame using fallback vs module), `collidedNoClimb` semantics might differ frame-to-frame allowing a jump window.
 
----
-## 6. Dash Branch vs Normal Walljump Branch Divergence
-**Likelihood:** Low
+**Evidence**: Guard clause early-exits if module not present, but no explicit sync barrier.
 
-### Explanation
-Dash walljump gating and normal walljump gating share similar but not identical condition ordering. If in one branch `collidedNoClimb` can still be false due to temporal ordering, dash branch may incorrectly allow bounce. (We already added gating there, so residual issue would indicate race in flag population.)
+**Proposed Fix**: Initialize collision module before enabling player control; assert once loaded.
 
-### Fix Approach
-- Consolidate walljump gating into a single helper: `canWallJumpFromCollision(result)` ensuring identical logic.
+### 8. Cooldown / Height Threshold Masking Misclassification
+**Why**: High `WALLJUMP_MIN_RISE` (1.5) plus ascend requirement might mean testers focus on higher rises where corner cases with NOCLIMB spans at partial heights are more frequent.
 
----
-## 7. Cached Solid Span Overrides NOCLIMB Tag
-**Likelihood:** Low
+**Evidence**: `WALLJUMP_MIN_RISE` constant; interplay not causal but can amplify bug visibility.
 
-### Explanation
-If a cell has both a column span and underlying base tile `NOCLIMB`, the cached solid spans path may cause `isWallAt()` to return true without inspecting the base tile type, so we never set `lastHitNoClimb`.
+**Proposed Fix**: Instrument logging: when `hitWall && !collidedNoClimb` log span types for diagnostics.
 
-### Fix Approach
-- When classifying, always also read base tile even if a cached solid span returned collision.
-- Add explicit base tile read inside classification IIFEs.
+### 9. Legacy Variable Reuse (`lastHitNoClimb`) Leading to Stale State
+**Why**: Single `lastHitNoClimb` reused across both axis passes; although aggregated logic resets through classification, a rare path (e.g., early return or future edits) could leak state.
 
----
-## 8. Jump Start Y Threshold Too Low (Early Walljump Enable)
-**Likelihood:** Low
+**Evidence**: Variable defined once at top; reused.
 
-### Explanation
-Requirement `(p.y - p.jumpStartY) >= 1.5` might be satisfied via a combined step-up + minor vertical velocity before actual sideways separation from wall, enabling bounce before classification updates flags.
-
-### Fix Approach
-- Track continuous wall contact frames and require N frames of non-NOCLIMB wall contact before allowing walljump.
-
----
-## 9. Multiple Physics Frames Per Render (Flag Lost Each Substep)
-**Likelihood:** Very Low
-
-### Explanation
-If physics runs multiple substeps and only last substep returns a hit without proper classification (or vice versa), final aggregated flags may miss NOCLIMB context.
-
-### Fix Approach
-- Persist collision flags across substeps in an accumulating structure for the frame, then finalize.
-
----
-## 10. External Script Overwriting processHorizontalCollision
-**Likelihood:** Very Low
-
-### Explanation
-Another script might replace `window.processHorizontalCollision` after our patch, removing new flags.
-
-### Fix Approach
-- Console assert once per frame that returned object has `collidedWorldBoundary` when `hitWall` and boundary expected. If missing, log override detection.
+**Proposed Fix**: Scope per-axis variables or explicitly reset before second axis classification.
 
 ---
 ## Recommended Fix Order
-1. Reset & isolate per-axis temp flags; aggregate with explicit locals.
-2. Exclude `NOCLIMB` tiles from `landingHeightAt()` (step-up) or add parameter to disable.
-3. Harden walljump condition with downward/neutral vy requirement.
-4. Ensure out-of-bounds classification occurs before any step-up attempt.
-5. Introduce unified collision descriptor object and helper gating logic.
-6. Always classify base tile even when span collision path triggers.
-
-Apply steps 1–2 first; they likely solve majority of unintended climbs.
+1. Implement span-level detection (Theory 1) – small, direct, high confidence.
+2. Add `TILE.NOCLIMB` to `isWallAt()` solid set (Theory 2) – enforces spec consistency.
+3. Refactor collision result to include `touchedNoClimb` independent of axis aggregation (covers Theory 3 & 4).
+4. Add debug instrumentation / assertions (supports remaining theories, validates fix).
 
 ---
-## Diagnostic Additions (Optional but Helpful)
-- Add `window.__DEBUG_NOCLIMB` toggle to print collision result flags when `hitWall`.
-- Visual overlay: color the face red if `NOCLIMB`, yellow if boundary.
-- Counter of consecutive frames against the same wall with collected flags (for testing gating robustness).
+## Example Patch Sketches (Not Applied Yet)
+
+1. In `collisionHorizontal.js` inside both `classifyZ()` / `classifyX()` blocks:
+```js
+// After reading base tile
+try {
+  const key = `${gxCurCell},${gzNewCell}`; // or appropriate coords
+  const spans = (typeof columnSpans !== 'undefined' && columnSpans instanceof Map) ? columnSpans.get(key)
+              : (typeof window !== 'undefined' && window.columnSpans instanceof Map) ? window.columnSpans.get(key)
+              : null;
+  if (Array.isArray(spans)) {
+    for (const s of spans) {
+      if (!s) continue; const t=((s.t|0)||0); if (t!==9) continue; const b=(s.b||0), h=(s.h||0); if (h<=0) continue;
+      const top = b + h; if (p.y >= b && p.y <= top - 0.02) { lastHitNoClimb = true; break; }
+    }
+  }
+} catch(_){ }
+```
+
+2. In `isWallAt()` add NOCLIMB base tile solidity:
+```js
+if (cv === TILE.WALL || cv === TILE.BAD || cv === TILE.FILL || cv === TILE.NOCLIMB) {
+  if (py > -EPS && py < 1.0 - EPS) return true;
+}
+```
+
+3. Add debug (temporary):
+```js
+if (hitWall && !collidedNoClimb) {
+  // scan spans & log if we actually hit a t:9
+}
+```
 
 ---
-## Minimal Patch Plan (Concrete)
-1. In `collisionHorizontal.js` before Z axis: `resetTempFlags()`; after classification store into local booleans; OR into aggregate inside the same collision branch only.
-2. Change `landingHeightAt` to accept `opts` and skip NOCLIMB when `allowNoClimb=false`; call from `tryStepUp` with false.
-3. Modify walljump condition: replace `p.vy > 0.0` with `p.vy <= 0.25` (tunable) and require `collisionDescriptor.allowsWallJump === true`.
-4. Add `allowsWallJump` computed as `!(noclimb || boundary || fenceRail)`.
+## Validation Plan After Fix
+- Unit-style scenario: Place a single elevated NOCLIMB span; attempt wall-jump → should fail.
+- Ground tile NOCLIMB after adding solidity: collision should occur and wall-jump should fail.
+- Mixed corner: NOCLIMB + normal wall adjacency; ensure touching normal wall still permits wall-jump (control test) but NOCLIMB face does not.
+- Dash collision into NOCLIMB: confirm no wall-jump rebound.
 
 ---
-## Success Criteria
-- Attempting to walljump against a pure NOCLIMB tile never triggers bounce or direction flip.
-- Holding forward into NOCLIMB does not produce upward step increments.
-- Regular WALL behavior unchanged.
-- Boundary edges behave like NOCLIMB (no walljump, no step-up beyond map).
+## Closing
+Primary root cause is almost certainly missing span-type classification for `t:9` (elevated NOCLIMB). Secondary inconsistency in `isWallAt()` exacerbates confusion. Address both and add logging to confirm resolution.
 
----
-## Rollback / Safety
-Changes are contained to collision classification and sampling logic. Provide a runtime flag (e.g., `window.__DISABLE_NOCLIMB_GATING`) to quickly revert gating if unforeseen side effects appear.
-
----
-## Open Questions
-- Should player be able to stand atop a NOCLIMB if they arrive from above? (Current design seems to permit; clarify spec.)
-- Are NOCLIMB blocks ever intentionally used as decorative non-step vertical guides? If yes, need a separate TILE type or per-instance metadata.
-
----
-*Prepared: 2025-09-21*
+Let me know if you want me to implement the patch directly.

@@ -771,6 +771,18 @@ function moveAndCollide(dt){
     return true;
   }
 
+  // Surface-specific rebound (vertical velocity imparted on walljump)
+  // Allows customizing bounce energy per collision surface.
+  // Currently: NOCLIMB => 0 (already blocked by decision, but safety),
+  // fence/world boundary => 0, default => 8.5 (configurable via global override)
+  function getWallJumpRebound(){
+    if (collidedNoClimb) return 0.0;
+    if (collidedWorldBoundary) return 0.0;
+    if (collidedFenceRail) return 0.0;
+    const base = (typeof window.__WALLJUMP_REBOUND_VY === 'number') ? window.__WALLJUMP_REBOUND_VY : 8.5;
+    return base;
+  }
+
   // Track previous vertical speed (can be referenced by other systems later)
   p._prevVy = p._prevVy === undefined ? p.vy : p._prevVy;
 
@@ -794,8 +806,8 @@ function moveAndCollide(dt){
     // Revert movement from this frame (handled by collision module)
     p.isDashing = false;
     // Wall jump: flip and give upward vy
-    p.angle += Math.PI;
-    p.vy = 8.5;
+  p.angle += Math.PI;
+  p.vy = getWallJumpRebound();
     p.grounded = false;
     p.jumpStartY = p.y;
     p.wallJumpCooldown = 0.22;
@@ -813,7 +825,7 @@ function moveAndCollide(dt){
 
   if (!p.isDashing && canWallJumpDecision({ dashCollision:false })) {
     p.angle += Math.PI;
-    p.vy = 8.5;
+    p.vy = getWallJumpRebound();
     p.grounded = false;
     p.jumpStartY = p.y;
     p.wallJumpCooldown = 0.22;
