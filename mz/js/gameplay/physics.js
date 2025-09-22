@@ -510,6 +510,10 @@ function updateLockCameraState(phase){
   const gzCam = Math.floor(p.z + MAP_H*0.5);
   // Raw geometric test (no hysteresis) updates _lastLockSpanB/_lastLockSpanTop when inside
   const rawInside = __isInsideLockAt(gxCam, gzCam, p.y);
+  if (rawInside){
+    // Track the exact grid cell containing the active lock span so we can detect true horizontal exits.
+    state._lastLockGX = gxCam; state._lastLockGZ = gzCam;
+  }
   // Hysteresis policy:
   //  - Enter when rawInside true.
   //  - Once inside, remain inside while py <= (_lastLockSpanTop + EXIT_TOP_PAD) and py >= (_lastLockSpanB - EXIT_BOTTOM_PAD)
@@ -518,8 +522,14 @@ function updateLockCameraState(phase){
   const EXIT_BOTTOM_PAD = 0.01; // allow slight dip below base (physics rounding)
   let inLockNow = rawInside;
   if (!rawInside && state._inLockNow && typeof state._lastLockSpanTop === 'number'){
-    const top = state._lastLockSpanTop; const b = state._lastLockSpanB||0;
-    if (p.y <= top + EXIT_TOP_PAD && p.y >= b - EXIT_BOTTOM_PAD){ inLockNow = true; }
+    // Only apply vertical hysteresis if we're still in the SAME lock cell. If we've moved to a new
+    // grid cell horizontally (left the lock blocks), unlock immediately (design requirement: camera
+    // lock should stop instantly when leaving lock blocks, not wait for vertical motion).
+    const sameCell = (gxCam === state._lastLockGX && gzCam === state._lastLockGZ);
+    if (sameCell){
+      const top = state._lastLockSpanTop; const b = state._lastLockSpanB||0;
+      if (p.y <= top + EXIT_TOP_PAD && p.y >= b - EXIT_BOTTOM_PAD){ inLockNow = true; }
+    }
   }
   // Track previous frame lock state (persisted once per frame before early update mutates current)
   if (phase === 'early'){
@@ -546,6 +556,27 @@ function updateLockCameraState(phase){
     state.lockedCameraForced = true;
     state.altBottomControlLocked = true;
     state.lockCameraYaw = true;
+    // NEW: If we enter a lock span that lies on the world boundary, snap yaw immediately so the
+    // player doesn't see a frame (or more) facing the old direction. Previously yaw only updated
+    // during the post phase border orientation pass; if entry happened mid-frame the camera could
+    // appear misaligned until movement or the post phase logic adjusted it.
+    try {
+      const maxGX = (MAP_W|0) - 1;
+      const maxGZ = (MAP_H|0) - 1;
+      const onBorder = (gxCam === 0 || gxCam === maxGX || gzCam === 0 || gzCam === maxGZ);
+      if (onBorder){
+        const sides = [];
+        if (gxCam === 0) sides.push('W'); else if (gxCam === maxGX) sides.push('E');
+        if (gzCam === 0) sides.push('N'); else if (gzCam === maxGZ) sides.push('S');
+        // Pick a deterministic side (prefer single; if corner, keep existing order for consistency)
+        const chosenSide = sides[0];
+        const yawForSide = (s)=>{ switch(s){ case 'W': return -Math.PI/2; case 'E': return Math.PI/2; case 'N': return 0.0; case 'S': return Math.PI; } return state.camYaw||0.0; };
+        const norm = (a)=>{ a = a % (Math.PI*2); if (a > Math.PI) a -= Math.PI*2; if (a < -Math.PI) a += Math.PI*2; return a; };
+        state.camYaw = norm(yawForSide(chosenSide));
+        state._lockBorderSide = chosenSide; // seed for post-phase logic
+        if (window.__DEBUG_LOCK_WALL){ console.log('[lock-wall] immediate border yaw set on entry side=',chosenSide,'yaw=',state.camYaw.toFixed(3)); }
+      }
+    } catch(_){ }
     try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
     try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
   }
@@ -565,6 +596,7 @@ function updateLockCameraState(phase){
       try { if (typeof window.setAltLockButtonIcon === 'function') window.setAltLockButtonIcon(); } catch(_){ }
       try { if (typeof window.setCameraStatusLabel === 'function') window.setCameraStatusLabel(); } catch(_){ }
       state._inLockNow = false; // finalize current state
+      try { delete state._lastLockGX; delete state._lastLockGZ; } catch(_){ }
     } else {
       // Cancel pending if we re-entered
       state._inLockNow = true;
@@ -758,7 +790,11 @@ function moveAndCollide(dt){
     if (p.grounded) return false;
     if ((p.wallJumpCooldown||0) > 0) return false;
     const rise = p.y - (p.jumpStartY || 0);
-    if (rise < WALLJUMP_MIN_RISE) return false;
+    // Height gate: only enforce minimum rise on standard (non-dash) wall jumps.
+    // Design change: If the player dashes into a wall, allow an immediate wall jump
+    // even if they have not yet risen above WALLJUMP_MIN_RISE. This enables low-to-ground
+    // dash -> walljump tech without loosening the normal anti-spam height requirement.
+    if (!dashCollision && rise < WALLJUMP_MIN_RISE) return false;
     if (!dashCollision){
       // Standard walljump path requires ascending
       if (p.vy < WALLJUMP_ASCEND_MIN_VY) return false;
