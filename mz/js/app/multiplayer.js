@@ -291,6 +291,15 @@ function mpApplyTileOps(version, ops){
   }
   mpTiles.version = version|0;
   try { if (typeof window.rebuildInstances === 'function') window.rebuildInstances(); } catch(_){ }
+  // Auto-prune illegitimate lock-only columns after diff application to prevent ghost camera locks.
+  try {
+    if (typeof window !== 'undefined' && typeof window.pruneLockSpans === 'function' && !window.__DISABLE_AUTO_LOCK_PRUNE){
+      const _lockPruneStats = window.pruneLockSpans({ source: 'multiplayer/diff' });
+      if (_lockPruneStats.removedColumns && window.__DEBUG_LOCK_PRUNE){
+        try { console.log('[LOCK][auto-prune][mp]', _lockPruneStats); } catch(_){ }
+      }
+    }
+  } catch(_){ }
   try {
     if (__mp_levelLoading){
       __mp_levelLoading = false;

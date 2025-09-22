@@ -1132,6 +1132,8 @@ try {
       if ((it.b|0) === 0 && typeof map !== 'undefined' && typeof TILE !== 'undefined'){
         const idx = mapIdx(it.gx, it.gy); map[idx] = isBad ? TILE.BAD : TILE.WALL;
       }
+      // After bulk application, run opportunistic prune in case user imported structure containing stray lock-only columns
+      try { if (typeof window.pruneLockSpans === 'function' && !window.__DISABLE_AUTO_LOCK_PRUNE) window.pruneLockSpans({ source:'editor/applyStructure' }); } catch(_){ }
     }
   }
 

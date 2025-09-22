@@ -163,6 +163,37 @@ function applyHeightData(heightData, replace=true){
       if (h > 0) removeVolumes.push({ x, y, b, h });
     }
   }
+
+  // ------------------------------------------------------------------------
+  // Stale Lock (t:6) Span Pruning
+  // In some edge cases (e.g., deleting lock spans, then reloading / applying a
+  // partial diff or mismatched baseline) orphaned lock spans can persist in
+  // columnSpans even though the editor/view no longer shows them. This causes
+  // camera lock to activate unexpectedly and can override future block edits.
+  // Strategy: After a full replace apply (replace===true), scan for lock spans
+  // whose column has no other non-lock span AND (optional) a global flag to
+  // enable pruning (default on). We remove zero-support lock spans so only
+  // intentional locks remain. Opt-out via window.__DISABLE_LOCK_PRUNE = true.
+  try {
+    // Use new reusable helper if available so logic stays consistent across triggers
+    if (replace && typeof window !== 'undefined' && typeof window.pruneLockSpans === 'function' && !window.__DISABLE_LOCK_PRUNE){
+      window.pruneLockSpans({ source: 'applyHeightData/replace' });
+    } else if (replace && typeof window !== 'undefined' && !window.__DISABLE_LOCK_PRUNE){
+      // Fallback inline (older builds before helper defined elsewhere in bundle order)
+      let prunedCells = 0; let prunedSpans = 0;
+      for (const [key, spans] of columnSpans.entries()){
+        if (!Array.isArray(spans) || !spans.length) continue;
+        const hasNonLock = spans.some(s=>s && (s.t|0)!==6);
+        if (hasNonLock) continue;
+        columnSpans.delete(key);
+        prunedCells++; prunedSpans += spans.length;
+        columnHeights.delete(key); columnBases.delete(key);
+      }
+      if ((prunedCells>0) && window.__DEBUG_LOCK_PRUNE){
+        try { console.log('[LOCK][prune][fallback] removed', prunedSpans, 'lock spans in', prunedCells, 'orphan columns'); } catch(_){ }
+      }
+    }
+  } catch(_){ }
 }
 
 // ============================================================================
@@ -189,6 +220,76 @@ if (typeof window !== 'undefined'){
   if (window._pendingMapHeights){
     applyHeightData(window._pendingMapHeights, true);
     delete window._pendingMapHeights;
+  }
+
+  // -----------------------------------------------------------------------
+  // Runtime Lock Column Pruner
+  // Provides a reusable way to remove illegitimate lock-only columns (all spans t:6)
+  // that can arise from stale diffs, snapshot merges, or partial editor undo sequences.
+  // Heuristic: a column whose every span has t:6 is considered transient marker-only
+  // and pruned unless user disables via __DISABLE_LOCK_PRUNE. Safe because genuine
+  // lock usage should accompany at least one solid/platform span in same column or
+  // can be immediately re-authored by the editor after pruning. Returns stats.
+  if (typeof window.pruneLockSpans !== 'function'){
+    window.pruneLockSpans = function(opts){
+      if (window.__DISABLE_LOCK_PRUNE) return { removedColumns:0, removedSpans:0, skipped:true };
+      let removedColumns=0, removedSpans=0; const removedKeys=[];
+      let overlapRemoved=0, overlapTrimmed=0, overlapColumns=0;
+      const isSolidType=(t)=>{ const tt=(t|0)||0; return (tt===0||tt===1||tt===9); };
+      // Pass 1: remove pure lock columns (legacy behavior)
+      for (const [key, spans] of columnSpans.entries()){
+        if (!Array.isArray(spans) || spans.length===0) continue;
+        let allLock=true; for (const s of spans){ if (!s || (s.t|0)!==6){ allLock=false; break; } }
+        if (!allLock) continue;
+        removedColumns++; removedSpans += spans.length; removedKeys.push(key);
+        columnSpans.delete(key); columnHeights.delete(key); columnBases.delete(key);
+      }
+      // Pass 2: (optional) prune lock spans that sit ON TOP OF or OVERLAP solid span vertical ranges.
+      // Rationale: ghost reloads sometimes re-inject lock spans coextensive with restored solids. These should vanish.
+      if (!window.__DISABLE_LOCK_OVERLAP_FIX){
+        for (const [key, spans] of columnSpans.entries()){
+          if (!Array.isArray(spans) || spans.length===0) continue;
+            const solids = spans.filter(s=> s && isSolidType(s.t));
+            if (!solids.length) continue; // nothing to compare
+            const locks = spans.filter(s=> s && (s.t|0)===6);
+            if (!locks.length) continue;
+            // Build merged solid coverage intervals for quick overlap tests
+            const solidIntervals = solids.map(s=>({ b:s.b|0, e:(s.b|0)+Number(s.h||0) })).filter(iv=>iv.e>iv.b).sort((a,b)=>a.b-b.b);
+            const mergedSolids=[]; for (const iv of solidIntervals){ if (!mergedSolids.length){ mergedSolids.push({ ...iv }); continue; } const last=mergedSolids[mergedSolids.length-1]; if (iv.b <= last.e){ last.e = Math.max(last.e, iv.e); } else { mergedSolids.push({ ...iv }); } }
+            let changed=false; const kept=[];
+            for (const s of spans){ if (!s) continue; if ((s.t|0)!==6){ kept.push(s); continue; }
+              const sStart = s.b|0; const sEnd = sStart + Number(s.h||0);
+              // Determine portions of lock span not overlapping any solid interval
+              let cursor = sStart; const freeSegments=[];
+              for (const iv of mergedSolids){ if (iv.e <= cursor) continue; if (iv.b >= sEnd) break; // no further overlap
+                if (iv.b > cursor){ freeSegments.push({ b:cursor, e:Math.min(iv.b, sEnd) }); }
+                cursor = Math.max(cursor, iv.e);
+                if (cursor >= sEnd) break;
+              }
+              if (cursor < sEnd){ freeSegments.push({ b:cursor, e:sEnd }); }
+              // Reconstruct lock pieces for non-overlapping regions
+              if (!freeSegments.length){ overlapRemoved++; changed=true; continue; }
+              if (freeSegments.length===1 && freeSegments[0].b===sStart && freeSegments[0].e===sEnd){ kept.push(s); continue; }
+              // Partial trims
+              for (const seg of freeSegments){ const h = seg.e - seg.b; if (h>0){ kept.push({ b:seg.b, h, t:6 }); overlapTrimmed++; } }
+              changed=true;
+            }
+            if (changed){
+              overlapColumns++;
+              // Merge adjacency among new lock fragments
+              kept.sort((a,b)=> (a.b - b.b) || (((a.t|0)||0) - ((b.t|0)||0)) );
+              const merged=[]; for (const s of kept){ if (!merged.length){ merged.push({ ...s }); continue; } const t=merged[merged.length-1]; if (((s.t|0)||0)===((t.t|0)||0) && s.b <= t.b + t.h){ const top=Math.max(t.b+t.h, s.b+s.h); t.h = top - t.b; } else { merged.push({ ...s }); } }
+              columnSpans.set(key, merged);
+              // Update legacy top span info
+              if (merged.length){ const topSpan = merged.reduce((a,b)=> ((a.b+a.h) >= (b.b+b.h)?a:b)); columnHeights.set(key, topSpan.h); columnBases.set(key, topSpan.b|0); } else { columnHeights.delete(key); columnBases.delete(key); }
+            }
+        }
+      }
+      if ((removedColumns || overlapRemoved || overlapTrimmed) && window.__DEBUG_LOCK_PRUNE){
+        try { console.log('[LOCK][prune]', { pureRemovedColumns:removedColumns, pureRemovedSpans:removedSpans, overlapRemoved, overlapTrimmed, overlapColumns, source: opts?opts.source:undefined }); } catch(_){ }
+      }
+      return { removedColumns, removedSpans, overlapRemoved, overlapTrimmed, overlapColumns, source: opts?opts.source:undefined, keys: removedKeys };
+    };
   }
 }
 
@@ -248,5 +349,15 @@ if (typeof window !== 'undefined'){
       columnHeights.delete(key); 
       columnBases.delete(key); 
     }
+
+    // Opportunistic pruning: if this update resulted in a pure lock-only column (all spans t:6)
+    // and auto-pruning is enabled, remove it immediately to prevent ghost locks lingering until next full cycle.
+    try {
+      if (typeof window !== 'undefined' && !window.__DISABLE_AUTO_LOCK_PRUNE && typeof window.pruneLockSpans === 'function'){
+        // Light check first to avoid scanning entire map if column clearly not all locks
+        const allLock = spanArray.length && spanArray.every(s=> s && (s.t|0)===6);
+        if (allLock){ window.pruneLockSpans({ source: 'setSpansAt/opportunistic' }); }
+      }
+    } catch(_){ }
   };
 }
