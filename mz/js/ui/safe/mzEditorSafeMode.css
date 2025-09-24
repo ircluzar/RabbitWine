@@ -1,0 +1,23 @@
+.mz-safe-editor{position:fixed;left:0;bottom:0;width:100%;background:#0f1014;color:#fff;font:12px/1.4 system-ui,Arial,sans-serif;z-index:1200;box-shadow:0 -2px 8px rgba(0,0,0,.5);max-height:60vh;display:flex;flex-direction:column;}
+.mz-safe-editor .mzse-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;background:#181a20;border-bottom:1px solid #222;}
+.mz-safe-editor .mzse-title{font-weight:600;letter-spacing:.5px;font-size:12px;}
+.mz-safe-editor .mzse-btn{background:#222;border:1px solid #333;color:#fff;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;}
+.mzse-tools{display:flex;gap:6px;padding:4px 6px;background:#181818;border-bottom:1px solid #222;flex-wrap:wrap;}
+.mz-safe-editor .mzse-btn:hover{background:#2c2f37;}
+.mz-safe-editor .mzse-list{flex:1 1 auto;overflow:auto;padding:6px 8px;display:grid;grid-auto-rows:auto;gap:4px;min-height:60px;}
+.mz-safe-editor .mzse-item{background:#191b20;border:1px solid #262a30;padding:4px 8px;border-radius:4px;font-size:11px;}
+.mz-safe-editor .mzse-empty{opacity:.6;padding:12px;text-align:center;font-size:11px;}
+.mz-safe-editor .mzse-panel{position:static;background:#121317;border-top:1px solid #222;padding:8px 10px;display:block;z-index:1201;max-height:45vh;overflow:auto;}
+.mz-safe-editor.collapsed .mzse-panel{display:none;}
+.mz-safe-editor.collapsed .mzse-list{display:none;}
+.mzse-toggle-collapse{margin-left:4px;}
+@media (max-width:600px){
+	.mzse-tools{gap:4px;padding:4px 4px;}
+	.mz-safe-editor .mzse-btn{padding:4px 6px;font-size:11px;}
+	.mz-safe-editor{max-height:70vh;}
+}
+.mz-safe-editor #mzse-form .row{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.mz-safe-editor #mzse-form label{display:flex;flex-direction:column;font-size:10px;font-weight:500;opacity:.85;flex:1 1 80px;min-width:80px;}
+.mz-safe-editor #mzse-form input,.mz-safe-editor #mzse-form select{background:#1c1f25;border:1px solid #30343c;color:#fff;padding:4px 6px;border-radius:4px;font-size:12px;}
+.mz-safe-editor #mzse-form .buttons{justify-content:space-between;margin-top:4px;}
+.mz-safe-editor #mzse-form .mzse-btn.alt{background:#252830;}

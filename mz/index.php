@@ -109,6 +109,9 @@ function bust($path) {
     <script src="<?php echo bust('./js/ui/seam.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/toggle.js'); ?>"></script>
   <script src="<?php echo bust('./js/ui/editor.js'); ?>"></script>
+  <!-- MZ Safe Mode resolver + lightweight safe editor (loads early so button can trigger) -->
+  <script src="<?php echo bust('./js/ui/safe/mzModeResolver.js'); ?>"></script>
+  <script src="<?php echo bust('./js/ui/safe/mzEditorSafeMode.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/dom-events.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/start-modal.js'); ?>"></script>
     <script src="<?php echo bust('./js/ui/notification-modal.js'); ?>"></script>

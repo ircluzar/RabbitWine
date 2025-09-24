@@ -157,7 +157,13 @@ try {
   }
 
   function onToggleEditorMode(){
-    if (!isDesktop()) { showTopNotification('Editor available on desktop only'); return; }
+    // If not desktop: activate MZ in-app safe mode (lighter inline UI), not the standalone site editor.
+    if (!isDesktop()) {
+      try { localStorage.setItem('mzEditorModePref','safe'); } catch(_){ }
+      // Only build/show the safe editor UI when user taps the button (no auto bootstrap elsewhere).
+      if (window.MZSafeEditor && typeof window.MZSafeEditor.enter==='function') window.MZSafeEditor.enter();
+      return; // Block desktop FPS path on mobile
+    }
     if (state.editor.mode !== 'fps') enterEditor(); else exitEditor();
   }
 
@@ -715,7 +721,7 @@ try {
     // Vertical: space up, ctrl down
     let up = 0;
     if (keys.has('space')) up += 1;
-    if (keys.has('Control') || keys.has('control')) up -= 1;
+    if (keys.has('c') || keys.has('C')) up -= 1;
     // Speed modifiers
     const boost = (keys.has('shift') || keys.has('Shift')) ? 2.0 : 1.0;
     const sp = (e.moveSpeed || 6.0) * boost;
@@ -1139,7 +1145,8 @@ try {
 
   // Drawing helpers used by pipelines/bootstrap
   function drawEditorVisorAndPreview(mvp){
-    if (state.editor.mode !== 'fps') return;
+    // Allow rendering in normal FPS editor OR in mobile safe mode (flag set by safe editor).
+    if (!(state.editor && (state.editor.mode === 'fps' || state.editor.safeModeVisorActive))) return;
     // Ensure these wireframes are always on top
     const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
     const prevBlend = gl.isEnabled(gl.BLEND);
@@ -1185,7 +1192,8 @@ try {
         }
       } catch(_){ }
       gl.uniform1f(tc_u_mulAlpha, visorAlpha);
-      gl.uniform3f(tc_u_lineColor, 1.0, 0.9, 0.2);
+  // Distinct line color for safe mode vs desktop (desktop = warm gold, safe = cyan)
+  if (state.editor.safeModeVisorActive) gl.uniform3f(tc_u_lineColor, 0.25, 0.95, 1.0); else gl.uniform3f(tc_u_lineColor, 1.0, 0.9, 0.2);
       if (typeof tc_u_useAnim !== 'undefined' && tc_u_useAnim) gl.uniform1i(tc_u_useAnim, 0);
       gl.bindVertexArray(trailCubeVAO);
       // Per-instance corners for single visor outline: jitter on top view, zeros on bottom

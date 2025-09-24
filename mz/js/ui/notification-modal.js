@@ -61,9 +61,9 @@
   @keyframes mz-crunch-normal-in{from{opacity:0}to{opacity:1}}
     /* subtle inner dither like start card */
     .mz-toast::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg, rgba(255,255,255,0.03) 0 2px, rgba(0,0,0,0) 2px 4px);opacity:.35;pointer-events:none;mix-blend-mode:overlay}
-    /* Clean, airy title */
-  .mz-toast .t-title{position:relative;font-weight:700;letter-spacing:1px;text-shadow:none}
-  .mz-toast .t-body{opacity:.9;font-size:12px;margin-top:4px}
+    /* Clean, airy title (doubled font sizes: base ~14px -> 28px, body 12px -> 24px) */
+  .mz-toast .t-title{position:relative;font-weight:700;letter-spacing:1px;text-shadow:none;font-size:28px;line-height:1.05;}
+  .mz-toast .t-body{opacity:.9;font-size:24px;line-height:1.05;margin-top:8px}
     /* Minimal bar accent */
     .mz-toast .bar{height:var(--px);margin-top:8px;background:repeating-linear-gradient(90deg, rgba(0,255,255,0.28) 0 calc(var(--px) * 3), rgba(255,0,255,0.28) calc(var(--px) * 3) calc(var(--px) * 6), transparent calc(var(--px) * 6) calc(var(--px) * 8));opacity:.5}
     /* Pop-in/out similar to start modal */

@@ -70,10 +70,21 @@
       repeating-linear-gradient(135deg, rgba(255,255,255,0.03) 0 2px, rgba(0,0,0,0) 2px 4px);
       opacity:.35;pointer-events:none;mix-blend-mode:overlay;}
 
-    /* Title: clean, airy */
-  .mz-start-title{position:relative;font-size:20px;font-weight:700;letter-spacing:1px;margin:0 0 12px;text-shadow:none;}
+    /* Title: clean, airy (font doubled from 20px -> 40px) */
+  .mz-start-title{position:relative;font-size:40px;color:rgba(193, 87, 255, 1);font-weight:700;letter-spacing:1px;margin:0 0 69px;text-shadow:none;}
 
-    .mz-start-desc{opacity:0.85;font-size:13px;margin:0 0 16px;}
+    /* Logo (ultrawide) */
+  .mz-start-logo{display:block;margin:0 auto 18px;max-width:100%;max-height:140px;width:100%;height:auto;object-fit:contain;image-rendering:pixelated;filter:none;}
+  /* Slight fade-in sync with card pop */
+  .mz-start-logo{animation:mz-logo-fade .35s ease-out;}
+  @keyframes mz-logo-fade{0%{opacity:0;transform:translateY(4px);}100%{opacity:1;transform:translateY(0);}}
+
+  /* Description font doubled from 13px -> 26px */
+  .mz-start-desc{opacity:0.85;font-size:26px;margin:0 0 16px;}
+
+    /* Controls block (compact) */
+  .mz-start-controls{opacity:0.8;font-size:18px;line-height:1.15;margin:0 0 18px;}
+  .mz-start-controls strong{display:block;font-size:20px;letter-spacing:1px;margin:0 0 6px;}
 
     /* Button */
   .mz-start-btn{font:inherit;font-weight:800;color:#ffffff;background:rgba(0,0,0,0.69);border:2px solid #ffffff;border-radius:0;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:none;font-size:14px;} 
@@ -191,10 +202,31 @@
   const corners = document.createElement('div');
   corners.className = 'corners';
 
+  // Game logo (ultrawide). Using root-relative path so it resolves regardless of current directory depth.
+  const logo = document.createElement('img');
+  logo.className = 'mz-start-logo';
+  // Primary logo (ultrawide) expected at mz/vrun.png (same directory level as index.php for this module)
+  logo.src = 'vrun.png';
+  logo.alt = 'Game Logo';
+  logo.decoding = 'async';
+  logo.loading = 'eager';
+  // Fallback to previous file name if the new one is missing
+  logo.onerror = function(){
+    if (!logo.dataset.fallback){
+      logo.dataset.fallback = '1';
+      logo.src = 'vrun64.png';
+    }
+  };
+
   const h = document.createElement('div');
   h.className = 'mz-start-title';
-  h.setAttribute('data-text','JANK WARNING');
-  h.textContent = 'JANK WARNING';
+  h.setAttribute('data-text','NEVER FALL');
+  h.textContent = 'NEVER FALL';
+
+  // Controls section (simple quick reference)
+  const controls = document.createElement('div');
+  controls.className = 'mz-start-controls';
+  controls.innerHTML = '<strong>Controls</strong>Mouse/Mobile: swipe & tap/click<br>Keyboard: WASD/exarrows & space';
 
   const p = document.createElement('div');
   p.className = 'mz-start-desc';
@@ -207,7 +239,9 @@
   btn.setAttribute('aria-label','Move');
   btn.onpointerdown = closeAndStart;
 
+  card.appendChild(logo);
   card.appendChild(h);
+  card.appendChild(controls);
   card.appendChild(p);
   card.appendChild(btn);
   card.appendChild(corners);

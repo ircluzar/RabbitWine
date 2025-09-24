@@ -996,6 +996,8 @@ function applyVerticalPhysics(dt){
   } else {
     // Fallback implementation if module not loaded
     if (state && state.editor && state.editor.mode === 'fps') return;
+    // Safe mobile editor no-gravity toggle
+    try { if (state && state.editor && state.editor.safeNoGravity) { p.vy = 0; } } catch(_){ }
     if (p.isBallMode) { return; }
     const prevGrounded = !!p.grounded;
     
@@ -1010,7 +1012,7 @@ function applyVerticalPhysics(dt){
           p.movementMode = 'accelerate';
         }
       } else {
-        p.vy += GRAV * dt;
+        if (!(state && state.editor && state.editor.safeNoGravity)) p.vy += GRAV * dt;
       }
     }
     
