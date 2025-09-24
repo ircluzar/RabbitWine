@@ -14,6 +14,13 @@ function processVerticalPhysics(dt, p) {
   const prevGrounded = !!p.grounded;
   if (state && state.editor && state.editor.mode === 'fps') return; // no gravity in editor
   if (p.isBallMode) { return; }
+  // NoClip: when enabled, skip all vertical collision resolution (no ground/ceiling clamps)
+  let safeNoClip = false; try { safeNoClip = !!(state && state.editor && state.editor.safeNoClip); } catch(_){ }
+  
+  // Safe mobile editor no-gravity toggle: zero vertical velocity and skip gravity accumulation
+  let safeNoGrav = false;
+  try { safeNoGrav = !!(state && state.editor && state.editor.safeNoGravity); } catch(_){ safeNoGrav = false; }
+  if (safeNoGrav) { p.vy = 0; }
   
   const GRAV = -12.5;
   
@@ -33,15 +40,15 @@ function processVerticalPhysics(dt, p) {
       }
       // Do not apply gravity while dashing
     } else {
-      p.vy += GRAV * dt;
+      if (!safeNoGrav) p.vy += GRAV * dt;
     }
   }
   
   let newY = p.y + p.vy * dt;
-  const gH = groundHeightAt(p.x, p.z);
+  const gH = safeNoClip ? -Infinity : groundHeightAt(p.x, p.z);
   
   // Ground collision (landing)
-  if (p.vy <= 0.0 && newY <= gH){
+  if (!safeNoClip && p.vy <= 0.0 && newY <= gH){
     newY = gH;
     
     // Check for hazardous landing
@@ -75,7 +82,7 @@ function processVerticalPhysics(dt, p) {
   }
   
   // Ceiling collision
-  if (p.vy > 0.0){
+  if (!safeNoClip && p.vy > 0.0){
     const cH = ceilingHeightAt(p.x, p.z, p.y);
     if (isFinite(cH)){
       const eps = 1e-4;

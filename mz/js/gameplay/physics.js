@@ -672,6 +672,8 @@ if (typeof window !== 'undefined'){
 function moveAndCollide(dt){
   if (state && state.editor && state.editor.mode === 'fps') return; // no collision in editor
   const p = state.player;
+  // NoClip: bypass horizontal collision entirely
+  let safeNoClip = false; try { safeNoClip = !!(state && state.editor && state.editor.safeNoClip); } catch(_){ }
   // If in ball mode: custom motion/bounce, ignore normal control-based movement
   if (p.isBallMode) {
     runBallMode(dt);
@@ -753,7 +755,11 @@ function moveAndCollide(dt){
   const wasDashing = !!p.isDashing;
   
   // Delegate horizontal collision processing to extracted module
-  if (typeof window.processHorizontalCollision !== 'function') {
+  if (safeNoClip){
+    // Apply raw step without any collision response
+    p.x = oldX + stepX;
+    p.z = oldZ + stepZ;
+  } else if (typeof window.processHorizontalCollision !== 'function') {
     console.error('[PHYSICS] processHorizontalCollision not available - collision modules not loaded');
     console.log('[PHYSICS] Available window functions:', Object.keys(window).filter(k => k.includes('collision') || k.includes('Collision')));
     return; // Early exit to prevent runtime error
@@ -761,12 +767,15 @@ function moveAndCollide(dt){
   // Removed verbose runtime log: '[PHYSICS] Using extracted horizontal collision module'
   // If needed for debugging, re-enable behind a flag:
   // if (window.__DEBUG_PHYSICS) console.log('[PHYSICS] Using extracted horizontal collision module');
-  const horizontalResult = window.processHorizontalCollision(dt, p, stepX, stepZ);
-  const hitWall = horizontalResult.hitWall;
-  const collidedFenceRail = horizontalResult.collidedFenceRail;
-  const collidedSolidSpan = horizontalResult.collidedSolidSpan;
-  const collidedNoClimb = horizontalResult.collidedNoClimb;
-  const collidedWorldBoundary = horizontalResult.collidedWorldBoundary;
+  let hitWall=false, collidedFenceRail=false, collidedSolidSpan=false, collidedNoClimb=false, collidedWorldBoundary=false;
+  if (!safeNoClip){
+    const horizontalResult = window.processHorizontalCollision(dt, p, stepX, stepZ);
+    hitWall = horizontalResult.hitWall;
+    collidedFenceRail = horizontalResult.collidedFenceRail;
+    collidedSolidSpan = horizontalResult.collidedSolidSpan;
+    collidedNoClimb = horizontalResult.collidedNoClimb;
+    collidedWorldBoundary = horizontalResult.collidedWorldBoundary;
+  }
 
   // -------------------------------------------------------------------------
   // Centralized walljump eligibility logic

@@ -20,17 +20,18 @@
     wrap.id='mz-safe-editor-root';
     wrap.className='mz-safe-editor';
     wrap.innerHTML = '<div class="mzse-bar">'
-      + '<span class="mzse-title">Safe Editor</span>'
+      + '<span class="mzse-title">Mobile Editor</span>'
       + '<span id="mzse-target" class="mzse-target" style="margin-left:6px;opacity:.8;font-size:11px;">Target: (--,--)</span>'
-      + '<button type="button" id="mzse-add" class="mzse-btn" style="margin-left:auto;">Add</button>'
-  + '<button type="button" id="mzse-collapse" class="mzse-btn mzse-toggle-collapse" aria-pressed="false" title="Collapse/expand editor">Collapse</button>'
-      + '<button type="button" id="mzse-exit" class="mzse-btn">Exit</button>'
       + '</div>'
       + '<div class="mzse-tools">'
         + '<button type="button" id="mzse-autobase" class="mzse-btn" aria-pressed="true" title="Toggle auto base height tracking">AutoBase</button>'
+        + '<button type="button" id="mzse-strafe" class="mzse-btn" aria-pressed="false" title="Keep visor pointing forward while moving sideways/back">Strafe</button>'
         + '<button type="button" id="mzse-nograv" class="mzse-btn" aria-pressed="false" title="Toggle no gravity mode">NoGravity</button>'
+        + '<button type="button" id="mzse-noclip" class="mzse-btn" aria-pressed="false" title="Toggle no collision (pass through walls)">NoClip</button>'
+        + '<button type="button" id="mzse-moveup" class="mzse-btn" title="Move player up by 1 block">Move Up</button>'
+        + '<button type="button" id="mzse-movedown" class="mzse-btn" title="Move player down by 1 block">Move Down</button>'
       + '</div>'
-      + '<div id="mzse-add-panel" class="mzse-panel" hidden>'
+      + '<div id="mzse-add-panel" class="mzse-panel">'
         + '<form id="mzse-form" autocomplete="off">'
           + '<div class="row"><label>Type<select id="mzse-type"><option>BASE</option><option>BAD</option><option>HALF</option><option>FENCE</option><option>BADFENCE</option><option>LEVELCHANGE</option><option>NOCLIMB</option><option>LOCK</option></select></label></div>'
           + '<div class="row"><label>X<input type="number" id="mzse-gx" min="0" value="0"></label><label>Y<input type="number" id="mzse-gy" min="0" value="0"></label><label>Base<input type="number" id="mzse-base" min="0" value="0"></label></div>'
@@ -38,7 +39,7 @@
           + '<div class="row buttons">'
             + '<button type="submit" id="mzse-add-btn" class="mzse-btn">Add</button>'
             + '<button type="button" id="mzse-remove-btn" class="mzse-btn">Remove</button>'
-            + '<button type="button" id="mzse-cancel" class="mzse-btn alt">Close</button>'
+            + '<button type="button" id="mzse-cancel-btn" class="mzse-btn">Close</button>'
           + '</div>'
         + '</form>'
       + '</div>';
@@ -52,6 +53,7 @@
   // by temporarily populating state.editor.visor while safe mode is open.
   let overlayBox = null; // legacy 2D overlay (kept as fallback if GL draw unavailable)
   let use3DVisor = false;
+  let __wiredOnce = false;
 
   function clamp(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
   function computeTarget(){
@@ -63,8 +65,18 @@
       const MW = (typeof window.MAP_W==='number')?window.MAP_W:128;
       const MH = (typeof window.MAP_H==='number')?window.MAP_H:128;
   // Forward vector in movement code uses (sin(angle), -cos(angle)) for (x,z).
-  const fwdX = Math.sin(p.angle) * dist;
-  const fwdZ = -Math.cos(p.angle) * dist;
+  // In Camera Fixed mode (altBottomControlLocked), define "forward" using the camera yaw so
+  // the visor stays in front from the camera's perspective regardless of player facing.
+  let useAngle = p.angle;
+  try {
+    const cameraFixed = !!(state && state.altBottomControlLocked);
+    if (cameraFixed){
+      const yaw = (typeof state.camYaw === 'number') ? state.camYaw : p.angle;
+      useAngle = yaw;
+    }
+  } catch(_){ }
+  const fwdX = Math.sin(useAngle) * dist;
+  const fwdZ = -Math.cos(useAngle) * dist;
   const tx = p.x + fwdX; // world X (centered)
   const tz = p.z + fwdZ; // world Z (centered)
       // Use floor on translated coordinates for stable cell targeting (consistent with other systems using floor(player.x + MAP_W*0.5)).
@@ -220,7 +232,39 @@
     // Reflect current type selection
     try { const sel=document.getElementById('mzse-type'); if (sel) sel.value=currentType; } catch(_){ }
   }
-  function hideAdd(){ document.getElementById('mzse-add-panel').hidden=true; }
+  function hideAdd(){ const p=document.getElementById('mzse-add-panel'); if (p) p.hidden=true; }
+
+  function getFormValsOrDefaults(){
+    // Prefer form inputs if available; otherwise fall back to currentType, computeTarget, and player.y
+    let type = currentType;
+    let gx = 0, gy = 0, base = 0, dest = '';
+    try { const sel=document.getElementById('mzse-type'); if (sel && sel.value) type = sel.value.trim(); } catch(_){ }
+    try {
+      const gxEl=document.getElementById('mzse-gx'); const gyEl=document.getElementById('mzse-gy');
+      if (gxEl && gyEl){ gx = parseInt(gxEl.value||'0',10); gy = parseInt(gyEl.value||'0',10); }
+      else {
+        const t = computeTarget(); if (t){ gx=t.gx; gy=t.gy; }
+      }
+    } catch(_){ const t = computeTarget(); if (t){ gx=t.gx; gy=t.gy; } }
+    try {
+      const be=document.getElementById('mzse-base');
+      if (be) base = parseInt(be.value||'0',10);
+      else if (state && state.player) base = Math.max(0, Math.floor(state.player.y||0));
+    } catch(_){ if (state && state.player) base = Math.max(0, Math.floor(state.player.y||0)); }
+    if (type === 'LEVELCHANGE'){
+      try { const de=document.getElementById('mzse-dest'); if (de) dest = (de.value||'').trim(); } catch(_){ dest=''; }
+    }
+    return { type, gx, gy, base, dest };
+  }
+
+  function doAdd(){
+    const { type, gx, gy, base, dest } = getFormValsOrDefaults();
+    if (placeViaFull(type, gx, gy, base, dest)){
+      hideAdd();
+      return true;
+    }
+    return false;
+  }
 
   // Minimal 2D overlay visor (approximate) using canvas bounding box mapping.
   function ensureOverlay(){
@@ -264,17 +308,7 @@
   function removeOverlay(){ if (overlayBox){ try { overlayBox.remove(); } catch(_){ } overlayBox=null; } }
 
   function wire(){
-    const addBtn = document.getElementById('mzse-add'); if (addBtn) addBtn.addEventListener('click', showAdd);
-    const exitBtn = document.getElementById('mzse-exit'); if (exitBtn) exitBtn.addEventListener('click', hideSafeMode);
-    const collapseBtn = document.getElementById('mzse-collapse'); if (collapseBtn){
-      collapseBtn.addEventListener('click', ()=>{
-        const root = document.getElementById('mz-safe-editor-root');
-        if (!root) return;
-        const isCollapsed = root.classList.toggle('collapsed');
-        collapseBtn.setAttribute('aria-pressed', isCollapsed? 'true':'false');
-        collapseBtn.textContent = isCollapsed? 'Expand':'Collapse';
-      });
-    }
+    if (__wiredOnce) return; // prevent duplicate listeners if enter() called again while UI present
     const autoBtn = document.getElementById('mzse-autobase'); if (autoBtn){
       autoBtn.addEventListener('click', ()=>{
         followBase = !followBase;
@@ -284,7 +318,43 @@
         }
       });
     }
+    const strafeBtn = document.getElementById('mzse-strafe'); if (strafeBtn){
+      // Initialize pressed/disabled state from camera mode and forced lock
+      try {
+        if (state){
+          const pressed = !!state.altBottomControlLocked;
+          strafeBtn.setAttribute('aria-pressed', pressed ? 'true':'false');
+          if (state.lockedCameraForced) strafeBtn.setAttribute('aria-disabled','true'); else strafeBtn.removeAttribute('aria-disabled');
+        }
+      } catch(_){ }
+      strafeBtn.addEventListener('click', ()=>{
+        try {
+          if (!state) return;
+          // Respect forced lock: do nothing
+          if (state.lockedCameraForced){ return; }
+          // Prefer global toggle if available to keep HUD/labels in sync
+          if (typeof window.onToggleAltControlLock === 'function'){
+            window.onToggleAltControlLock();
+          } else {
+            state.altBottomControlLocked = !state.altBottomControlLocked;
+            state.lockCameraYaw = !!state.altBottomControlLocked;
+            if (!state.lockCameraYaw && state.player){
+              const ang = (typeof normalizeAngle === 'function') ? normalizeAngle(state.player.angle) : state.player.angle;
+              state.camYaw = ang;
+            }
+          }
+          // Keep visor stable when camera is Fixed
+          if (!state.editor) state.editor = {};
+          state.editor.safeStrafe = !!state.altBottomControlLocked;
+          if (state.editor.safeStrafe && state.player){ state.editor._strafeRefAngle = state.player.angle; }
+          // Reflect current state on the button
+          strafeBtn.setAttribute('aria-pressed', state.altBottomControlLocked ? 'true':'false');
+        } catch(_){ }
+      });
+    }
     const noGravBtn = document.getElementById('mzse-nograv'); if (noGravBtn){
+      // Initialize pressed state from flag if available
+      try { if (state && state.editor) noGravBtn.setAttribute('aria-pressed', state.editor.safeNoGravity ? 'true':'false'); } catch(_){ }
       noGravBtn.addEventListener('click', ()=>{
         try {
           if (state && state.editor){
@@ -294,16 +364,52 @@
         } catch(_){ }
       });
     }
+    const noClipBtn = document.getElementById('mzse-noclip'); if (noClipBtn){
+      // Initialize pressed state
+      try { if (state && state.editor) noClipBtn.setAttribute('aria-pressed', state.editor.safeNoClip ? 'true':'false'); } catch(_){ }
+      noClipBtn.addEventListener('click', ()=>{
+        try {
+          if (!state || !state.editor) return;
+          state.editor.safeNoClip = !state.editor.safeNoClip;
+          // Auto-enable NoGravity when enabling NoClip
+          if (state.editor.safeNoClip && !state.editor.safeNoGravity){
+            state.editor.safeNoGravity = true;
+            // Reflect on NoGravity button if present
+            try { if (noGravBtn) noGravBtn.setAttribute('aria-pressed','true'); } catch(_){ }
+          }
+          noClipBtn.setAttribute('aria-pressed', state.editor.safeNoClip ? 'true':'false');
+        } catch(_){ }
+      });
+    }
+    const moveUpBtn = document.getElementById('mzse-moveup'); if (moveUpBtn){
+      moveUpBtn.addEventListener('click', ()=>{
+        try {
+          if (state && state.player){
+            state.player.y = (state.player.y||0) + 1;
+            state.player.vy = 0; // prevent immediate extra motion
+            state.player.grounded = false;
+          }
+        } catch(_){ }
+      });
+    }
+    const moveDownBtn = document.getElementById('mzse-movedown'); if (moveDownBtn){
+      moveDownBtn.addEventListener('click', ()=>{
+        try {
+          if (state && state.player){
+            state.player.y = (state.player.y||0) - 1;
+            state.player.vy = 0;
+            state.player.grounded = false;
+          }
+        } catch(_){ }
+      });
+    }
     const form = document.getElementById('mzse-form'); if (form){
       form.addEventListener('submit', (e)=>{
         e.preventDefault();
-        const type = document.getElementById('mzse-type').value.trim();
-        const gx = parseInt(document.getElementById('mzse-gx').value||'0',10);
-        const gy = parseInt(document.getElementById('mzse-gy').value||'0',10);
-        const base = parseInt(document.getElementById('mzse-base').value||'0',10);
-        const dest = (type==='LEVELCHANGE') ? (document.getElementById('mzse-dest').value||'').trim() : '';
-        if (type==='LEVELCHANGE') document.getElementById('mzse-dest-wrap').style.display='block'; else document.getElementById('mzse-dest-wrap').style.display='none';
-        if (placeViaFull(type,gx,gy,base,dest)){ hideAdd(); }
+        const typeSel = document.getElementById('mzse-type');
+        const tVal = typeSel ? typeSel.value.trim() : currentType;
+        if (tVal==='LEVELCHANGE') document.getElementById('mzse-dest-wrap').style.display='block'; else document.getElementById('mzse-dest-wrap').style.display='none';
+        doAdd();
       });
       const removeBtn = document.getElementById('mzse-remove-btn');
       if (removeBtn){
@@ -316,6 +422,13 @@
           removeViaFull(type,gx,gy,base);
         });
       }
+      const cancelBtn = document.getElementById('mzse-cancel-btn');
+      if (cancelBtn){
+        cancelBtn.addEventListener('click', ()=>{
+          // Close the entire editor overlay
+          hideSafeMode();
+        });
+      }
     }
     const typeSel = document.getElementById('mzse-type'); if (typeSel){
       typeSel.addEventListener('change', ()=>{
@@ -326,7 +439,8 @@
     const baseEl = document.getElementById('mzse-base'); if (baseEl){
       baseEl.addEventListener('focus', ()=>{ followBase=false; const ab=document.getElementById('mzse-autobase'); if (ab) ab.setAttribute('aria-pressed','false'); });
     }
-  const cancel = document.getElementById('mzse-cancel'); if (cancel) cancel.addEventListener('click', ()=>{ hideSafeMode(); });
+  // No cancel/close button in always-expanded mode
+    __wiredOnce = true;
   }
 
   function hideSafeMode(){
@@ -334,6 +448,7 @@
     try { if (state && state.editor){ state.editor.safeModeVisorActive = false; } } catch(_){ }
     removeOverlay();
     const r=document.getElementById('mz-safe-editor-root'); if (r) r.remove();
+    __wiredOnce = false; // allow re-wiring on next enter after DOM is rebuilt
     try { localStorage.setItem('mzEditorModePref','desktop'); } catch(_){ }
   }
 
