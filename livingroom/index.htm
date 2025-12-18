@@ -1,0 +1,1849 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>RabbitWine Livingroom</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap" rel="stylesheet" />
+	<style>
+		:root {
+			--bg: #0c0d10;
+			--panel: rgba(17, 19, 26, 0.9);
+			--panel-border: rgba(255, 255, 255, 0.08);
+			--accent: #f5c451;
+			--text: #f7f7f2;
+			--muted: #9aa0ad;
+			--shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+			--global-zoom: 1;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		html, body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			background: radial-gradient(circle at 20% 20%, rgba(245, 196, 81, 0.08), transparent 35%),
+				radial-gradient(circle at 80% 10%, rgba(147, 227, 255, 0.08), transparent 35%),
+				var(--bg);
+			color: var(--text);
+			font-family: "Sora", system-ui, -apple-system, sans-serif;
+			overflow: hidden;
+		}
+
+		body {
+			display: grid;
+			place-items: center;
+		}
+
+		#app {
+			position: relative;
+			width: 100%;
+			height: 100%;
+		}
+
+		#menuToggle {
+			position: fixed;
+			top: 16px;
+			left: 16px;
+			z-index: 2000;
+			width: 48px;
+			height: 48px;
+			border-radius: 14px;
+			border: 1px solid var(--panel-border);
+			background: var(--panel);
+			color: var(--text);
+			font-size: 24px;
+			cursor: pointer;
+			box-shadow: var(--shadow);
+			display: grid;
+			place-items: center;
+			transition: transform 0.15s ease, background 0.2s ease;
+		}
+
+		#menuToggle:hover {
+			transform: translateY(-2px);
+			background: rgba(255, 255, 255, 0.06);
+		}
+
+		#viewport {
+			position: relative;
+			width: 100vw;
+			height: 100vh;
+			padding: clamp(12px, 2vw, 24px);
+			overflow: hidden;
+			display: grid;
+			place-items: center;
+			touch-action: none;
+		}
+
+		#stageFrame {
+			position: relative;
+			width: min(92vw, 1800px);
+			aspect-ratio: 16 / 9;
+			max-height: calc(100vh - 96px);
+			border-radius: 18px;
+			background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+			border: 1px solid var(--panel-border);
+			overflow: hidden;
+			box-shadow: var(--shadow);
+		}
+
+		#webcamFxCanvas {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+			z-index: 50;
+			mix-blend-mode: normal;
+		}
+
+		#stageScroller {
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+		}
+
+		#stage {
+			position: relative;
+			width: 100%;
+			height: 100%;
+			background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)),
+				radial-gradient(circle at 70% 60%, rgba(57, 140, 255, 0.12), rgba(57, 140, 255, 0));
+			overflow: hidden;
+			transform-origin: center center;
+			transform: scale(var(--global-zoom));
+			cursor: grab;
+			touch-action: pinch-zoom pan-x pan-y;
+		}
+
+		#stage.dragging {
+			cursor: grabbing;
+		}
+
+		#objectLayer {
+			position: absolute;
+			inset: 0;
+		}
+
+		.object {
+			position: absolute;
+			transform: translate(-50%, -50%) scale(1);
+			transform-origin: center center;
+			user-select: none;
+			touch-action: none;
+			will-change: transform, top, left;
+			border-radius: 6px;
+			cursor: grab;
+		}
+
+		.object.locked,
+		.object.base {
+			cursor: default;
+		}
+
+		.object.base {
+			inset: 0;
+			width: 100%;
+			height: 100%;
+			transform: none;
+			pointer-events: none;
+		}
+
+		.object img,
+		.object video {
+			display: block;
+			max-width: 320px;
+			max-height: 320px;
+			border-radius: 6px;
+			pointer-events: none;
+		}
+
+		.object.base img,
+		.object.base video {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			max-width: none;
+			max-height: none;
+			box-shadow: none;
+		}
+
+		.shadow {
+			position: absolute;
+			left: calc(50% + var(--shadow-offset-x, 0px));
+			top: calc(100% + var(--shadow-offset-y, 0px));
+			transform: translate(-50%, -50%);
+			pointer-events: none;
+			border-radius: 999px;
+			filter: blur(4px);
+			background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 70%);
+			opacity: var(--shadow-opacity, 0.45);
+			width: var(--shadow-size, 220px);
+			height: calc(var(--shadow-size, 220px) * 0.55);
+		}
+
+		#hud {
+			position: absolute;
+			bottom: 16px;
+			right: 16px;
+			z-index: 1500;
+			display: grid;
+			gap: 8px;
+			grid-template-columns: 1fr;
+			padding: 10px 12px;
+			background: var(--panel);
+			border: 1px solid var(--panel-border);
+			border-radius: 12px;
+			box-shadow: var(--shadow);
+			max-width: 320px;
+		}
+
+		#hudHeader {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+		}
+
+		#hudControls {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+
+		#hud.collapsed #hudControls {
+			display: none;
+		}
+
+		#zoomValue {
+			color: var(--muted);
+			font-size: 12px;
+			width: 72px;
+		}
+
+		input[type="range"] {
+			width: 160px;
+			accent-color: var(--accent);
+		}
+
+		#welcomeOverlay {
+			position: fixed;
+			inset: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			background: rgba(0, 0, 0, 0.1);
+			z-index: 3500;
+			padding: 20px;
+		}
+
+		#welcomeCard {
+			position: relative;
+			background: var(--panel);
+			border: 1px solid var(--panel-border);
+			border-radius: 16px;
+			padding: 24px;
+			box-shadow: var(--shadow);
+			max-width: min(560px, 92vw);
+			text-align: center;
+			display: grid;
+			gap: 12px;
+			justify-items: center;
+		}
+
+		#welcomeCard img {
+			width: 120px;
+			height: auto;
+			filter: drop-shadow(0 6px 20px rgba(0,0,0,0.35));
+		}
+
+		#welcomeCard h2 {
+			margin: 0;
+			font-size: 22px;
+		}
+
+		#welcomeCard p {
+			margin: 0;
+			color: var(--muted);
+			line-height: 1.5;
+		}
+
+		#welcomeClose {
+			position: absolute;
+			top: 10px;
+			right: 10px;
+			background: rgba(255, 255, 255, 0.08);
+			border: 1px solid var(--panel-border);
+			color: var(--text);
+			border-radius: 999px;
+			width: 32px;
+			height: 32px;
+			display: grid;
+			place-items: center;
+			cursor: pointer;
+		}
+
+		#modalOverlay {
+			position: fixed;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.55);
+			display: none;
+			z-index: 3000;
+			align-items: flex-start;
+			justify-content: center;
+			padding-top: 72px;
+			overflow-y: auto;
+		}
+
+		#modal {
+			background: var(--panel);
+			border: 1px solid var(--panel-border);
+			border-radius: 14px;
+			width: min(720px, 92vw);
+			padding: 20px;
+			box-shadow: var(--shadow);
+		}
+
+		#modal h2 {
+			margin: 0 0 12px;
+			font-size: 20px;
+		}
+
+		.row {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 12px;
+			flex-wrap: wrap;
+		}
+
+		.row label {
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		input[type="text"],
+		input[type="file"],
+		button,
+		select {
+			background: rgba(255, 255, 255, 0.06);
+			border: 1px solid var(--panel-border);
+			color: var(--text);
+			border-radius: 10px;
+			padding: 10px 12px;
+			font-size: 14px;
+		}
+
+		button {
+			cursor: pointer;
+			transition: transform 0.12s ease, background 0.2s ease;
+		}
+
+		button:hover {
+			background: rgba(255, 255, 255, 0.12);
+			transform: translateY(-1px);
+		}
+
+		button:active {
+			transform: translateY(0);
+		}
+
+		#objectList {
+			display: grid;
+			gap: 8px;
+		}
+
+		.card {
+			border: 1px solid var(--panel-border);
+			border-radius: 10px;
+			padding: 10px;
+			background: rgba(255, 255, 255, 0.04);
+			display: grid;
+			gap: 10px;
+			grid-template-columns: 1fr;
+		}
+
+		.controlRow {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			align-items: center;
+		}
+
+		.controlRow > * {
+			flex: 1 1 auto;
+			min-width: 120px;
+		}
+
+		.controlRow.compact > * {
+			min-width: 80px;
+			flex: 0 0 auto;
+		}
+
+		.card .meta {
+			display: grid;
+			gap: 6px;
+		}
+
+		.badge {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			background: rgba(255, 255, 255, 0.08);
+			border-radius: 999px;
+			padding: 4px 10px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.iconBtn {
+			width: 36px;
+			height: 36px;
+			display: grid;
+			place-items: center;
+			border-radius: 10px;
+			border: 1px solid var(--panel-border);
+			background: rgba(255, 255, 255, 0.06);
+			font-size: 16px;
+			color: var(--text);
+		}
+
+		.listActions {
+			display: flex;
+			gap: 6px;
+		}
+
+		.pillActions {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+		}
+
+		.hidden {
+			display: none !important;
+		}
+
+		#dropHint {
+			position: absolute;
+			inset: 12px;
+			border: 1px dashed rgba(255, 255, 255, 0.12);
+			border-radius: 14px;
+			display: grid;
+			place-items: center;
+			color: var(--muted);
+			pointer-events: none;
+			font-size: 14px;
+			opacity: 0.5;
+		}
+
+		@media (max-width: 820px) and (orientation: portrait) {
+			html, body {
+				overflow: auto;
+			}
+
+			#viewport {
+				overflow-x: auto;
+				overflow-y: auto;
+				touch-action: pan-x pinch-zoom;
+				padding: 10px;
+			}
+
+			#stageFrame {
+				width: 140vw;
+				height: 100vh;
+				max-height: none;
+				aspect-ratio: 16 / 9;
+			}
+
+			#hud {
+				bottom: auto;
+				top: 12px;
+				max-width: calc(100vw - 24px);
+				width: auto;
+				left: 12px;
+				right: 12px;
+			}
+
+			#hudControls {
+				flex-direction: column;
+				align-items: stretch;
+			}
+		}
+
+		@media (max-width: 820px) and (orientation: landscape) {
+			html, body {
+				overflow: hidden;
+			}
+
+			#viewport {
+				overflow: hidden;
+				padding: 10px;
+			}
+
+			#hud {
+				top: 12px;
+				bottom: auto;
+				max-width: 260px;
+				left: 12px;
+				right: 12px;
+			}
+
+			#hudControls {
+				flex-wrap: wrap;
+				gap: 6px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<div id="app">
+		<button id="menuToggle" aria-label="Open menu">☰</button>
+
+		<div id="viewport">
+			<div id="stageFrame">
+				<div id="stageScroller">
+					<div id="stage">
+						<div id="objectLayer"></div>
+						<div id="dropHint">Drop images or videos anywhere</div>
+					</div>
+				</div>
+				<canvas id="webcamFxCanvas" aria-hidden="true"></canvas>
+			</div>
+		</div>
+
+		<div id="hud" class="collapsed">
+			<div id="hudHeader">
+				<div class="badge">Camera Control</div>
+				<button id="hudToggle" class="iconBtn" aria-label="Toggle camera controls">▸</button>
+			</div>
+			<div id="hudControls">
+				<label for="zoom">Camera Zoom</label>
+				<input id="zoom" type="range" min="0.5" max="2.5" step="0.05" value="1" />
+				<div id="zoomValue">100%</div>
+				<button id="resetView">Reset view</button>
+				<button id="webcamFxToggle">Webcam FX: On</button>
+			</div>
+		</div>
+
+		<div id="welcomeOverlay">
+			<div id="welcomeCard">
+				<button id="welcomeClose" aria-label="Close welcome"></button>
+				<img src="../rabbitwine.png" alt="RabbitWine logo" />
+				<h2>Welcome to RabbitWine</h2>
+				<p id="subtitleText"></p>
+			</div>
+		</div>
+
+		<div id="modalOverlay">
+			<div id="modal">
+				<h2>Scene Manager</h2>
+
+				<div class="row">
+					<input id="filenameInput" type="text" placeholder="filename.ext" aria-label="Filename" />
+					<button id="addByName">Add by filename</button>
+				</div>
+
+				<div class="row">
+					<button id="downloadJson">Download JSON</button>
+					<label class="badge">
+						<input id="uploadJson" type="file" accept="application/json" />
+						Import JSON
+					</label>
+					<button id="clearScene">Clear scene</button>
+				</div>
+
+				<div class="row">
+					<label class="badge" style="display:flex;align-items:center;gap:8px;">
+						<input id="autoImportToggle" type="checkbox" />
+						Auto-import default scene on startup
+					</label>
+				</div>
+
+				<div class="row">
+					<input id="subtitleInput" type="text" placeholder="Subtitle (optional)" aria-label="Subtitle" />
+				</div>
+
+				<div class="row">
+					<input id="musicInput" type="text" placeholder="Music filename (optional, defaults to music.mp3)" aria-label="Music filename" />
+				</div>
+
+				<div class="row">
+					<div class="badge">Objects</div>
+				</div>
+
+				<div id="objectList"></div>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const STORAGE_KEY = "livingroom_scene_v1";
+		const AUTO_IMPORT_KEY = "livingroom_auto_import";
+		const DEV_UNLOCK_KEY = "livingroom_dev_unlocked";
+		const WEBCAM_FX_KEY = "livingroom_webcam_fx_enabled";
+		const DEFAULT_ASPECT = 16 / 9;
+		const DEFAULT_MUSIC = "music.mp3";
+		const viewportEl = document.getElementById("viewport");
+		const objectLayer = document.getElementById("objectLayer");
+		const stage = document.getElementById("stage");
+		const stageFrame = document.getElementById("stageFrame");
+		const menuToggle = document.getElementById("menuToggle");
+		const modalOverlay = document.getElementById("modalOverlay");
+		const objectList = document.getElementById("objectList");
+		const filenameInput = document.getElementById("filenameInput");
+		const subtitleInput = document.getElementById("subtitleInput");
+		const musicInput = document.getElementById("musicInput");
+		const zoomSlider = document.getElementById("zoom");
+		const zoomValue = document.getElementById("zoomValue");
+		const resetView = document.getElementById("resetView");
+		const webcamFxCanvas = document.getElementById("webcamFxCanvas");
+		const webcamFxToggle = document.getElementById("webcamFxToggle");
+		const downloadJson = document.getElementById("downloadJson");
+		const uploadJson = document.getElementById("uploadJson");
+		const clearScene = document.getElementById("clearScene");
+		const addByName = document.getElementById("addByName");
+		const autoImportToggle = document.getElementById("autoImportToggle");
+		const dropHint = document.getElementById("dropHint");
+		const welcomeOverlay = document.getElementById("welcomeOverlay");
+		const welcomeCard = document.getElementById("welcomeCard");
+		const welcomeClose = document.getElementById("welcomeClose");
+		const subtitleText = document.getElementById("subtitleText");
+		const hud = document.getElementById("hud");
+		const hudToggle = document.getElementById("hudToggle");
+		const hudControls = document.getElementById("hudControls");
+
+		const music = new Audio("music.mp3");
+		music.loop = true;
+		music.preload = "auto";
+		music.volume = 0;
+		const MUSIC_TARGET_VOLUME = 0.33;
+		const MUSIC_FADE_MS = 12000;
+		let musicFadeRaf = null;
+
+		let scene = { objects: [], referenceSize: null, subtitle: "", music: "" };
+		let dragState = null;
+		let panState = null;
+		let cameraOffset = { x: 0, y: 0 };
+		let currentZoom = 1;
+		let resizeRaf = null;
+		const webcamFxBuffer = document.createElement("canvas");
+		const webcamFxCtx = webcamFxCanvas.getContext("2d");
+		const webcamFxBufferCtx = webcamFxBuffer.getContext("2d");
+		let webcamFxEnabled = true;
+		let webcamFxBusy = false;
+		let webcamFxTimer = null;
+		let fxIntervalMs = 666; // initial slower interval
+		let jpegQuality = 0.1; // initial low quality
+		let autoImportEnabled = true;
+		let autoImportRun = false;
+		let devUnlocked = false;
+
+		const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+		const setMusicVolume = (value) => {
+			music.volume = clamp(value, 0, MUSIC_TARGET_VOLUME);
+		};
+		const enforceMusicCeiling = () => {
+			if (music.volume > MUSIC_TARGET_VOLUME) {
+				setMusicVolume(music.volume);
+			}
+		};
+		const applyDevUnlockState = () => {
+			if (!menuToggle) return;
+			menuToggle.style.display = devUnlocked ? "grid" : "none";
+		};
+		const persistDevUnlockState = () => {
+			try {
+				localStorage.setItem(DEV_UNLOCK_KEY, devUnlocked ? "true" : "false");
+			} catch (err) {
+				console.warn("Unable to persist dev unlock state", err);
+			}
+		};
+		const loadDevUnlockState = () => {
+			try {
+				devUnlocked = localStorage.getItem(DEV_UNLOCK_KEY) === "true";
+			} catch (err) {
+				devUnlocked = false;
+			}
+			applyDevUnlockState();
+		};
+		const getMusicSource = () => (scene.music && scene.music.trim()) || DEFAULT_MUSIC;
+		const setMusicSource = (src) => {
+			const next = (src && src.trim()) || DEFAULT_MUSIC;
+			if (music.src !== next) {
+				music.src = next;
+			}
+		};
+		const setFxQuality = (value) => {
+			jpegQuality = clamp(value, 0, 1);
+		};
+		const setFxInterval = (ms) => {
+			const next = Math.max(16, Math.round(ms || 0));
+			if (next === fxIntervalMs) return;
+			fxIntervalMs = next;
+			if (webcamFxEnabled) startWebcamFxLoop();
+		};
+		const isImage = (name) => /\.(png|jpg|jpeg|webp|gif)$/i.test(name || "");
+		const isVideo = (name) => /\.(mp4|webm|mov|m4v)$/i.test(name || "");
+		const getBase = () => scene.objects.find((o) => o.base);
+
+		const loadAutoImportPreference = () => {
+			const stored = localStorage.getItem(AUTO_IMPORT_KEY);
+			if (stored === null) {
+				localStorage.setItem(AUTO_IMPORT_KEY, "true");
+				return true;
+			}
+			return stored === "true";
+		};
+
+		const persistAutoImportPreference = (value) => {
+			autoImportEnabled = !!value;
+			localStorage.setItem(AUTO_IMPORT_KEY, autoImportEnabled ? "true" : "false");
+			if (autoImportToggle) autoImportToggle.checked = autoImportEnabled;
+		};
+
+		const autoImportDefaultScene = async () => {
+			if (!autoImportEnabled || autoImportRun) return;
+			autoImportRun = true;
+			try {
+				const res = await fetch("default.json", { cache: "no-cache" });
+				if (!res.ok) throw new Error(`default.json fetch failed: ${res.status}`);
+				const text = await res.text();
+				if (text) importScene(text);
+			} catch (err) {
+				console.warn("Auto-import default scene failed", err);
+			}
+		};
+
+		const createNoisePattern = () => {
+			const noiseCanvas = document.createElement("canvas");
+			const size = 64;
+			noiseCanvas.width = size;
+			noiseCanvas.height = size;
+			const ctx = noiseCanvas.getContext("2d");
+			const imageData = ctx.createImageData(size, size);
+			for (let i = 0; i < imageData.data.length; i += 4) {
+				const val = Math.floor(Math.random() * 255);
+				imageData.data[i] = val;
+				imageData.data[i + 1] = val;
+				imageData.data[i + 2] = val;
+				imageData.data[i + 3] = 69; // subtle alpha
+			}
+			ctx.putImageData(imageData, 0, 0);
+			return webcamFxBufferCtx.createPattern(noiseCanvas, "repeat");
+		};
+
+		const syncWebcamFxSize = () => {
+			const rect = stageFrame.getBoundingClientRect();
+			const width = Math.max(2, Math.round(rect.width));
+			const height = Math.max(2, Math.round(rect.height));
+			if (webcamFxCanvas.width !== width || webcamFxCanvas.height !== height) {
+				webcamFxCanvas.width = width;
+				webcamFxCanvas.height = height;
+			}
+			if (webcamFxBuffer.width !== width || webcamFxBuffer.height !== height) {
+				webcamFxBuffer.width = width;
+				webcamFxBuffer.height = height;
+			}
+		};
+
+		const coverDimensions = (srcW, srcH, destW, destH) => {
+			const srcAspect = srcW / srcH;
+			const destAspect = destW / destH;
+			let w = destW;
+			let h = destH;
+			if (srcAspect > destAspect) {
+				h = destH;
+				w = destH * srcAspect;
+			} else {
+				w = destW;
+				h = destW / srcAspect;
+			}
+			return {
+				x: (destW - w) / 2,
+				y: (destH - h) / 2,
+				w,
+				h,
+			};
+		};
+
+		const drawSceneIntoBuffer = () => {
+			const { sx, sy, uni } = getScaleFactors();
+			const ordered = [...scene.objects].sort((a, b) => a.z - b.z);
+			webcamFxBufferCtx.clearRect(0, 0, webcamFxBuffer.width, webcamFxBuffer.height);
+			for (const obj of ordered) {
+				const wrapper = objectLayer.querySelector(`[data-id="${obj.id}"]`);
+				const media = wrapper?.querySelector("img, video");
+				if (!media) continue;
+				let mediaW = media.videoWidth || media.naturalWidth || media.clientWidth || 320;
+				let mediaH = media.videoHeight || media.naturalHeight || media.clientHeight || 240;
+				if (!mediaW || !mediaH) continue;
+				if (!obj.base) {
+					const clampFactor = Math.min(1, 320 / mediaW, 320 / mediaH);
+					mediaW *= clampFactor;
+					mediaH *= clampFactor;
+				}
+				if (obj.base) {
+					const dims = coverDimensions(mediaW, mediaH, webcamFxBuffer.width, webcamFxBuffer.height);
+					webcamFxBufferCtx.drawImage(media, dims.x, dims.y, dims.w, dims.h);
+					continue;
+				}
+				const scale = (obj.scale ?? 1) * uni;
+				const drawW = mediaW * scale;
+				const drawH = mediaH * scale;
+				const dx = (obj.x ?? 0) * sx - drawW / 2;
+				const dy = (obj.y ?? 0) * sy - drawH / 2;
+
+				if (obj.shadowEnabled) {
+					const size = (obj.shadowSize ?? 220) * uni * (obj.scale ?? 1);
+					const shadowH = size * 0.55;
+					const cx = dx + drawW / 2 + (obj.shadowOffsetX ?? 0) * sx;
+					const cy = dy + drawH + (obj.shadowOffsetY ?? 0) * sy + (shadowH / 2) -35; // midpoint between previous placements
+					const peakAlpha = (obj.shadowOpacity ?? 0.45) * 0.45; // CSS gradient 0.45 peak * opacity
+					webcamFxBufferCtx.save();
+					webcamFxBufferCtx.translate(cx, cy);
+					webcamFxBufferCtx.scale(size / 2, shadowH / 2);
+					webcamFxBufferCtx.filter = "blur(4px)";
+					const g = webcamFxBufferCtx.createRadialGradient(0, 0, 0, 0, 0, 1);
+					g.addColorStop(0, `rgba(0, 0, 0, ${peakAlpha})`);
+					g.addColorStop(0.7, "rgba(0, 0, 0, 0)");
+					webcamFxBufferCtx.fillStyle = g;
+					webcamFxBufferCtx.beginPath();
+					webcamFxBufferCtx.rect(-1, -1, 2, 2);
+					webcamFxBufferCtx.fill();
+					webcamFxBufferCtx.restore();
+				}
+				webcamFxBufferCtx.drawImage(media, dx, dy, drawW, drawH);
+			}
+		};
+
+		const applyNoiseOverlay = () => {
+			const noise = createNoisePattern();
+			webcamFxBufferCtx.save();
+			webcamFxBufferCtx.globalAlpha = 0.24;
+			webcamFxBufferCtx.fillStyle = noise;
+			webcamFxBufferCtx.fillRect(0, 0, webcamFxBuffer.width, webcamFxBuffer.height);
+			webcamFxBufferCtx.restore();
+		};
+
+		const renderWebcamFxFrame = () => {
+			if (!webcamFxEnabled || webcamFxBusy) return;
+			webcamFxBusy = true;
+			try {
+				syncWebcamFxSize();
+				drawSceneIntoBuffer();
+				applyNoiseOverlay();
+				webcamFxBuffer.toBlob((blob) => {
+					if (!blob) {
+						webcamFxBusy = false;
+						setWebcamFxEnabled(false);
+						return;
+					}
+					createImageBitmap(blob)
+						.then((bitmap) => {
+							webcamFxCtx.clearRect(0, 0, webcamFxCanvas.width, webcamFxCanvas.height);
+							webcamFxCtx.drawImage(bitmap, 0, 0, webcamFxCanvas.width, webcamFxCanvas.height);
+						})
+						.catch((err) => {
+							console.warn("Webcam FX bitmap failed", err);
+							setWebcamFxEnabled(false);
+						})
+						.finally(() => {
+							webcamFxBusy = false;
+						});
+				}, "image/jpeg", jpegQuality);
+			} catch (err) {
+				console.warn("Webcam FX failed", err);
+				webcamFxBusy = false;
+				setWebcamFxEnabled(false);
+			}
+		};
+
+		const startWebcamFxLoop = () => {
+			if (webcamFxTimer) clearInterval(webcamFxTimer);
+			if (!webcamFxEnabled) return;
+			webcamFxCanvas.classList.remove("hidden");
+			webcamFxTimer = setInterval(renderWebcamFxFrame, fxIntervalMs);
+			renderWebcamFxFrame();
+		};
+
+		const stopWebcamFxLoop = () => {
+			if (webcamFxTimer) clearInterval(webcamFxTimer);
+			webcamFxTimer = null;
+			webcamFxCtx.clearRect(0, 0, webcamFxCanvas.width, webcamFxCanvas.height);
+			webcamFxCanvas.classList.add("hidden");
+		};
+
+		const setWebcamFxEnabled = (enabled, { persist = true } = {}) => {
+			webcamFxEnabled = enabled;
+			if (persist) {
+				try {
+					localStorage.setItem(WEBCAM_FX_KEY, enabled ? "true" : "false");
+				} catch (err) {
+					console.warn("Unable to persist webcam FX state", err);
+				}
+			}
+			if (webcamFxToggle) {
+				webcamFxToggle.textContent = `Webcam FX: ${enabled ? "On" : "Off"}`;
+			}
+			if (enabled) {
+				startWebcamFxLoop();
+			} else {
+				stopWebcamFxLoop();
+			}
+		};
+
+		const loadWebcamFxState = () => {
+			try {
+				const stored = localStorage.getItem(WEBCAM_FX_KEY);
+				if (stored === null) return; // default true
+				webcamFxEnabled = stored === "true";
+			} catch (err) {
+				webcamFxEnabled = true;
+			}
+		};
+
+		const setupWebcamFxRamp = () => {
+			setFxQuality(0.1);
+			setFxInterval(666);
+			const start = performance.now();
+			const phase1End = 2500; // ramp to 0.2
+			const phase2End = 5000; // ramp to 0.3
+			const step = (now) => {
+				const elapsed = now - start;
+				if (elapsed <= phase1End) {
+					const p = clamp(elapsed / phase1End, 0, 1);
+					setFxQuality(0.1 + (0.1 * p));
+					requestAnimationFrame(step);
+					return;
+				}
+				if (elapsed <= phase2End) {
+					setFxInterval(420);
+					const p = clamp((elapsed - phase1End) / (phase2End - phase1End), 0, 1);
+					setFxQuality(0.2 + (0.1 * p));
+					requestAnimationFrame(step);
+					return;
+				}
+				setFxInterval(420);
+				setFxQuality(0.3);
+			};
+			requestAnimationFrame(step);
+		};
+
+		const fadeInMusic = () => {
+			if (musicFadeRaf) cancelAnimationFrame(musicFadeRaf);
+			const start = performance.now();
+			setMusicVolume(0);
+			const step = (now) => {
+				const progress = clamp((now - start) / MUSIC_FADE_MS, 0, 1);
+				setMusicVolume(MUSIC_TARGET_VOLUME * progress);
+				if (progress < 1) {
+					musicFadeRaf = requestAnimationFrame(step);
+				}
+			};
+			musicFadeRaf = requestAnimationFrame(step);
+		};
+
+		const startMusic = () => {
+			setMusicVolume(0);
+			setMusicSource(getMusicSource());
+			const attemptPlay = () => {
+				music
+					.play()
+					.then(() => {
+						fadeInMusic();
+					})
+					.catch(() => {
+						const resume = () => {
+							music.play().then(() => fadeInMusic()).catch(() => {});
+							document.body.removeEventListener("pointerdown", resume);
+						};
+						document.body.addEventListener("pointerdown", resume, { once: true });
+					});
+			};
+			attemptPlay();
+		};
+
+		const loadScene = () => {
+			try {
+				const raw = localStorage.getItem(STORAGE_KEY);
+				if (!raw) return;
+				const data = JSON.parse(raw);
+				if (Array.isArray(data.objects)) {
+					scene.objects = data.objects;
+				}
+				if (data.referenceSize && data.referenceSize.w && data.referenceSize.h) {
+					scene.referenceSize = data.referenceSize;
+				}
+				scene.subtitle = typeof data.subtitle === "string" ? data.subtitle : "";
+				scene.music = typeof data.music === "string" ? data.music : "";
+			} catch (err) {
+				console.error("Failed to load scene", err);
+			}
+		};
+
+		const persistScene = () => {
+			try {
+				localStorage.setItem(STORAGE_KEY, JSON.stringify(scene));
+			} catch (err) {
+				console.error("Failed to save scene", err);
+			}
+		};
+
+		const renderSubtitle = () => {
+			if (!subtitleText) return;
+			const value = (scene.subtitle || "").trim();
+			subtitleText.textContent = value;
+			subtitleText.style.display = value ? "block" : "none";
+		};
+
+		const nextId = () => crypto.randomUUID();
+
+		const getReferenceSize = () => {
+			if (scene.referenceSize && scene.referenceSize.w && scene.referenceSize.h) return scene.referenceSize;
+			const rect = stageFrame.getBoundingClientRect();
+			const ref = { w: rect.width || 1, h: rect.height || 1 };
+			scene.referenceSize = ref;
+			persistScene();
+			return ref;
+		};
+
+		const centerCoords = () => {
+			const ref = getReferenceSize();
+			return { x: ref.w / 2, y: ref.h / 2 };
+		};
+
+		const getScaleFactors = () => {
+			const rect = stageFrame.getBoundingClientRect();
+			const ref = getReferenceSize();
+			const sx = rect.width / ref.w;
+			const sy = rect.height / ref.h;
+			return { sx, sy, uni: Math.min(sx, sy), rect, ref };
+		};
+
+		const applyAspect = (w, h) => {
+			if (!w || !h) return;
+			stageFrame.style.aspectRatio = `${w} / ${h}`;
+		};
+
+		const resetAspect = () => {
+			stageFrame.style.aspectRatio = "16 / 9";
+		};
+
+		const getBaseAspect = () => {
+			const base = getBase();
+			if (base?.intrinsicWidth && base?.intrinsicHeight) return base.intrinsicWidth / base.intrinsicHeight;
+			if (scene.referenceSize?.w && scene.referenceSize?.h) return scene.referenceSize.w / scene.referenceSize.h;
+			return DEFAULT_ASPECT;
+		};
+
+		const updateStageFrameSize = () => {
+			const aspect = getBaseAspect();
+			stageFrame.style.aspectRatio = `${aspect}`;
+			const viewportRect = viewportEl.getBoundingClientRect();
+			const styles = getComputedStyle(viewportEl);
+			const padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+			const padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+			const availableWidth = Math.max(320, viewportRect.width - padX);
+			const availableHeight = Math.max(240, viewportRect.height - padY);
+			const isMobilePortrait = viewportRect.width <= 820 && viewportRect.height > viewportRect.width;
+			const maxWidth = 1800;
+			const desktopMargin = 96;
+			const desktopHeight = Math.max(240, availableHeight - desktopMargin);
+
+			let width;
+			let height;
+
+			if (isMobilePortrait) {
+				height = availableHeight;
+				width = height * aspect;
+				stageFrame.style.maxHeight = `${availableHeight}px`;
+				stageFrame.style.maxWidth = `${width}px`;
+			} else {
+				width = Math.min(availableWidth, maxWidth);
+				height = width / aspect;
+				if (height > desktopHeight) {
+					height = desktopHeight;
+					width = Math.min(maxWidth, height * aspect);
+				}
+				stageFrame.style.maxWidth = `${availableWidth}px`;
+				stageFrame.style.maxHeight = `${desktopHeight}px`;
+			}
+
+			stageFrame.style.width = `${width}px`;
+			stageFrame.style.height = `${height}px`;
+		};
+
+		const measureBaseIntrinsic = (obj) => {
+			if (!obj?.base) return;
+			const commit = (w, h) => {
+				obj.intrinsicWidth = w;
+				obj.intrinsicHeight = h;
+				scene.referenceSize = { w, h };
+				persistScene();
+				applyAspect(w, h);
+				updateStageFrameSize();
+			};
+
+			if (obj.kind === "image") {
+				const img = new Image();
+				img.onload = () => commit(img.naturalWidth || 1920, img.naturalHeight || 1080);
+				img.src = obj.src;
+			} else {
+				const vid = document.createElement("video");
+				vid.onloadedmetadata = () => commit(vid.videoWidth || 1920, vid.videoHeight || 1080);
+				vid.src = obj.src;
+			}
+		};
+
+		const ensureAspectFromBase = () => {
+			const base = getBase();
+			if (base) {
+				if (base.intrinsicWidth && base.intrinsicHeight) {
+					applyAspect(base.intrinsicWidth, base.intrinsicHeight);
+				} else {
+					measureBaseIntrinsic(base);
+				}
+				updateStageFrameSize();
+				return;
+			}
+			resetAspect();
+			updateStageFrameSize();
+		};
+
+		const renderObjects = () => {
+			objectLayer.innerHTML = "";
+			ensureAspectFromBase();
+			const { sx, sy, uni } = getScaleFactors();
+			const sorted = [...scene.objects].sort((a, b) => a.z - b.z);
+			for (const obj of sorted) {
+				const el = document.createElement("div");
+				const classes = ["object"];
+				if (obj.locked) classes.push("locked");
+				if (obj.base) classes.push("base");
+				el.className = classes.join(" ");
+				el.dataset.id = obj.id;
+
+				if (obj.base) {
+					obj.locked = true;
+					obj.z = 0;
+					el.style.inset = "0";
+					el.style.zIndex = 0;
+					el.style.transform = "none";
+				} else {
+					el.style.left = `${(obj.x ?? 0) * sx}px`;
+					el.style.top = `${(obj.y ?? 0) * sy}px`;
+					el.style.zIndex = obj.z;
+					const effectiveScale = (obj.scale ?? 1) * uni;
+					el.style.transform = `translate(-50%, -50%) scale(${effectiveScale})`;
+				}
+
+				if (obj.shadowEnabled && !obj.base) {
+					const shadow = document.createElement("div");
+					shadow.className = "shadow";
+					const shadowSize = (obj.shadowSize ?? 220) * uni * (obj.scale ?? 1);
+					shadow.style.setProperty("--shadow-size", `${shadowSize}px`);
+					shadow.style.setProperty("--shadow-opacity", obj.shadowOpacity ?? 0.45);
+					shadow.style.setProperty("--shadow-offset-x", `${(obj.shadowOffsetX ?? 0) * sx}px`);
+					shadow.style.setProperty("--shadow-offset-y", `${(obj.shadowOffsetY ?? 0) * sy}px`);
+					el.appendChild(shadow);
+				}
+
+				let media;
+				if (obj.kind === "video") {
+					media = document.createElement("video");
+					media.src = obj.src;
+					media.autoplay = true;
+					media.muted = true;
+					media.loop = true;
+					media.playsInline = true;
+				} else {
+					media = document.createElement("img");
+					media.src = obj.src;
+					media.loading = "lazy";
+					media.decoding = "async";
+				}
+				el.appendChild(media);
+
+				if (!obj.base) {
+					el.addEventListener("pointerdown", (e) => beginDrag(e, obj));
+					el.addEventListener("wheel", (e) => scaleObjectWheel(e, obj));
+				}
+
+				objectLayer.appendChild(el);
+			}
+			updateListUI();
+			dropHint.style.display = scene.objects.length ? "none" : "grid";
+			renderWebcamFxFrame();
+		};
+
+		const addObject = ({ src, name, sourceType, base = false }) => {
+			if (!src) return;
+			const { x, y } = centerCoords();
+			const zMax = scene.objects.reduce((m, o) => (o.base ? m : Math.max(m, o.z ?? 0)), 0);
+			const kind = isVideo(name) ? "video" : "image";
+			const obj = {
+				id: nextId(),
+				name: name || "object",
+				src,
+				sourceType: sourceType || "file", // file | data
+				kind,
+				x,
+				y,
+				scale: 1,
+				z: base ? 0 : zMax + 1,
+				locked: !!base,
+				base: !!base,
+				shadowEnabled: !base,
+				shadowSize: 220,
+				shadowOpacity: 0.45,
+				shadowOffsetX: 0,
+				shadowOffsetY: 0,
+			};
+
+			if (base) {
+				scene.objects.forEach((o) => (o.base = false));
+			}
+
+			scene.objects.push(obj);
+			if (base) measureBaseIntrinsic(obj);
+			persistScene();
+			renderObjects();
+		};
+
+		const toggleBase = (id) => {
+			const target = scene.objects.find((o) => o.id === id);
+			if (!target) return;
+			const wasBase = target.base;
+			scene.objects.forEach((o) => {
+				o.base = false;
+				if (o.z === 0) o.z = 1;
+			});
+			if (!wasBase) {
+				target.base = true;
+				target.locked = true;
+				target.z = 0;
+				target.x = centerCoords().x;
+				target.y = centerCoords().y;
+				measureBaseIntrinsic(target);
+			} else {
+				target.locked = false;
+			}
+			persistScene();
+			renderObjects();
+		};
+
+		const beginDrag = (event, obj) => {
+			const zoomLocked = Math.abs(currentZoom - 1) > 0.001;
+			if (obj.locked || zoomLocked || webcamFxEnabled) return;
+			const target = event.currentTarget;
+			target.setPointerCapture(event.pointerId);
+			const { sx, sy } = getScaleFactors();
+			dragState = {
+				id: obj.id,
+				startX: event.clientX,
+				startY: event.clientY,
+				originX: obj.x,
+				originY: obj.y,
+				sx,
+				sy,
+			};
+			stage.classList.add("dragging");
+			target.style.cursor = "grabbing";
+			event.preventDefault();
+		};
+
+		const moveDrag = (event) => {
+			if (!dragState) return;
+			const obj = scene.objects.find((o) => o.id === dragState.id);
+			if (!obj || obj.locked) return;
+			const dx = (event.clientX - dragState.startX) / (dragState.sx || 1);
+			const dy = (event.clientY - dragState.startY) / (dragState.sy || 1);
+			obj.x = dragState.originX + dx;
+			obj.y = dragState.originY + dy;
+			persistScene();
+			renderObjects();
+		};
+
+		const endDrag = () => {
+			dragState = null;
+			stage.classList.remove("dragging");
+		};
+
+		const scaleObjectWheel = (event, obj) => {
+			if (!event.shiftKey || obj.locked) return;
+			event.preventDefault();
+			const delta = -event.deltaY;
+			const factor = delta > 0 ? 1.04 : 0.96;
+			obj.scale = clamp((obj.scale ?? 1) * factor, 0.1, 8);
+			persistScene();
+			renderObjects();
+		};
+
+		const toggleModal = (show) => {
+			modalOverlay.style.display = show ? "flex" : "none";
+		};
+
+		const updateListUI = () => {
+			objectList.innerHTML = "";
+			const ordered = [...scene.objects].sort((a, b) => a.z - b.z);
+			for (const obj of ordered) {
+				const card = document.createElement("div");
+				card.className = "card";
+
+				const meta = document.createElement("div");
+				meta.className = "meta";
+
+				const topRow = document.createElement("div");
+				topRow.className = "controlRow";
+				const nameInput = document.createElement("input");
+				nameInput.type = "text";
+				nameInput.value = obj.name;
+				nameInput.addEventListener("input", () => {
+					obj.name = nameInput.value;
+					persistScene();
+				});
+				topRow.appendChild(nameInput);
+
+				const badge = document.createElement("div");
+				badge.className = "badge";
+				badge.textContent = `${obj.kind} · z${obj.z}`;
+				topRow.appendChild(badge);
+
+				const baseBtn = document.createElement("button");
+				baseBtn.className = "iconBtn";
+				baseBtn.textContent = obj.base ? "★" : "☆";
+				baseBtn.title = obj.base ? "Unset base" : "Set as base background";
+				baseBtn.addEventListener("click", () => toggleBase(obj.id));
+				topRow.appendChild(baseBtn);
+
+				const lock = document.createElement("button");
+				lock.className = "iconBtn";
+				lock.textContent = obj.locked ? "🔒" : "🔓";
+				lock.title = "Lock / unlock";
+				lock.disabled = obj.base;
+				lock.addEventListener("click", () => {
+					if (obj.base) return;
+					obj.locked = !obj.locked;
+					persistScene();
+					renderObjects();
+				});
+				topRow.appendChild(lock);
+				meta.appendChild(topRow);
+
+				if (obj.base) {
+					const baseBadge = document.createElement("div");
+					baseBadge.className = "badge";
+					baseBadge.textContent = "Base background (fills canvas)";
+					meta.appendChild(baseBadge);
+				} else {
+					const scaleRow = document.createElement("div");
+					scaleRow.className = "controlRow compact";
+					const scaleLabel = document.createElement("div");
+					scaleLabel.className = "badge";
+					scaleLabel.textContent = "Scale";
+					scaleRow.appendChild(scaleLabel);
+					const scaleInput = document.createElement("input");
+					scaleInput.type = "number";
+					scaleInput.min = "10";
+					scaleInput.max = "800";
+					scaleInput.value = Math.round((obj.scale ?? 1) * 100);
+					scaleInput.style.width = "86px";
+					scaleInput.addEventListener("change", () => {
+						const pct = clamp(Number(scaleInput.value) || 100, 10, 800);
+						scaleInput.value = pct;
+						obj.scale = pct / 100;
+						persistScene();
+						renderObjects();
+					});
+					scaleRow.appendChild(scaleInput);
+					[50, 100, 200].forEach((pct) => {
+						const b = document.createElement("button");
+						b.className = "iconBtn";
+						b.textContent = `${pct}%`;
+						b.addEventListener("click", () => {
+							obj.scale = pct / 100;
+							persistScene();
+							renderObjects();
+						});
+						scaleRow.appendChild(b);
+					});
+					meta.appendChild(scaleRow);
+
+					const shadowRow = document.createElement("div");
+					shadowRow.className = "controlRow compact";
+					const shadowToggle = document.createElement("button");
+					shadowToggle.className = "iconBtn";
+					shadowToggle.textContent = obj.shadowEnabled ? "Shadow on" : "Shadow off";
+					shadowToggle.addEventListener("click", () => {
+						obj.shadowEnabled = !obj.shadowEnabled;
+						persistScene();
+						renderObjects();
+					});
+					shadowRow.appendChild(shadowToggle);
+
+					const shadowSize = document.createElement("input");
+					shadowSize.type = "number";
+					shadowSize.min = "50";
+					shadowSize.max = "1000";
+					shadowSize.value = Math.round(obj.shadowSize ?? 220);
+					shadowSize.style.width = "86px";
+					shadowSize.addEventListener("change", () => {
+						const val = clamp(Number(shadowSize.value) || 220, 50, 1000);
+						shadowSize.value = val;
+						obj.shadowSize = val;
+						persistScene();
+						renderObjects();
+					});
+					shadowRow.appendChild(shadowSize);
+
+					const shadowOpacity = document.createElement("input");
+					shadowOpacity.type = "range";
+					shadowOpacity.min = "0";
+					shadowOpacity.max = "1";
+					shadowOpacity.step = "0.01";
+					shadowOpacity.value = obj.shadowOpacity ?? 0.45;
+					shadowOpacity.style.width = "120px";
+					shadowOpacity.addEventListener("input", () => {
+						obj.shadowOpacity = clamp(Number(shadowOpacity.value) || 0, 0, 1);
+						persistScene();
+						renderObjects();
+					});
+					shadowRow.appendChild(shadowOpacity);
+
+					const shadowOffsetX = document.createElement("input");
+					shadowOffsetX.type = "number";
+					shadowOffsetX.min = "-300";
+					shadowOffsetX.max = "300";
+					shadowOffsetX.value = Math.round(obj.shadowOffsetX ?? 0);
+					shadowOffsetX.style.width = "72px";
+					shadowOffsetX.addEventListener("change", () => {
+						const val = clamp(Number(shadowOffsetX.value) || 0, -300, 300);
+						shadowOffsetX.value = val;
+						obj.shadowOffsetX = val;
+						persistScene();
+						renderObjects();
+					});
+					shadowRow.appendChild(shadowOffsetX);
+
+					const shadowOffsetY = document.createElement("input");
+					shadowOffsetY.type = "number";
+					shadowOffsetY.min = "-300";
+					shadowOffsetY.max = "300";
+					shadowOffsetY.value = Math.round(obj.shadowOffsetY ?? 0);
+					shadowOffsetY.style.width = "72px";
+					shadowOffsetY.addEventListener("change", () => {
+						const val = clamp(Number(shadowOffsetY.value) || 0, -300, 300);
+						shadowOffsetY.value = val;
+						obj.shadowOffsetY = val;
+						persistScene();
+						renderObjects();
+					});
+					shadowRow.appendChild(shadowOffsetY);
+
+					meta.appendChild(shadowRow);
+				}
+
+				const actions = document.createElement("div");
+				actions.className = "listActions";
+
+				const up = document.createElement("button");
+				up.className = "iconBtn";
+				up.textContent = "⬆";
+				up.title = "Bring forward";
+				up.disabled = obj.base;
+				up.addEventListener("click", () => moveZ(obj.id, 1));
+				actions.appendChild(up);
+
+				const down = document.createElement("button");
+				down.className = "iconBtn";
+				down.textContent = "⬇";
+				down.title = "Send backward";
+				down.disabled = obj.base;
+				down.addEventListener("click", () => moveZ(obj.id, -1));
+				actions.appendChild(down);
+
+				const del = document.createElement("button");
+				del.className = "iconBtn";
+				del.textContent = "✕";
+				del.title = "Delete";
+				del.addEventListener("click", () => deleteObject(obj.id));
+				actions.appendChild(del);
+
+				card.appendChild(meta);
+				card.appendChild(actions);
+				objectList.appendChild(card);
+			}
+		};
+
+		const moveZ = (id, dir) => {
+			const sorted = [...scene.objects].filter((o) => !o.base).sort((a, b) => a.z - b.z);
+			const idx = sorted.findIndex((o) => o.id === id);
+			if (idx === -1) return;
+			const targetIdx = clamp(idx + dir, 0, sorted.length - 1);
+			const [item] = sorted.splice(idx, 1);
+			sorted.splice(targetIdx, 0, item);
+			sorted.forEach((o, i) => (o.z = i + 1));
+
+			const base = getBase();
+			const merged = base ? [base, ...sorted] : sorted;
+			scene.objects = merged;
+			persistScene();
+			renderObjects();
+		};
+
+		const deleteObject = (id) => {
+			scene.objects = scene.objects.filter((o) => o.id !== id);
+			persistScene();
+			renderObjects();
+		};
+
+		const applyViewTransform = () => {
+			const rect = stageFrame.getBoundingClientRect();
+			if (currentZoom <= 1) {
+				cameraOffset = { x: 0, y: 0 };
+			}
+			const maxX = Math.max(0, (rect.width * currentZoom - rect.width) / 2);
+			const maxY = Math.max(0, (rect.height * currentZoom - rect.height) / 2);
+			cameraOffset.x = clamp(cameraOffset.x, -maxX, maxX);
+			cameraOffset.y = clamp(cameraOffset.y, -maxY, maxY);
+			const transform = `translate(${cameraOffset.x}px, ${cameraOffset.y}px) scale(${currentZoom})`;
+			stage.style.transform = transform;
+			if (webcamFxCanvas) {
+				webcamFxCanvas.style.transform = transform;
+				webcamFxCanvas.style.transformOrigin = stage.style.transformOrigin || "center center";
+			}
+		};
+
+		const setZoom = (value) => {
+			const clamped = clamp(value, 0.5, 2.5);
+			currentZoom = clamped;
+			zoomSlider.value = clamped;
+			zoomValue.textContent = `${Math.round(clamped * 100)}%`;
+			stage.style.setProperty("--global-zoom", clamped);
+			if (currentZoom <= 1) cameraOffset = { x: 0, y: 0 };
+			applyViewTransform();
+		};
+
+		const resetCamera = () => {
+			cameraOffset = { x: 0, y: 0 };
+			setZoom(1);
+		};
+
+		const handleDrop = async (event) => {
+			event.preventDefault();
+			const files = Array.from(event.dataTransfer?.files || []);
+			for (const file of files) {
+				const dataUrl = await fileToDataURL(file);
+				addObject({ src: dataUrl, name: file.name, sourceType: "data" });
+			}
+		};
+
+		const fileToDataURL = (file) => new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result);
+			reader.onerror = reject;
+			reader.readAsDataURL(file);
+		});
+
+		const checkFileExists = async (url) => {
+			try {
+				const res = await fetch(url, { method: "HEAD", cache: "no-cache" });
+				return res.ok;
+			} catch (err) {
+				return false;
+			}
+		};
+
+		const upgradeDataSourcesForExport = async () => {
+			let changed = false;
+			const tasks = scene.objects.map(async (o) => {
+				if (o.sourceType !== "data") return;
+				const candidate = (o.name || "").trim();
+				if (!candidate) return;
+				const exists = await checkFileExists(candidate);
+				if (exists) {
+					o.sourceType = "file";
+					o.src = candidate;
+					changed = true;
+				}
+			});
+			await Promise.all(tasks);
+			if (changed) {
+				persistScene();
+			}
+		};
+
+		const downloadScene = async () => {
+			await upgradeDataSourcesForExport();
+			const exportable = scene.objects
+				.filter((o) => o.sourceType !== "data")
+				.map((o) => ({
+					id: o.id,
+					name: o.name,
+					src: o.src,
+					sourceType: o.sourceType,
+					kind: o.kind,
+					x: o.x,
+					y: o.y,
+					scale: o.scale,
+					z: o.z,
+					locked: o.locked,
+					base: o.base,
+					intrinsicWidth: o.intrinsicWidth,
+					intrinsicHeight: o.intrinsicHeight,
+					shadowEnabled: o.shadowEnabled,
+					shadowSize: o.shadowSize,
+					shadowOpacity: o.shadowOpacity,
+					shadowOffsetX: o.shadowOffsetX,
+					shadowOffsetY: o.shadowOffsetY,
+				}));
+			const payload = JSON.stringify({
+				objects: exportable,
+				referenceSize: scene.referenceSize,
+				subtitle: scene.subtitle || "",
+				music: scene.music || "",
+			}, null, 2);
+			const blob = new Blob([payload], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = "livingroom-scene.json";
+			a.click();
+			URL.revokeObjectURL(url);
+		};
+
+		const importScene = (text) => {
+			try {
+				const data = JSON.parse(text);
+				const imported = Array.isArray(data.objects) ? data.objects : [];
+				const existingDataObjects = scene.objects.filter((o) => o.sourceType === "data");
+				let baseTaken = false;
+				const normalised = imported.map((o, i) => {
+					const asBase = !!o.base && !baseTaken;
+					baseTaken = baseTaken || asBase;
+					return {
+						id: o.id || nextId(),
+						name: o.name || `object-${i}`,
+						src: o.src,
+						sourceType: "file",
+						kind: o.kind || (isVideo(o.name || "") ? "video" : "image"),
+						x: o.x ?? centerCoords().x,
+						y: o.y ?? centerCoords().y,
+						scale: o.scale ?? 1,
+						z: asBase ? 0 : (o.z ?? i + 1),
+						locked: asBase ? true : !!o.locked,
+						base: asBase,
+						intrinsicWidth: o.intrinsicWidth,
+						intrinsicHeight: o.intrinsicHeight,
+						shadowEnabled: o.shadowEnabled ?? !asBase,
+						shadowSize: o.shadowSize ?? 220,
+						shadowOpacity: o.shadowOpacity ?? 0.45,
+						shadowOffsetX: o.shadowOffsetX ?? 0,
+						shadowOffsetY: o.shadowOffsetY ?? 0,
+					};
+				});
+				scene.objects = [...existingDataObjects, ...normalised];
+				if (data.referenceSize && data.referenceSize.w && data.referenceSize.h) {
+					scene.referenceSize = data.referenceSize;
+				}
+				scene.subtitle = typeof data.subtitle === "string" ? data.subtitle : "";
+				scene.music = typeof data.music === "string" ? data.music : "";
+				persistScene();
+				renderObjects();
+				renderSubtitle();
+			} catch (err) {
+				console.error("Failed to import", err);
+				alert("Could not import scene JSON");
+			}
+		};
+
+		const clearAll = () => {
+			if (!confirm("Clear scene? This keeps nothing.")) return;
+			scene.objects = [];
+			scene.subtitle = "";
+			persistScene();
+			renderObjects();
+			renderSubtitle();
+		};
+
+		// Event wiring
+		menuToggle.addEventListener("click", () => toggleModal(true));
+		modalOverlay.addEventListener("click", (e) => {
+			if (e.target === modalOverlay) toggleModal(false);
+		});
+
+		hudToggle.addEventListener("click", () => {
+			hud.classList.toggle("collapsed");
+			hudToggle.textContent = hud.classList.contains("collapsed") ? "▸" : "▾";
+		});
+
+		const hideWelcome = () => {
+			welcomeOverlay.style.display = "none";
+		};
+
+		welcomeClose.addEventListener("click", (e) => {
+			e.stopPropagation();
+			hideWelcome();
+		});
+
+		welcomeCard.addEventListener("click", (e) => e.stopPropagation());
+		welcomeOverlay.addEventListener("click", hideWelcome);
+
+		zoomSlider.addEventListener("input", (e) => setZoom(parseFloat(e.target.value)));
+		resetView.addEventListener("click", resetCamera);
+		if (webcamFxToggle) {
+			webcamFxToggle.addEventListener("click", () => setWebcamFxEnabled(!webcamFxEnabled));
+		}
+
+		downloadJson.addEventListener("click", downloadScene);
+		uploadJson.addEventListener("change", (e) => {
+			const file = e.target.files?.[0];
+			if (!file) return;
+			file.text().then(importScene);
+			uploadJson.value = "";
+		});
+
+		clearScene.addEventListener("click", clearAll);
+
+		if (autoImportToggle) {
+			autoImportToggle.checked = autoImportEnabled;
+			autoImportToggle.addEventListener("change", (e) => {
+				persistAutoImportPreference(!!e.target.checked);
+			});
+		}
+
+		addByName.addEventListener("click", () => {
+			const value = filenameInput.value.trim();
+			if (!value) return;
+			addObject({ src: value, name: value, sourceType: "file" });
+			filenameInput.value = "";
+		});
+
+		if (subtitleInput) {
+			subtitleInput.addEventListener("input", () => {
+				scene.subtitle = subtitleInput.value;
+				persistScene();
+				renderSubtitle();
+			});
+		}
+
+		if (musicInput) {
+			musicInput.addEventListener("input", () => {
+				scene.music = musicInput.value;
+				persistScene();
+				setMusicSource(getMusicSource());
+			});
+		}
+
+		window.unlock = () => {
+			devUnlocked = true;
+			persistDevUnlockState();
+			applyDevUnlockState();
+		};
+
+		window.lock = () => {
+			devUnlocked = false;
+			persistDevUnlockState();
+			applyDevUnlockState();
+		};
+
+		stage.addEventListener("dragover", (e) => {
+			e.preventDefault();
+		});
+		stage.addEventListener("drop", handleDrop);
+		stage.addEventListener("pointerdown", beginPan);
+		stage.addEventListener("pointermove", movePan);
+		stage.addEventListener("pointerup", endPan);
+		objectLayer.addEventListener("pointerdown", (e) => {
+			if (e.target === objectLayer) beginPan(e);
+		});
+		objectLayer.addEventListener("pointermove", movePan);
+		objectLayer.addEventListener("pointerup", endPan);
+
+		window.addEventListener("pointermove", moveDrag);
+		window.addEventListener("pointerup", endDrag);
+		window.addEventListener("pointerup", endPan);
+		music.addEventListener("volumechange", enforceMusicCeiling);
+		music.addEventListener("play", enforceMusicCeiling);
+		document.addEventListener("visibilitychange", () => {
+			if (document.visibilityState === "visible") enforceMusicCeiling();
+		});
+
+		// Prevent browser navigating away on file drop.
+		window.addEventListener("dragover", (e) => e.preventDefault());
+		window.addEventListener("drop", (e) => {
+			if (!e.target.closest || !e.target.closest("#stage")) e.preventDefault();
+		});
+
+		window.addEventListener("resize", () => {
+			if (resizeRaf) cancelAnimationFrame(resizeRaf);
+			resizeRaf = requestAnimationFrame(() => {
+				resizeRaf = null;
+				if (currentZoom <= 1) cameraOffset = { x: 0, y: 0 };
+				renderObjects();
+				applyViewTransform();
+				renderWebcamFxFrame();
+			});
+		});
+
+		function beginPan(event) {
+			if (dragState || currentZoom <= 1) return;
+			if (event.button !== undefined && event.button !== 0) return;
+			const target = event.currentTarget;
+			target.setPointerCapture(event.pointerId);
+			panState = {
+				startX: event.clientX,
+				startY: event.clientY,
+				originX: cameraOffset.x,
+				originY: cameraOffset.y,
+			};
+			stage.classList.add("dragging");
+		}
+
+		function movePan(event) {
+			if (!panState) return;
+			const dx = event.clientX - panState.startX;
+			const dy = event.clientY - panState.startY;
+			cameraOffset.x = panState.originX + dx;
+			cameraOffset.y = panState.originY + dy;
+			applyViewTransform();
+		}
+
+		function endPan() {
+			panState = null;
+			stage.classList.remove("dragging");
+		}
+
+		const init = () => {
+			autoImportEnabled = loadAutoImportPreference();
+			if (autoImportToggle) autoImportToggle.checked = autoImportEnabled;
+			loadScene();
+			if (subtitleInput) subtitleInput.value = scene.subtitle || "";
+			if (musicInput) musicInput.value = scene.music || "";
+			loadDevUnlockState();
+			loadWebcamFxState();
+			setZoom(parseFloat(zoomSlider.value));
+			renderObjects();
+			renderSubtitle();
+			startMusic();
+			applyViewTransform();
+			setupWebcamFxRamp();
+			setWebcamFxEnabled(webcamFxEnabled);
+			autoImportDefaultScene();
+		};
+
+		document.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") toggleModal(false);
+		});
+
+		init();
+	</script>
+</body>
+</html>
