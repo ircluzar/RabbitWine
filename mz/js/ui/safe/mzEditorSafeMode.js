@@ -21,7 +21,7 @@
     wrap.className='mz-safe-editor';
     wrap.innerHTML = '<div class="mzse-bar">'
       + '<span class="mzse-title">Mobile Editor</span>'
-      + '<span id="mzse-target" class="mzse-target" style="margin-left:6px;opacity:.8;font-size:11px;">Target: (--,--)</span>'
+      + '<span id="mzse-target" class="mzse-target" style="margin-left:6px;opacity:.8;font-size:11px;">Target: (--,--) Y: --</span>'
       + '</div>'
       + '<div class="mzse-tools">'
         + '<button type="button" id="mzse-autobase" class="mzse-btn" aria-pressed="true" title="Toggle auto base height tracking">AutoBase</button>'
@@ -47,7 +47,7 @@
   }
 
   let currentType = 'BASE';
-  let rafId = 0; let lastTargetGX = -1, lastTargetGY = -1;
+  let rafId = 0; let lastTargetGX = -1, lastTargetGY = -1, lastTargetBase = -1;
   let followBase = true; // auto-sync base field with player's height
   // 3D visor integration: we reuse existing drawEditorVisorAndPreview pipeline if present
   // by temporarily populating state.editor.visor while safe mode is open.
@@ -88,12 +88,18 @@
   function updateTargetLoop(){
     const tgt = computeTarget();
     if (tgt){
-      // Update UI only when cell changed
-      const changed = (tgt.gx!==lastTargetGX || tgt.gy!==lastTargetGY);
+      // Determine current base/Y height
+      let baseNow = 0;
+      try {
+        const be = document.getElementById('mzse-base');
+        if (be) baseNow = parseInt(be.value || '0', 10) || 0; else if (state && state.player) baseNow = Math.max(0, Math.floor(state.player.y||0));
+      } catch(_){ baseNow = 0; }
+      // Update UI when cell or base changed
+      const changed = (tgt.gx!==lastTargetGX || tgt.gy!==lastTargetGY || baseNow!==lastTargetBase);
       if (changed){
-        lastTargetGX = tgt.gx; lastTargetGY = tgt.gy;
+        lastTargetGX = tgt.gx; lastTargetGY = tgt.gy; lastTargetBase = baseNow;
         const span = document.getElementById('mzse-target');
-        if (span) span.textContent = 'Target: ('+tgt.gx+','+tgt.gy+')';
+        if (span) span.textContent = 'Target: ('+tgt.gx+','+tgt.gy+') Y: '+baseNow;
       }
       // Live sync inputs (unless user is typing)
       try {
@@ -260,7 +266,7 @@
   function doAdd(){
     const { type, gx, gy, base, dest } = getFormValsOrDefaults();
     if (placeViaFull(type, gx, gy, base, dest)){
-      hideAdd();
+      // Keep the panel open after adding; no collapsing behavior
       return true;
     }
     return false;
@@ -454,6 +460,21 @@
 
   function enter(){
     injectStyles(); buildUI(); wire();
+    // Turn Debug OFF when entering mobile editor (same as clicking Debug button)
+    try {
+      if (window.state && state.debugVisible){
+        if (typeof window.onToggleDebug === 'function'){
+          // Only toggle if currently ON
+          window.onToggleDebug();
+        } else {
+          // Fallback: directly set flag and minimally update UI
+          state.debugVisible = false;
+          try { const HUD = (typeof window.HUD !== 'undefined') ? window.HUD : document.getElementById('hud'); if (HUD) HUD.setAttribute('aria-hidden','true'); } catch(_){ }
+          try { const btn = document.getElementById('debug-toggle'); if (btn){ btn.setAttribute('aria-pressed','false'); btn.textContent = 'Debug: OFF'; } } catch(_){ }
+          try { const edt = document.getElementById('editor-toggle'); if (edt) edt.style.display = 'none'; } catch(_){ }
+        }
+      }
+    } catch(_){ }
     // Detect availability of GL visor draw path
     use3DVisor = (typeof window.drawEditorVisorAndPreview === 'function' && typeof window.state==='object' && state.editor);
     if (!use3DVisor) ensureOverlay();
