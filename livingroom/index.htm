@@ -560,6 +560,23 @@
 				margin: 0;
 			}
 		}
+
+		.warp-handle {
+			position: absolute;
+			width: 16px;
+			height: 16px;
+			background: var(--accent);
+			border: 2px solid #fff;
+			border-radius: 50%;
+			transform: translate(-50%, -50%);
+			cursor: crosshair;
+			z-index: 100;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+			display: none;
+		}
+		.object.warping .warp-handle {
+			display: block;
+		}
 	</style>
 </head>
 <body>
@@ -926,7 +943,8 @@
 		};
 
 		const renderWebcamFxFrame = () => {
-			if (!webcamFxEnabled || webcamFxBusy) return;
+			const hasVideo = scene.objects.some(o => !o.hidden && o.kind === "video");
+			if (!webcamFxEnabled || webcamFxBusy || hasVideo) return;
 			webcamFxBusy = true;
 			try {
 				syncWebcamFxSize();
@@ -961,6 +979,8 @@
 		const startWebcamFxLoop = () => {
 			if (webcamFxTimer) clearInterval(webcamFxTimer);
 			if (!webcamFxEnabled) return;
+			const hasVideo = scene.objects.some(o => !o.hidden && o.kind === "video");
+			if (hasVideo) return;
 			webcamFxCanvas.classList.remove("hidden");
 			webcamFxTimer = setInterval(renderWebcamFxFrame, fxIntervalMs);
 			renderWebcamFxFrame();
@@ -1296,6 +1316,99 @@ const setupWebcamFxRamp = () => {
 			updateStageFrameSize();
 		};
 
+		function getPerspectiveTransform(w, h, p) {
+			const x0 = p[0].x, y0 = p[0].y;
+			const x1 = p[1].x, y1 = p[1].y;
+			const x2 = p[2].x, y2 = p[2].y;
+			const x3 = p[3].x, y3 = p[3].y;
+			const dx1 = x1 - x2, dy1 = y1 - y2;
+			const dx2 = x3 - x2, dy2 = y3 - y2;
+			const sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+			const det = dx1 * dy2 - dx2 * dy1;
+			let g, i, a, b, c, d, e, f;
+			if (det === 0) {
+				g = 0; i = 0;
+				a = x1 - x0; b = x3 - x0; c = x0;
+				d = y1 - y0; e = y3 - y0; f = y0;
+			} else {
+				g = (sx * dy2 - sy * dx2) / det;
+				i = (dx1 * sy - dy1 * sx) / det;
+				a = x1 - x0 + g * x1;
+				b = x3 - x0 + i * x3;
+				c = x0;
+				d = y1 - y0 + g * y1;
+				e = y3 - y0 + i * y3;
+				f = y0;
+			}
+			return `matrix3d(${a/w},${d/w},0,${g/w},${b/h},${e/h},0,${i/h},0,0,1,0,${c},${f},0,1)`;
+		}
+
+		let warpDragState = null;
+		const beginWarpDrag = (e, obj, index) => {
+			e.stopPropagation();
+			const target = e.currentTarget;
+			target.setPointerCapture(e.pointerId);
+			const el = target.closest(".object");
+			const rect = el.getBoundingClientRect();
+			warpDragState = {
+				objId: obj.id,
+				index,
+				startX: e.clientX,
+				startY: e.clientY,
+				startU: obj.warp[index].x,
+				startV: obj.warp[index].y,
+				width: rect.width,
+				height: rect.height
+			};
+		};
+
+		const moveWarpDrag = (e) => {
+			if (!warpDragState) return;
+			const dx = e.clientX - warpDragState.startX;
+			const dy = e.clientY - warpDragState.startY;
+			const du = dx / warpDragState.width;
+			const dv = dy / warpDragState.height;
+			const obj = scene.objects.find(o => o.id === warpDragState.objId);
+			if (obj && obj.warp) {
+				obj.warp[warpDragState.index].x = warpDragState.startU + du;
+				obj.warp[warpDragState.index].y = warpDragState.startV + dv;
+				renderObjects();
+			}
+		};
+
+		const endWarpDrag = () => {
+			if (warpDragState) {
+				persistScene();
+				warpDragState = null;
+			}
+		};
+
+		window.addEventListener("pointermove", moveWarpDrag);
+		window.addEventListener("pointerup", endWarpDrag);
+
+		const updateWebcamFxAvailability = () => {
+			const hasVideo = scene.objects.some(o => !o.hidden && o.kind === "video");
+			if (hasVideo) {
+				stopWebcamFxLoop();
+				if (webcamFxToggle) {
+					webcamFxToggle.disabled = true;
+					webcamFxToggle.style.opacity = "0.5";
+					webcamFxToggle.textContent = "Webcam FX: Off (Video)";
+					webcamFxToggle.title = "Incompatible with video playback";
+				}
+			} else {
+				if (webcamFxToggle) {
+					webcamFxToggle.disabled = false;
+					webcamFxToggle.style.opacity = "";
+					webcamFxToggle.textContent = `Webcam FX: ${webcamFxEnabled ? "On" : "Off"}`;
+					webcamFxToggle.title = "";
+				}
+				if (webcamFxEnabled) {
+					startWebcamFxLoop();
+				}
+			}
+		};
+
 		const renderObjects = () => {
 			objectLayer.innerHTML = "";
 			ensureAspectFromBase();
@@ -1307,6 +1420,7 @@ const setupWebcamFxRamp = () => {
 				const classes = ["object"];
 				if (obj.locked) classes.push("locked");
 				if (obj.base) classes.push("base");
+				if (obj.warpEnabled) classes.push("warping");
 				el.className = classes.join(" ");
 				el.dataset.id = obj.id;
 
@@ -1348,6 +1462,43 @@ const setupWebcamFxRamp = () => {
 					media.loading = "lazy";
 					media.decoding = "async";
 				}
+
+				if (obj.warpEnabled && obj.warp && obj.warp.length === 4) {
+					if (!obj.intrinsicWidth) {
+						const updateSize = () => {
+							const w = media.videoWidth || media.naturalWidth;
+							const h = media.videoHeight || media.naturalHeight;
+							if (w && h) {
+								obj.intrinsicWidth = w;
+								obj.intrinsicHeight = h;
+								renderObjects();
+							}
+						};
+						if (media.readyState >= 1 || media.complete) {
+							updateSize();
+						} else {
+							media.addEventListener(media.tagName === "VIDEO" ? "loadedmetadata" : "load", updateSize);
+						}
+					}
+
+					const w = obj.intrinsicWidth || 320;
+					const h = obj.intrinsicHeight || 240;
+					const p = obj.warp.map(pt => ({x: pt.x * w, y: pt.y * h}));
+					media.style.transform = getPerspectiveTransform(w, h, p);
+					media.style.transformOrigin = "0 0";
+					
+					if (!obj.locked) {
+						obj.warp.forEach((pt, idx) => {
+							const handle = document.createElement("div");
+							handle.className = "warp-handle";
+							handle.style.left = `${pt.x * 100}%`;
+							handle.style.top = `${pt.y * 100}%`;
+							handle.addEventListener("pointerdown", (e) => beginWarpDrag(e, obj, idx));
+							el.appendChild(handle);
+						});
+					}
+				}
+
 				el.appendChild(media);
 
 				if (!obj.base) {
@@ -1359,7 +1510,7 @@ const setupWebcamFxRamp = () => {
 			}
 			updateListUI();
 			dropHint.style.display = visible.length ? "none" : "grid";
-			renderWebcamFxFrame();
+			updateWebcamFxAvailability();
 		};
 
 		const addObject = ({ src, name, sourceType, base = false }) => {
@@ -1567,6 +1718,30 @@ const setupWebcamFxRamp = () => {
 					renderObjects();
 				});
 				headerActions.appendChild(miniLockBtn);
+
+				const miniWarpBtn = document.createElement("button");
+				miniWarpBtn.className = "iconBtn miniIconBtn";
+				miniWarpBtn.textContent = "⛶";
+				miniWarpBtn.title = "Toggle Warp Mode";
+				miniWarpBtn.style.background = obj.warpEnabled ? "var(--accent)" : "";
+				miniWarpBtn.style.color = obj.warpEnabled ? "#000" : "";
+				miniWarpBtn.disabled = obj.base;
+				miniWarpBtn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					if (obj.base) return;
+					obj.warpEnabled = !obj.warpEnabled;
+					if (obj.warpEnabled && !obj.warp) {
+						obj.warp = [
+							{x: 0, y: 0},
+							{x: 1, y: 0},
+							{x: 1, y: 1},
+							{x: 0, y: 1}
+						];
+					}
+					persistScene();
+					renderObjects();
+				});
+				headerActions.appendChild(miniWarpBtn);
 
 				header.appendChild(headerActions);
 
