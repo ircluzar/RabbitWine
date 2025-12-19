@@ -41,9 +41,18 @@
     <link rel="stylesheet" href="mainmenu.css">
     <link rel="stylesheet" href="stars.css">
     <link rel="stylesheet" href="modals.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&display=swap">
 </head>
 <body>
     <div class="background-animation" id="backgroundAnimation"></div>
+    <button id="viewToggle" class="view-toggle" aria-label="Toggle menu">
+        <img class="view-toggle-logo" src="rabbitwine.png" alt="Rabbit Wine" aria-hidden="true">
+        <span class="view-toggle-label">Rabbit Wine Menu</span>
+    </button>
+    <div id="livingroomShell" class="livingroom-shell">
+        <iframe id="livingroomFrame" src="livingroom/index.htm?embed=1" title="Rabbit Wine Livingroom" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div id="mainMenuShell" class="main-menu-shell">
     <script>
     // Prevent bfcache and force reload if page is restored from cache
     if ('serviceWorker' in navigator) {
@@ -61,18 +70,15 @@
     // Detect if navigation is via back/forward
     window.skipMenuAnimation = false;
     try {
-        // Use PerformanceNavigation API if available
         if (window.performance && performance.getEntriesByType) {
             const navs = performance.getEntriesByType('navigation');
-            if (navs.length && navs[0].type === 'back_forward') {
+            if (navs && navs[0] && navs[0].type === 'back_forward') {
                 window.skipMenuAnimation = true;
             }
         }
-        // Fallback: use sessionStorage flag
         if (sessionStorage.getItem('skipMenuAnimation') === '1') {
             window.skipMenuAnimation = true;
         }
-        // Set flag for next navigation
         sessionStorage.setItem('skipMenuAnimation', '1');
     } catch (e) {}
     </script>
@@ -85,6 +91,11 @@
         </div>
     <h1 class="title">Rabbit Wine</h1>
         <div class="features-grid">
+
+            <a href="#" class="feature-card" id="livingroomLink">
+                <span class="feature-icon">🛋️</span>
+                <h3 class="feature-title">Livingroom</h3>
+            </a>
 
             <a href="stickers" class="feature-card">
                 <span class="feature-icon">🏷️</span>
@@ -145,6 +156,7 @@
 -->
         </div>
 
+    </div>
     </div>
 
     <script src="stars.js"></script>
@@ -218,6 +230,67 @@
             });
         });
     </script>
+    <script>
+        (function() {
+            const livingroomShell = document.getElementById('livingroomShell');
+            const mainMenuShell = document.getElementById('mainMenuShell');
+            const viewToggle = document.getElementById('viewToggle');
+            const livingroomLink = document.getElementById('livingroomLink');
+            const livingroomFrame = document.getElementById('livingroomFrame');
+            let currentView = 'livingroom';
+
+            const labelEl = viewToggle ? viewToggle.querySelector('.view-toggle-label') : null;
+
+            const setView = (next) => {
+                currentView = next;
+                const showLivingroom = currentView === 'livingroom';
+                livingroomShell.classList.toggle('hidden-shell', !showLivingroom);
+                mainMenuShell.classList.toggle('hidden-shell', showLivingroom);
+                if (viewToggle) {
+                    viewToggle.style.display = showLivingroom ? 'inline-flex' : 'none';
+                }
+                if (labelEl) {
+                    labelEl.textContent = 'Rabbit Wine Menu';
+                }
+            };
+
+            const sendMusicState = (state) => {
+                if (!livingroomFrame || !livingroomFrame.contentWindow) return;
+                const playing = !!(state && state.isPlaying && state.hasPlaylist);
+                livingroomFrame.contentWindow.postMessage({ type: 'background-music-state', playing }, '*');
+            };
+
+            if (viewToggle) {
+                viewToggle.addEventListener('click', () => {
+                    setView(currentView === 'livingroom' ? 'menu' : 'livingroom');
+                });
+            }
+
+            if (livingroomLink) {
+                livingroomLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    setView('livingroom');
+                });
+            }
+
+            document.addEventListener('backgroundMusicStateChange', (e) => {
+                sendMusicState(e?.detail || null);
+            });
+
+            const sendInitialMusicState = () => {
+                try {
+                    const state = window.BackgroundMusic?.getState?.();
+                    if (state) sendMusicState(state);
+                } catch (err) {
+                    console.warn('Music state send failed', err);
+                }
+            };
+
+            // Default to Livingroom view on load
+            setView('livingroom');
+            sendInitialMusicState();
+        })();
+    </script>
     <style>
     /* Mini player spacing adjustments */
     .intro-container {
@@ -232,11 +305,71 @@
         padding: 12px 0 !important;
         font-size: 2.8rem;
         font-weight: 700;
+        font-family: "Sora", system-ui, -apple-system, sans-serif;
         color: #e2e2e2;
         letter-spacing: 0.04em;
         text-align: center;
         line-height: 1.1;
         /* No background or box-shadow, restore original look */
+    }
+    .livingroom-shell {
+        position: fixed;
+        inset: 0;
+        z-index: 3;
+        display: grid;
+        background: #0b0a11;
+    }
+    .livingroom-shell iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+    }
+    .main-menu-shell {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        overflow: auto;
+        display: grid;
+        place-items: center;
+        padding-top: 32px;
+        background: transparent;
+    }
+    .hidden-shell {
+        display: none;
+    }
+    .view-toggle {
+        position: fixed;
+        right: 16px;
+        bottom: 96px;
+        z-index: 4;
+        min-width: 180px;
+        height: 52px;
+        padding: 0 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(17, 19, 26, 0.9);
+        color: #9aa0ad;
+        font-family: "Sora", system-ui, -apple-system, sans-serif;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.32);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+    .view-toggle:active {
+        transform: translateY(1px);
+    }
+    @media (max-width: 820px) and (orientation: portrait) {
+        .view-toggle {
+            right: 12px;
+            bottom: 88px;
+            min-width: 160px;
+            height: 48px;
+            font-size: 0.95rem;
+        }
     }
     @media (max-width: 600px) {
         .intro-container {
@@ -249,6 +382,96 @@
             margin: 22px 0 18px 0 !important;
             padding: 8px 0 !important;
         }
+    }
+
+    /* Shrink cards only on short landscape viewports (tablet/phone); keep desktop sized */
+    @media (orientation: landscape) and (max-height: 820px) {
+        .main-menu-shell {
+            place-items: start center;
+            padding-top: 16px;
+            padding-bottom: 8px;
+        }
+        .intro-container {
+            justify-content: flex-start;
+            padding: 6px 10px 10px !important;
+            gap: 8px;
+            height: auto;
+            min-height: 0;
+        }
+        .title {
+            margin: 12px 0 10px 0 !important;
+            padding: 4px 0 !important;
+            font-size: 2.2rem;
+        }
+        .features-grid {
+            max-width: 720px;
+            gap: 0.7rem 0.9rem;
+            align-content: flex-start;
+            display: grid;
+            grid-template-columns: repeat(5, minmax(64px, 1fr));
+            justify-items: center;
+        }
+        .feature-card {
+            width: 72px;
+            height: 76px;
+            padding: 0.45rem 0.2rem 0.25rem 0.2rem;
+        }
+        .feature-icon {
+            font-size: 1.65rem;
+        }
+        .feature-title {
+            font-size: 0.72rem;
+        }
+    }
+
+    /* Five columns on wider landscape (desktop/laptop) */
+    @media (orientation: landscape) and (min-width: 900px) {
+        .main-menu-shell {
+            place-items: start center;
+            padding-top: 16px;
+            padding-bottom: 12px;
+        }
+        .intro-container {
+            gap: 8px;
+            padding: 8px 14px 12px !important;
+            height: auto;
+            min-height: 0;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(110px, 1fr));
+            max-width: 980px;
+            gap: 0.8rem 1rem;
+            align-content: flex-start;
+            justify-items: center;
+        }
+        .feature-card {
+            width: 110px;
+            height: 124px;
+            padding: 0.78rem 0.3rem 0.38rem 0.3rem;
+        }
+        .feature-icon {
+            font-size: 2rem;
+        }
+        .feature-title {
+            font-size: 0.86rem;
+        }
+    }
+
+    .view-toggle-logo {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+        flex-shrink: 0;
+    }
+
+    .view-toggle-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        line-height: 1;
+        flex: 1 1 auto;
+        text-align: center;
     }
     </style>
 </body>

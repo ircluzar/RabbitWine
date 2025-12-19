@@ -713,6 +713,7 @@
 		const hudControls = document.getElementById("hudControls");
 		const fullscreenToggle = document.getElementById("fullscreenToggle");
 
+		const EMBED_MODE = new URLSearchParams(window.location.search).get("embed") === "1";
 		const music = new Audio("music.mp3");
 		music.loop = true;
 		music.preload = "auto";
@@ -720,6 +721,7 @@
 		const MUSIC_TARGET_VOLUME = 0.33;
 		const MUSIC_FADE_MS = 12000;
 		let musicFadeRaf = null;
+		let externalMusicActive = false;
 
 		let scene = { objects: [], referenceSize: null, subtitle: "", music: "" };
 		let dragState = null;
@@ -1080,6 +1082,7 @@
 		};
 
 		const startMusic = () => {
+			if (EMBED_MODE && externalMusicActive) return;
 			setMusicVolume(0);
 			setMusicSource(getMusicSource());
 			const attemptPlay = () => {
@@ -2083,6 +2086,15 @@
 			renderSubtitle();
 		};
 
+		const setExternalMusicActive = (active) => {
+			externalMusicActive = !!active;
+			if (externalMusicActive) {
+				try { music.pause(); } catch (err) {}
+			} else if (EMBED_MODE && music.paused) {
+				startMusic();
+			}
+		};
+
 		// Event wiring
 		menuToggle.addEventListener("click", () => toggleModal(true));
 		modalOverlay.addEventListener("click", (e) => {
@@ -2216,6 +2228,12 @@
 		music.addEventListener("play", enforceMusicCeiling);
 		document.addEventListener("visibilitychange", () => {
 			if (document.visibilityState === "visible") enforceMusicCeiling();
+		});
+		window.addEventListener("message", (event) => {
+			const data = event?.data;
+			if (data && data.type === "background-music-state") {
+				setExternalMusicActive(!!data.playing);
+			}
 		});
 
 		// Prevent browser navigating away on file drop.
