@@ -656,11 +656,13 @@
 		</div>
 	</div>
 
+	<script src="../memory.js"></script>
 	<script>
-		const STORAGE_KEY = "livingroom_scene_v1";
-		const AUTO_IMPORT_KEY = "livingroom_auto_import";
-		const DEV_UNLOCK_KEY = "livingroom_dev_unlocked";
-		const WEBCAM_FX_KEY = "livingroom_webcam_fx_enabled";
+		const NAMESPACE = "LivingRoom";
+		const STORAGE_KEY = "scene_v1";
+		const AUTO_IMPORT_KEY = "auto_import";
+		const DEV_UNLOCK_KEY = "dev_unlocked";
+		const WEBCAM_FX_KEY = "webcam_fx_enabled";
 		const DEFAULT_ASPECT = 16 / 9;
 		const DEFAULT_MUSIC = "music.mp3";
 		const viewportEl = document.getElementById("viewport");
@@ -742,14 +744,14 @@
 		};
 		const persistDevUnlockState = () => {
 			try {
-				localStorage.setItem(DEV_UNLOCK_KEY, devUnlocked ? "true" : "false");
+				memory.write(NAMESPACE, DEV_UNLOCK_KEY, devUnlocked);
 			} catch (err) {
 				console.warn("Unable to persist dev unlock state", err);
 			}
 		};
 		const loadDevUnlockState = () => {
 			try {
-				devUnlocked = localStorage.getItem(DEV_UNLOCK_KEY) === "true";
+				devUnlocked = memory.read(NAMESPACE, DEV_UNLOCK_KEY) === true;
 			} catch (err) {
 				devUnlocked = false;
 			}
@@ -781,17 +783,17 @@
 		};
 
 		const loadAutoImportPreference = () => {
-			const stored = localStorage.getItem(AUTO_IMPORT_KEY);
-			if (stored === null) {
-				localStorage.setItem(AUTO_IMPORT_KEY, "true");
+			const stored = memory.read(NAMESPACE, AUTO_IMPORT_KEY);
+			if (stored === undefined) {
+				memory.write(NAMESPACE, AUTO_IMPORT_KEY, true);
 				return true;
 			}
-			return stored === "true";
+			return stored === true;
 		};
 
 		const persistAutoImportPreference = (value) => {
 			autoImportEnabled = !!value;
-			localStorage.setItem(AUTO_IMPORT_KEY, autoImportEnabled ? "true" : "false");
+			memory.write(NAMESPACE, AUTO_IMPORT_KEY, autoImportEnabled);
 			if (autoImportToggle) autoImportToggle.checked = autoImportEnabled;
 		};
 
@@ -972,7 +974,7 @@
 			webcamFxEnabled = enabled;
 			if (persist) {
 				try {
-					localStorage.setItem(WEBCAM_FX_KEY, enabled ? "true" : "false");
+					memory.write(NAMESPACE, WEBCAM_FX_KEY, enabled);
 				} catch (err) {
 					console.warn("Unable to persist webcam FX state", err);
 				}
@@ -989,67 +991,69 @@
 
 		const loadWebcamFxState = () => {
 			try {
-				const stored = localStorage.getItem(WEBCAM_FX_KEY);
-				if (stored === null) return; // default true
-				webcamFxEnabled = stored === "true";
-			} catch (err) {
-				webcamFxEnabled = true;
+			const stored = memory.read(NAMESPACE, WEBCAM_FX_KEY);
+			if (stored === undefined) {
+				webcamFxEnabled = true; // default true
+				return;
 			}
-		};
+			webcamFxEnabled = stored === true;
+		} catch (err) {
+			webcamFxEnabled = true;
+		}
+	};
 
-		const requestFullscreen = async () => {
-			if (!viewportEl.requestFullscreen) return;
-			try {
-				await viewportEl.requestFullscreen();
-			} catch (err) {
-				console.warn("Fullscreen request failed", err);
-			}
-		};
+const requestFullscreen = async () => {
+	if (!viewportEl.requestFullscreen) return;
+	try {
+		await viewportEl.requestFullscreen();
+	} catch (err) {
+		console.warn("Fullscreen request failed", err);
+	}
+};
 
-		const exitFullscreen = async () => {
-			if (!document.exitFullscreen || !isFullscreenActive()) return;
-			try {
-				await document.exitFullscreen();
-			} catch (err) {
-				console.warn("Exit fullscreen failed", err);
-			}
-		};
+const exitFullscreen = async () => {
+	if (!document.exitFullscreen || !isFullscreenActive()) return;
+	try {
+		await document.exitFullscreen();
+	} catch (err) {
+		console.warn("Exit fullscreen failed", err);
+	}
+};
 
-		const toggleFullscreen = () => {
-			if (isFullscreenActive()) {
-				exitFullscreen();
-			} else {
-				requestFullscreen();
-			}
-		};
+const toggleFullscreen = () => {
+	if (isFullscreenActive()) {
+		exitFullscreen();
+	} else {
+		requestFullscreen();
+	}
+};
 
-		const setupWebcamFxRamp = () => {
-			setFxQuality(0.1);
-			setFxInterval(666);
-			const start = performance.now();
-			const phase1End = 2500; // ramp to 0.2
-			const phase2End = 5000; // ramp to 0.3
-			const step = (now) => {
-				const elapsed = now - start;
-				if (elapsed <= phase1End) {
-					const p = clamp(elapsed / phase1End, 0, 1);
-					setFxQuality(0.1 + (0.1 * p));
-					requestAnimationFrame(step);
-					return;
-				}
-				if (elapsed <= phase2End) {
-					setFxInterval(420);
-					const p = clamp((elapsed - phase1End) / (phase2End - phase1End), 0, 1);
-					setFxQuality(0.2 + (0.1 * p));
-					requestAnimationFrame(step);
-					return;
-				}
-				setFxInterval(420);
-				setFxQuality(0.3);
-			};
+const setupWebcamFxRamp = () => {
+	setFxQuality(0.1);
+	setFxInterval(666);
+	const start = performance.now();
+	const phase1End = 2500;
+	const phase2End = 5000;
+	const step = () => {
+		const elapsed = performance.now() - start;
+		if (elapsed <= phase1End) {
+			const p = clamp(elapsed / phase1End, 0, 1);
+			setFxQuality(0.1 + (0.1 * p));
 			requestAnimationFrame(step);
-		};
-
+			return;
+		}
+		if (elapsed <= phase2End) {
+			setFxInterval(420);
+			const p = clamp((elapsed - phase1End) / (phase2End - phase1End), 0, 1);
+			setFxQuality(0.2 + (0.1 * p));
+			requestAnimationFrame(step);
+			return;
+		}
+		setFxInterval(420);
+		setFxQuality(0.3);
+	};
+	requestAnimationFrame(step);
+};
 		const fadeInMusic = () => {
 			if (musicFadeRaf) cancelAnimationFrame(musicFadeRaf);
 			const start = performance.now();
@@ -1106,9 +1110,8 @@
 
 		const loadScene = () => {
 			try {
-				const raw = localStorage.getItem(STORAGE_KEY);
-				if (!raw) return;
-				const data = JSON.parse(raw);
+				const data = memory.read(NAMESPACE, STORAGE_KEY);
+				if (!data) return;
 				if (Array.isArray(data.objects)) {
 					scene.objects = data.objects;
 					scene.objects.forEach(ensureAlias);
@@ -1125,7 +1128,7 @@
 
 		const persistScene = () => {
 			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(scene));
+				memory.write(NAMESPACE, STORAGE_KEY, scene);
 			} catch (err) {
 				console.error("Failed to save scene", err);
 			}

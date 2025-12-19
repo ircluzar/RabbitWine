@@ -6,7 +6,7 @@ const appsData = [
     { name: "Scroll", icon: "📄", link: "scroll" },
     { name: "Realities", icon: "📷", link: "realities" },
     { name: "Chaos", icon: "🌀", link: "chaos" },
-    { name: "Space", icon: "🌌", link: "space", hidden: true },
+    { name: "Space", icon: "🌌", link: "space", hidden: false },
     { name: "Jams", icon: "🎵", link: "jams" },
     { name: "Midi", icon: "🎹", link: "midi" },
     { name: "BrokenNes", icon: "🕹️", link: "brokennes" },
