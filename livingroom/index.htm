@@ -77,9 +77,25 @@
 			height: 100vh;
 			padding: clamp(12px, 2vw, 24px);
 			overflow: hidden;
-			display: grid;
-			place-items: center;
+			display: flex;
+			align-items: center;
+			justify-content: center;
 			touch-action: none;
+		}
+
+		body.fullscreen-active {
+			overflow: hidden;
+			overflow-anchor: none;
+		}
+
+		body.fullscreen-active #viewport {
+			padding: 0;
+		}
+
+		body.fullscreen-active #stageFrame {
+			border-radius: 0;
+			max-width: none;
+			max-height: none;
 		}
 
 		#stageFrame {
@@ -87,6 +103,9 @@
 			width: min(92vw, 1800px);
 			aspect-ratio: 16 / 9;
 			max-height: calc(100vh - 96px);
+			margin: 0 auto;
+			flex-shrink: 0;
+			will-change: transform;
 			border-radius: 18px;
 			background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
 			border: 1px solid var(--panel-border);
@@ -143,7 +162,11 @@
 			cursor: grab;
 		}
 
-		.object.locked,
+		.object.locked {
+			cursor: default;
+			pointer-events: none;
+		}
+
 		.object.base {
 			cursor: default;
 		}
@@ -329,6 +352,12 @@
 			color: var(--muted);
 		}
 
+		.inlineLabel {
+			font-size: 13px;
+			color: var(--muted);
+			min-width: 64px;
+		}
+
 		input[type="text"],
 		input[type="file"],
 		button,
@@ -368,6 +397,16 @@
 			display: grid;
 			gap: 10px;
 			grid-template-columns: 1fr;
+		}
+
+		.card.collapsed .cardDetails {
+			display: none;
+		}
+
+		.cardHeaderTitle {
+			font-weight: 600;
+			font-size: 14px;
+			color: var(--text);
 		}
 
 		.controlRow {
@@ -413,6 +452,31 @@
 			background: rgba(255, 255, 255, 0.06);
 			font-size: 16px;
 			color: var(--text);
+		}
+
+		.miniIconBtn {
+			width: 28px;
+			height: 28px;
+			border-radius: 8px;
+			font-size: 13px;
+			padding: 0;
+		}
+
+		.iconLabelBtn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 6px;
+			width: auto;
+			min-width: 36px;
+			height: 36px;
+			padding: 0 10px;
+		}
+
+		.btnLabel {
+			font-size: 12px;
+			color: var(--text);
+			opacity: 0.9;
 		}
 
 		.listActions {
@@ -500,6 +564,17 @@
 				gap: 6px;
 			}
 		}
+
+		@media (max-width: 820px) and (orientation: portrait) {
+			#viewport {
+				justify-content: flex-start;
+				align-items: flex-start;
+			}
+
+			#stageFrame {
+				margin: 0;
+			}
+		}
 	</style>
 </head>
 <body>
@@ -528,6 +603,7 @@
 				<input id="zoom" type="range" min="0.5" max="2.5" step="0.05" value="1" />
 				<div id="zoomValue">100%</div>
 				<button id="resetView">Reset view</button>
+				<button id="fullscreenToggle">Fullscreen</button>
 				<button id="webcamFxToggle">Webcam FX: On</button>
 			</div>
 		</div>
@@ -546,6 +622,7 @@
 				<h2>Scene Manager</h2>
 
 				<div class="row">
+					<label for="filenameInput">File:</label>
 					<input id="filenameInput" type="text" placeholder="filename.ext" aria-label="Filename" />
 					<button id="addByName">Add by filename</button>
 				</div>
@@ -560,6 +637,11 @@
 				</div>
 
 				<div class="row">
+					<button id="unlockAll">Unlock all</button>
+					<button id="lockAll">Lock all</button>
+				</div>
+
+				<div class="row">
 					<label class="badge" style="display:flex;align-items:center;gap:8px;">
 						<input id="autoImportToggle" type="checkbox" />
 						Auto-import default scene on startup
@@ -567,15 +649,22 @@
 				</div>
 
 				<div class="row">
+					<label for="subtitleInput">Scene subtitle:</label>
 					<input id="subtitleInput" type="text" placeholder="Subtitle (optional)" aria-label="Subtitle" />
 				</div>
 
 				<div class="row">
+					<label for="musicInput">Scene music:</label>
 					<input id="musicInput" type="text" placeholder="Music filename (optional, defaults to music.mp3)" aria-label="Music filename" />
 				</div>
 
 				<div class="row">
 					<div class="badge">Objects</div>
+				</div>
+
+				<div class="row">
+					<input id="objectFilter" type="text" placeholder="Filter by alias or name" aria-label="Filter objects" />
+					<button id="clearFilter">Clear</button>
 				</div>
 
 				<div id="objectList"></div>
@@ -600,6 +689,8 @@
 		const filenameInput = document.getElementById("filenameInput");
 		const subtitleInput = document.getElementById("subtitleInput");
 		const musicInput = document.getElementById("musicInput");
+		const objectFilter = document.getElementById("objectFilter");
+		const clearFilterBtn = document.getElementById("clearFilter");
 		const zoomSlider = document.getElementById("zoom");
 		const zoomValue = document.getElementById("zoomValue");
 		const resetView = document.getElementById("resetView");
@@ -610,6 +701,8 @@
 		const clearScene = document.getElementById("clearScene");
 		const addByName = document.getElementById("addByName");
 		const autoImportToggle = document.getElementById("autoImportToggle");
+		const lockAllBtn = document.getElementById("lockAll");
+		const unlockAllBtn = document.getElementById("unlockAll");
 		const dropHint = document.getElementById("dropHint");
 		const welcomeOverlay = document.getElementById("welcomeOverlay");
 		const welcomeCard = document.getElementById("welcomeCard");
@@ -618,6 +711,7 @@
 		const hud = document.getElementById("hud");
 		const hudToggle = document.getElementById("hudToggle");
 		const hudControls = document.getElementById("hudControls");
+		const fullscreenToggle = document.getElementById("fullscreenToggle");
 
 		const music = new Audio("music.mp3");
 		music.loop = true;
@@ -644,6 +738,9 @@
 		let autoImportEnabled = true;
 		let autoImportRun = false;
 		let devUnlocked = false;
+		let filterTerm = "";
+		const collapsedState = new Map();
+		const isFullscreenActive = () => !!document.fullscreenElement;
 
 		const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 		const setMusicVolume = (value) => {
@@ -692,6 +789,11 @@
 		const isImage = (name) => /\.(png|jpg|jpeg|webp|gif)$/i.test(name || "");
 		const isVideo = (name) => /\.(mp4|webm|mov|m4v)$/i.test(name || "");
 		const getBase = () => scene.objects.find((o) => o.base);
+		const ensureAlias = (obj) => {
+			if (!obj) return;
+			const alias = typeof obj.alias === "string" ? obj.alias.trim() : "";
+			obj.alias = alias || obj.name || "object";
+		};
 
 		const loadAutoImportPreference = () => {
 			const stored = localStorage.getItem(AUTO_IMPORT_KEY);
@@ -778,6 +880,7 @@
 			const ordered = [...scene.objects].sort((a, b) => a.z - b.z);
 			webcamFxBufferCtx.clearRect(0, 0, webcamFxBuffer.width, webcamFxBuffer.height);
 			for (const obj of ordered) {
+				if (obj.hidden) continue;
 				const wrapper = objectLayer.querySelector(`[data-id="${obj.id}"]`);
 				const media = wrapper?.querySelector("img, video");
 				if (!media) continue;
@@ -909,6 +1012,32 @@
 			}
 		};
 
+		const requestFullscreen = async () => {
+			if (!viewportEl.requestFullscreen) return;
+			try {
+				await viewportEl.requestFullscreen();
+			} catch (err) {
+				console.warn("Fullscreen request failed", err);
+			}
+		};
+
+		const exitFullscreen = async () => {
+			if (!document.exitFullscreen || !isFullscreenActive()) return;
+			try {
+				await document.exitFullscreen();
+			} catch (err) {
+				console.warn("Exit fullscreen failed", err);
+			}
+		};
+
+		const toggleFullscreen = () => {
+			if (isFullscreenActive()) {
+				exitFullscreen();
+			} else {
+				requestFullscreen();
+			}
+		};
+
 		const setupWebcamFxRamp = () => {
 			setFxQuality(0.1);
 			setFxInterval(666);
@@ -977,6 +1106,7 @@
 				const data = JSON.parse(raw);
 				if (Array.isArray(data.objects)) {
 					scene.objects = data.objects;
+					scene.objects.forEach(ensureAlias);
 				}
 				if (data.referenceSize && data.referenceSize.w && data.referenceSize.h) {
 					scene.referenceSize = data.referenceSize;
@@ -1027,6 +1157,17 @@
 			return { sx, sy, uni: Math.min(sx, sy), rect, ref };
 		};
 
+		const hasViewportOverflow = () => {
+			const rect = stageFrame.getBoundingClientRect();
+			const viewportRect = viewportEl.getBoundingClientRect();
+			const styles = getComputedStyle(viewportEl);
+			const padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+			const padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+			const contentW = Math.max(1, viewportRect.width - padX);
+			const contentH = Math.max(1, viewportRect.height - padY);
+			return rect.width > contentW + 1 || rect.height > contentH + 1; // tiny tolerance to reduce jitter at boundary
+		};
+
 		const applyAspect = (w, h) => {
 			if (!w || !h) return;
 			stageFrame.style.aspectRatio = `${w} / ${h}`;
@@ -1052,15 +1193,29 @@
 			const padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
 			const availableWidth = Math.max(320, viewportRect.width - padX);
 			const availableHeight = Math.max(240, viewportRect.height - padY);
-			const isMobilePortrait = viewportRect.width <= 820 && viewportRect.height > viewportRect.width;
-			const maxWidth = 1800;
-			const desktopMargin = 96;
+			const fullscreen = isFullscreenActive();
+			const isLandscape = viewportRect.width >= viewportRect.height;
+			const isMobilePortrait = !fullscreen && viewportRect.width <= 820 && viewportRect.height > viewportRect.width;
+			const maxWidth = fullscreen ? availableWidth : 1800;
+			const desktopMargin = fullscreen ? 0 : 96;
 			const desktopHeight = Math.max(240, availableHeight - desktopMargin);
 
 			let width;
 			let height;
 
-			if (isMobilePortrait) {
+			if (fullscreen && isLandscape) {
+				// Fit fullscreen while preserving aspect; avoid stretching that drifts overlays.
+				const heightIfFullWidth = availableWidth / aspect;
+				if (heightIfFullWidth <= availableHeight) {
+					width = availableWidth;
+					height = heightIfFullWidth;
+				} else {
+					height = availableHeight;
+					width = height * aspect;
+				}
+				stageFrame.style.maxWidth = `${availableWidth}px`;
+				stageFrame.style.maxHeight = `${availableHeight}px`;
+			} else if (isMobilePortrait) {
 				height = availableHeight;
 				width = height * aspect;
 				stageFrame.style.maxHeight = `${availableHeight}px`;
@@ -1078,6 +1233,19 @@
 
 			stageFrame.style.width = `${width}px`;
 			stageFrame.style.height = `${height}px`;
+		};
+
+		const updateFullscreenUI = () => {
+			const active = isFullscreenActive();
+			document.body.classList.toggle("fullscreen-active", active);
+			if (fullscreenToggle) fullscreenToggle.textContent = active ? "Exit fullscreen" : "Fullscreen";
+			if (active && currentZoom <= 1) {
+				cameraOffset = { x: 0, y: 0 };
+			}
+			updateStageFrameSize();
+			renderObjects();
+			applyViewTransform();
+			renderWebcamFxFrame();
 		};
 
 		const measureBaseIntrinsic = (obj) => {
@@ -1122,7 +1290,8 @@
 			ensureAspectFromBase();
 			const { sx, sy, uni } = getScaleFactors();
 			const sorted = [...scene.objects].sort((a, b) => a.z - b.z);
-			for (const obj of sorted) {
+			const visible = sorted.filter((o) => !o.hidden);
+			for (const obj of visible) {
 				const el = document.createElement("div");
 				const classes = ["object"];
 				if (obj.locked) classes.push("locked");
@@ -1179,7 +1348,7 @@
 				objectLayer.appendChild(el);
 			}
 			updateListUI();
-			dropHint.style.display = scene.objects.length ? "none" : "grid";
+			dropHint.style.display = visible.length ? "none" : "grid";
 			renderWebcamFxFrame();
 		};
 
@@ -1191,6 +1360,7 @@
 			const obj = {
 				id: nextId(),
 				name: name || "object",
+				alias: name || "object",
 				src,
 				sourceType: sourceType || "file", // file | data
 				kind,
@@ -1200,6 +1370,7 @@
 				z: base ? 0 : zMax + 1,
 				locked: !!base,
 				base: !!base,
+				hidden: false,
 				shadowEnabled: !base,
 				shadowSize: 220,
 				shadowOpacity: 0.45,
@@ -1212,6 +1383,7 @@
 			}
 
 			scene.objects.push(obj);
+			collapsedState.set(obj.id, true);
 			if (base) measureBaseIntrinsic(obj);
 			persistScene();
 			renderObjects();
@@ -1241,7 +1413,7 @@
 
 		const beginDrag = (event, obj) => {
 			const zoomLocked = Math.abs(currentZoom - 1) > 0.001;
-			if (obj.locked || zoomLocked || webcamFxEnabled) return;
+			if (obj.locked || obj.hidden || zoomLocked || webcamFxEnabled) return;
 			const target = event.currentTarget;
 			target.setPointerCapture(event.pointerId);
 			const { sx, sy } = getScaleFactors();
@@ -1262,7 +1434,7 @@
 		const moveDrag = (event) => {
 			if (!dragState) return;
 			const obj = scene.objects.find((o) => o.id === dragState.id);
-			if (!obj || obj.locked) return;
+			if (!obj || obj.locked || obj.hidden) return;
 			const dx = (event.clientX - dragState.startX) / (dragState.sx || 1);
 			const dy = (event.clientY - dragState.startY) / (dragState.sy || 1);
 			obj.x = dragState.originX + dx;
@@ -1277,7 +1449,7 @@
 		};
 
 		const scaleObjectWheel = (event, obj) => {
-			if (!event.shiftKey || obj.locked) return;
+			if (!event.shiftKey || obj.locked || obj.hidden) return;
 			event.preventDefault();
 			const delta = -event.deltaY;
 			const factor = delta > 0 ? 1.04 : 0.96;
@@ -1293,55 +1465,204 @@
 		const updateListUI = () => {
 			objectList.innerHTML = "";
 			const ordered = [...scene.objects].sort((a, b) => a.z - b.z);
-			for (const obj of ordered) {
+			const term = (filterTerm || "").trim().toLowerCase();
+			const filtered = term
+				? ordered.filter((o) => {
+					const alias = (o.alias || "").toLowerCase();
+					const name = (o.name || "").toLowerCase();
+					return alias.includes(term) || name.includes(term);
+				})
+				: ordered;
+
+			if (!filtered.length) {
+				const empty = document.createElement("div");
+				empty.className = "badge";
+				empty.textContent = term ? "No objects match filter" : "No objects yet";
+				objectList.appendChild(empty);
+				return;
+			}
+
+			for (const obj of filtered) {
+				ensureAlias(obj);
+				if (!collapsedState.has(obj.id)) collapsedState.set(obj.id, true);
+				const isCollapsed = collapsedState.get(obj.id);
+
 				const card = document.createElement("div");
-				card.className = "card";
+				card.className = `card${isCollapsed ? " collapsed" : ""}`;
 
-				const meta = document.createElement("div");
-				meta.className = "meta";
+				const header = document.createElement("div");
+				header.className = "controlRow";
 
-				const topRow = document.createElement("div");
-				topRow.className = "controlRow";
-				const nameInput = document.createElement("input");
-				nameInput.type = "text";
-				nameInput.value = obj.name;
-				nameInput.addEventListener("input", () => {
-					obj.name = nameInput.value;
-					persistScene();
+				const collapseBtn = document.createElement("button");
+				collapseBtn.className = "iconBtn";
+				collapseBtn.textContent = isCollapsed ? "▸" : "▾";
+				collapseBtn.title = isCollapsed ? "Expand" : "Collapse";
+				collapseBtn.addEventListener("click", () => {
+					collapsedState.set(obj.id, !isCollapsed);
+					updateListUI();
 				});
-				topRow.appendChild(nameInput);
+				header.appendChild(collapseBtn);
+
+				const title = document.createElement("div");
+				title.className = "cardHeaderTitle";
+				title.textContent = obj.alias || obj.name;
+				header.appendChild(title);
 
 				const badge = document.createElement("div");
 				badge.className = "badge";
 				badge.textContent = `${obj.kind} · z${obj.z}`;
-				topRow.appendChild(badge);
+				header.appendChild(badge);
+
+				const lockBadge = document.createElement("div");
+				lockBadge.className = "badge";
+				lockBadge.textContent = obj.base ? "Base" : obj.hidden ? "Hidden" : obj.locked ? "Locked" : "Unlocked";
+				header.appendChild(lockBadge);
+
+				const headerActions = document.createElement("div");
+				headerActions.style.display = "flex";
+				headerActions.style.gap = "6px";
+
+				const miniVisBtn = document.createElement("button");
+				miniVisBtn.className = "iconBtn miniIconBtn";
+				const syncMiniVis = () => {
+					miniVisBtn.textContent = obj.hidden ? "🙈" : "👁";
+					miniVisBtn.title = obj.hidden ? "Show object" : "Hide object";
+				};
+				syncMiniVis();
+				miniVisBtn.disabled = obj.base;
+				miniVisBtn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					if (obj.base) return;
+					obj.hidden = !obj.hidden;
+					syncMiniVis();
+					persistScene();
+					renderObjects();
+				});
+				headerActions.appendChild(miniVisBtn);
+
+				const miniLockBtn = document.createElement("button");
+				miniLockBtn.className = "iconBtn miniIconBtn";
+				const syncMiniLock = () => {
+					miniLockBtn.textContent = obj.locked ? "🔒" : "🔓";
+					miniLockBtn.title = obj.locked ? "Unlock" : "Lock";
+				};
+				syncMiniLock();
+				miniLockBtn.disabled = obj.base;
+				miniLockBtn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					if (obj.base) return;
+					obj.locked = !obj.locked;
+					syncMiniLock();
+					persistScene();
+					renderObjects();
+				});
+				headerActions.appendChild(miniLockBtn);
+
+				header.appendChild(headerActions);
+
+				card.appendChild(header);
+
+				const details = document.createElement("div");
+				details.className = "cardDetails";
+
+				const applyFilterVisibility = () => {
+					if (!filterTerm.trim()) {
+						card.classList.remove("hidden");
+						return;
+					}
+					const term = filterTerm.trim().toLowerCase();
+					const match = (obj.alias || "").toLowerCase().includes(term) || (obj.name || "").toLowerCase().includes(term);
+					card.classList.toggle("hidden", !match);
+				};
+
+				const aliasRow = document.createElement("div");
+				aliasRow.className = "controlRow";
+				const aliasInputId = `alias-${obj.id}`;
+				const aliasLabel = document.createElement("label");
+				aliasLabel.className = "inlineLabel";
+				aliasLabel.htmlFor = aliasInputId;
+				aliasLabel.textContent = "Alias:";
+				aliasRow.appendChild(aliasLabel);
+				const aliasInput = document.createElement("input");
+				aliasInput.type = "text";
+				aliasInput.placeholder = "Alias";
+				aliasInput.id = aliasInputId;
+				aliasInput.value = obj.alias || "";
+				aliasInput.addEventListener("input", () => {
+					obj.alias = aliasInput.value;
+					ensureAlias(obj);
+					title.textContent = obj.alias || obj.name;
+					persistScene();
+					applyFilterVisibility();
+				});
+				aliasInput.addEventListener("blur", () => {
+					ensureAlias(obj);
+					title.textContent = obj.alias || obj.name;
+					updateListUI();
+				});
+				aliasRow.appendChild(aliasInput);
+
+				const nameInputId = `name-${obj.id}`;
+				const nameLabel = document.createElement("label");
+				nameLabel.className = "inlineLabel";
+				nameLabel.htmlFor = nameInputId;
+				nameLabel.textContent = "File:";
+				aliasRow.appendChild(nameLabel);
+				const nameInput = document.createElement("input");
+				nameInput.type = "text";
+				nameInput.id = nameInputId;
+				nameInput.value = obj.name;
+				nameInput.placeholder = "Name / filename";
+				nameInput.addEventListener("input", () => {
+					obj.name = nameInput.value;
+					persistScene();
+					applyFilterVisibility();
+				});
+				aliasRow.appendChild(nameInput);
 
 				const baseBtn = document.createElement("button");
 				baseBtn.className = "iconBtn";
 				baseBtn.textContent = obj.base ? "★" : "☆";
 				baseBtn.title = obj.base ? "Unset base" : "Set as base background";
 				baseBtn.addEventListener("click", () => toggleBase(obj.id));
-				topRow.appendChild(baseBtn);
+				aliasRow.appendChild(baseBtn);
 
-				const lock = document.createElement("button");
-				lock.className = "iconBtn";
-				lock.textContent = obj.locked ? "🔒" : "🔓";
-				lock.title = "Lock / unlock";
-				lock.disabled = obj.base;
-				lock.addEventListener("click", () => {
+				const visibilityBtn = document.createElement("button");
+				visibilityBtn.className = "iconBtn";
+				const syncVisibilityBtn = () => {
+					visibilityBtn.textContent = obj.hidden ? "🙈" : "👁";
+					visibilityBtn.title = obj.hidden ? "Show object" : "Hide object";
+				};
+				syncVisibilityBtn();
+				visibilityBtn.disabled = obj.base;
+				visibilityBtn.addEventListener("click", () => {
+					if (obj.base) return;
+					obj.hidden = !obj.hidden;
+					syncVisibilityBtn();
+					persistScene();
+					renderObjects();
+				});
+				aliasRow.appendChild(visibilityBtn);
+
+				const lockBtn = document.createElement("button");
+				lockBtn.className = "iconBtn";
+				lockBtn.textContent = obj.locked ? "🔒" : "🔓";
+				lockBtn.title = "Lock / unlock";
+				lockBtn.disabled = obj.base;
+				lockBtn.addEventListener("click", () => {
 					if (obj.base) return;
 					obj.locked = !obj.locked;
 					persistScene();
 					renderObjects();
 				});
-				topRow.appendChild(lock);
-				meta.appendChild(topRow);
+				aliasRow.appendChild(lockBtn);
+				details.appendChild(aliasRow);
 
 				if (obj.base) {
 					const baseBadge = document.createElement("div");
 					baseBadge.className = "badge";
 					baseBadge.textContent = "Base background (fills canvas)";
-					meta.appendChild(baseBadge);
+					details.appendChild(baseBadge);
 				} else {
 					const scaleRow = document.createElement("div");
 					scaleRow.className = "controlRow compact";
@@ -1374,7 +1695,7 @@
 						});
 						scaleRow.appendChild(b);
 					});
-					meta.appendChild(scaleRow);
+					details.appendChild(scaleRow);
 
 					const shadowRow = document.createElement("div");
 					shadowRow.className = "controlRow compact";
@@ -1447,37 +1768,52 @@
 					});
 					shadowRow.appendChild(shadowOffsetY);
 
-					meta.appendChild(shadowRow);
+					details.appendChild(shadowRow);
 				}
 
 				const actions = document.createElement("div");
 				actions.className = "listActions";
 
 				const up = document.createElement("button");
-				up.className = "iconBtn";
-				up.textContent = "⬆";
+				up.className = "iconBtn iconLabelBtn";
+				up.innerHTML = "⬆<span class=\"btnLabel\">Up</span>";
 				up.title = "Bring forward";
 				up.disabled = obj.base;
 				up.addEventListener("click", () => moveZ(obj.id, 1));
 				actions.appendChild(up);
 
 				const down = document.createElement("button");
-				down.className = "iconBtn";
-				down.textContent = "⬇";
+				down.className = "iconBtn iconLabelBtn";
+				down.innerHTML = "⬇<span class=\"btnLabel\">Down</span>";
 				down.title = "Send backward";
 				down.disabled = obj.base;
 				down.addEventListener("click", () => moveZ(obj.id, -1));
 				actions.appendChild(down);
 
+				const duplicate = document.createElement("button");
+				duplicate.className = "iconBtn iconLabelBtn";
+				duplicate.innerHTML = "⧉<span class=\"btnLabel\">Copy</span>";
+				duplicate.title = "Duplicate";
+				duplicate.addEventListener("click", () => duplicateObject(obj.id));
+				actions.appendChild(duplicate);
+
+				const resetBtn = document.createElement("button");
+				resetBtn.className = "iconBtn iconLabelBtn";
+				resetBtn.innerHTML = "↺<span class=\"btnLabel\">Reset</span>";
+				resetBtn.title = "Reset position & size";
+				resetBtn.disabled = obj.base;
+				resetBtn.addEventListener("click", () => resetObject(obj.id));
+				actions.appendChild(resetBtn);
+
 				const del = document.createElement("button");
-				del.className = "iconBtn";
-				del.textContent = "✕";
+				del.className = "iconBtn iconLabelBtn";
+				del.innerHTML = "✕<span class=\"btnLabel\">Delete</span>";
 				del.title = "Delete";
 				del.addEventListener("click", () => deleteObject(obj.id));
 				actions.appendChild(del);
 
-				card.appendChild(meta);
-				card.appendChild(actions);
+				details.appendChild(actions);
+				card.appendChild(details);
 				objectList.appendChild(card);
 			}
 		};
@@ -1498,23 +1834,89 @@
 			renderObjects();
 		};
 
+		const duplicateObject = (id) => {
+			const source = scene.objects.find((o) => o.id === id);
+			if (!source) return;
+			const zMax = scene.objects.reduce((m, o) => (o.base ? m : Math.max(m, o.z ?? 0)), 0);
+			const center = centerCoords();
+			const copy = {
+				...source,
+				id: nextId(),
+				name: `${source.name || "object"} copy`,
+				alias: `${source.alias || source.name || "object"} copy`,
+				base: false,
+				locked: false,
+					hidden: source.hidden ?? false,
+				z: zMax + 1,
+				x: (source.x ?? center.x) + 20,
+				y: (source.y ?? center.y) + 20,
+				sourceType: source.sourceType,
+			};
+			collapsedState.set(copy.id, true);
+			scene.objects.push(copy);
+			persistScene();
+			renderObjects();
+		};
+
+		const resetObject = (id) => {
+			const obj = scene.objects.find((o) => o.id === id);
+			if (!obj || obj.base) return;
+			const center = centerCoords();
+			obj.x = center.x;
+			obj.y = center.y;
+			obj.scale = 1;
+			obj.shadowSize = 220;
+			obj.shadowOpacity = 0.45;
+			obj.shadowOffsetX = 0;
+			obj.shadowOffsetY = 0;
+			persistScene();
+			renderObjects();
+		};
+
 		const deleteObject = (id) => {
+			collapsedState.delete(id);
 			scene.objects = scene.objects.filter((o) => o.id !== id);
 			persistScene();
 			renderObjects();
 		};
 
-		const applyViewTransform = () => {
+		const setLockAll = (locked) => {
+			let changed = false;
+			scene.objects.forEach((o) => {
+				if (o.base) return;
+				if (o.locked !== locked) {
+					o.locked = locked;
+					changed = true;
+				}
+			});
+			if (changed) {
+				persistScene();
+				renderObjects();
+			}
+		};
+
+		const applyViewTransform = (relaxed = false) => {
 			const rect = stageFrame.getBoundingClientRect();
-			if (currentZoom <= 1) {
+			const viewportRect = viewportEl.getBoundingClientRect();
+			const styles = getComputedStyle(viewportEl);
+			const padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+			const padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+			const contentW = Math.max(1, viewportRect.width - padX);
+			const contentH = Math.max(1, viewportRect.height - padY);
+			const baseOverflowX = rect.width > contentW;
+			const baseOverflowY = rect.height > contentH;
+			if (currentZoom <= 1 && !baseOverflowX && !baseOverflowY) {
 				cameraOffset = { x: 0, y: 0 };
 			}
-			const maxX = Math.max(0, (rect.width * currentZoom - rect.width) / 2);
-			const maxY = Math.max(0, (rect.height * currentZoom - rect.height) / 2);
+			const baseSlack = 8; // small baseline slack to avoid zero-span clamping due to rounding
+			const slack = baseSlack + (relaxed ? 24 : 0); // soften edge clamping during drag
+			const maxX = Math.max(0, (rect.width * currentZoom - contentW) / 2) + slack;
+			const maxY = Math.max(0, (rect.height * currentZoom - contentH) / 2) + slack;
 			cameraOffset.x = clamp(cameraOffset.x, -maxX, maxX);
 			cameraOffset.y = clamp(cameraOffset.y, -maxY, maxY);
 			const transform = `translate(${cameraOffset.x}px, ${cameraOffset.y}px) scale(${currentZoom})`;
 			stage.style.transform = transform;
+			stageFrame.style.transform = "";
 			if (webcamFxCanvas) {
 				webcamFxCanvas.style.transform = transform;
 				webcamFxCanvas.style.transformOrigin = stage.style.transformOrigin || "center center";
@@ -1587,6 +1989,7 @@
 				.map((o) => ({
 					id: o.id,
 					name: o.name,
+					alias: o.alias,
 					src: o.src,
 					sourceType: o.sourceType,
 					kind: o.kind,
@@ -1596,6 +1999,7 @@
 					z: o.z,
 					locked: o.locked,
 					base: o.base,
+					hidden: o.hidden,
 					intrinsicWidth: o.intrinsicWidth,
 					intrinsicHeight: o.intrinsicHeight,
 					shadowEnabled: o.shadowEnabled,
@@ -1614,7 +2018,7 @@
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
 			a.href = url;
-			a.download = "livingroom-scene.json";
+			a.download = "default.json";
 			a.click();
 			URL.revokeObjectURL(url);
 		};
@@ -1623,7 +2027,7 @@
 			try {
 				const data = JSON.parse(text);
 				const imported = Array.isArray(data.objects) ? data.objects : [];
-				const existingDataObjects = scene.objects.filter((o) => o.sourceType === "data");
+					const existingDataObjects = scene.objects.filter((o) => o.sourceType === "data");
 				let baseTaken = false;
 				const normalised = imported.map((o, i) => {
 					const asBase = !!o.base && !baseTaken;
@@ -1631,6 +2035,7 @@
 					return {
 						id: o.id || nextId(),
 						name: o.name || `object-${i}`,
+							alias: o.alias || o.name || `object-${i}`,
 						src: o.src,
 						sourceType: "file",
 						kind: o.kind || (isVideo(o.name || "") ? "video" : "image"),
@@ -1640,6 +2045,7 @@
 						z: asBase ? 0 : (o.z ?? i + 1),
 						locked: asBase ? true : !!o.locked,
 						base: asBase,
+						hidden: !!o.hidden,
 						intrinsicWidth: o.intrinsicWidth,
 						intrinsicHeight: o.intrinsicHeight,
 						shadowEnabled: o.shadowEnabled ?? !asBase,
@@ -1650,11 +2056,15 @@
 					};
 				});
 				scene.objects = [...existingDataObjects, ...normalised];
+					scene.objects.forEach(ensureAlias);
 				if (data.referenceSize && data.referenceSize.w && data.referenceSize.h) {
 					scene.referenceSize = data.referenceSize;
 				}
+				const wasPlaying = !music.paused;
 				scene.subtitle = typeof data.subtitle === "string" ? data.subtitle : "";
 				scene.music = typeof data.music === "string" ? data.music : "";
+				setMusicSource(getMusicSource());
+				if (wasPlaying) startMusic();
 				persistScene();
 				renderObjects();
 				renderSubtitle();
@@ -1683,6 +2093,11 @@
 			hud.classList.toggle("collapsed");
 			hudToggle.textContent = hud.classList.contains("collapsed") ? "▸" : "▾";
 		});
+
+		if (fullscreenToggle) {
+			fullscreenToggle.addEventListener("click", toggleFullscreen);
+			document.addEventListener("fullscreenchange", updateFullscreenUI);
+		}
 
 		const hideWelcome = () => {
 			welcomeOverlay.style.display = "none";
@@ -1717,6 +2132,33 @@
 			autoImportToggle.addEventListener("change", (e) => {
 				persistAutoImportPreference(!!e.target.checked);
 			});
+		}
+
+		if (objectFilter) {
+			objectFilter.addEventListener("input", (e) => {
+				filterTerm = e.target.value || "";
+				if (clearFilterBtn) clearFilterBtn.disabled = !filterTerm.trim();
+				updateListUI();
+			});
+		}
+
+		if (clearFilterBtn && objectFilter) {
+			clearFilterBtn.addEventListener("click", () => {
+				filterTerm = "";
+				objectFilter.value = "";
+				clearFilterBtn.disabled = true;
+				updateListUI();
+				objectFilter.focus();
+			});
+			clearFilterBtn.disabled = true;
+		}
+
+		if (unlockAllBtn) {
+			unlockAllBtn.addEventListener("click", () => setLockAll(false));
+		}
+
+		if (lockAllBtn) {
+			lockAllBtn.addEventListener("click", () => setLockAll(true));
 		}
 
 		addByName.addEventListener("click", () => {
@@ -1786,7 +2228,6 @@
 			if (resizeRaf) cancelAnimationFrame(resizeRaf);
 			resizeRaf = requestAnimationFrame(() => {
 				resizeRaf = null;
-				if (currentZoom <= 1) cameraOffset = { x: 0, y: 0 };
 				renderObjects();
 				applyViewTransform();
 				renderWebcamFxFrame();
@@ -1794,7 +2235,8 @@
 		});
 
 		function beginPan(event) {
-			if (dragState || currentZoom <= 1) return;
+			const overflowOk = hasViewportOverflow();
+			if (dragState || (currentZoom <= 1 && !overflowOk)) return;
 			if (event.button !== undefined && event.button !== 0) return;
 			const target = event.currentTarget;
 			target.setPointerCapture(event.pointerId);
@@ -1809,34 +2251,38 @@
 
 		function movePan(event) {
 			if (!panState) return;
+			event.preventDefault();
 			const dx = event.clientX - panState.startX;
 			const dy = event.clientY - panState.startY;
 			cameraOffset.x = panState.originX + dx;
 			cameraOffset.y = panState.originY + dy;
-			applyViewTransform();
+			applyViewTransform(true);
 		}
 
 		function endPan() {
 			panState = null;
 			stage.classList.remove("dragging");
+			applyViewTransform();
 		}
 
-		const init = () => {
+		const init = async () => {
 			autoImportEnabled = loadAutoImportPreference();
 			if (autoImportToggle) autoImportToggle.checked = autoImportEnabled;
 			loadScene();
-			if (subtitleInput) subtitleInput.value = scene.subtitle || "";
-			if (musicInput) musicInput.value = scene.music || "";
 			loadDevUnlockState();
 			loadWebcamFxState();
 			setZoom(parseFloat(zoomSlider.value));
 			renderObjects();
 			renderSubtitle();
-			startMusic();
-			applyViewTransform();
 			setupWebcamFxRamp();
 			setWebcamFxEnabled(webcamFxEnabled);
-			autoImportDefaultScene();
+			await autoImportDefaultScene();
+			if (subtitleInput) subtitleInput.value = scene.subtitle || "";
+			if (musicInput) musicInput.value = scene.music || "";
+			updateFullscreenUI();
+			applyViewTransform();
+			setMusicSource(getMusicSource());
+			startMusic();
 		};
 
 		document.addEventListener("keydown", (e) => {
