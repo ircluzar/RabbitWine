@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>RabbitWine Livingroom</title>
+	<title>Rabbit Wine Livingroom</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 	<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -297,21 +297,6 @@
 			margin: 0;
 			color: var(--muted);
 			line-height: 1.5;
-		}
-
-		#welcomeClose {
-			position: absolute;
-			top: 10px;
-			right: 10px;
-			background: rgba(255, 255, 255, 0.08);
-			border: 1px solid var(--panel-border);
-			color: var(--text);
-			border-radius: 999px;
-			width: 32px;
-			height: 32px;
-			display: grid;
-			place-items: center;
-			cursor: pointer;
 		}
 
 		#modalOverlay {
@@ -610,9 +595,8 @@
 
 		<div id="welcomeOverlay">
 			<div id="welcomeCard">
-				<button id="welcomeClose" aria-label="Close welcome"></button>
 				<img src="../rabbitwine.png" alt="RabbitWine logo" />
-				<h2>Welcome to RabbitWine</h2>
+				<h2>Welcome to Rabbit Wine</h2>
 				<p id="subtitleText"></p>
 			</div>
 		</div>
@@ -706,7 +690,6 @@
 		const dropHint = document.getElementById("dropHint");
 		const welcomeOverlay = document.getElementById("welcomeOverlay");
 		const welcomeCard = document.getElementById("welcomeCard");
-		const welcomeClose = document.getElementById("welcomeClose");
 		const subtitleText = document.getElementById("subtitleText");
 		const hud = document.getElementById("hud");
 		const hudToggle = document.getElementById("hudToggle");
@@ -1076,6 +1059,25 @@
 				setMusicVolume(MUSIC_TARGET_VOLUME * progress);
 				if (progress < 1) {
 					musicFadeRaf = requestAnimationFrame(step);
+				}
+			};
+			musicFadeRaf = requestAnimationFrame(step);
+		};
+
+		const fadeOutAndStopMusic = (durationMs = 1200) => {
+			if (musicFadeRaf) cancelAnimationFrame(musicFadeRaf);
+			const start = performance.now();
+			const initialVolume = music.volume;
+			const step = (now) => {
+				const progress = clamp((now - start) / durationMs, 0, 1);
+				setMusicVolume(initialVolume * (1 - progress));
+				if (progress < 1) {
+					musicFadeRaf = requestAnimationFrame(step);
+				} else {
+					try {
+						music.pause();
+						music.currentTime = 0;
+					} catch (err) {}
 				}
 			};
 			musicFadeRaf = requestAnimationFrame(step);
@@ -2103,7 +2105,9 @@
 
 		hudToggle.addEventListener("click", () => {
 			hud.classList.toggle("collapsed");
-			hudToggle.textContent = hud.classList.contains("collapsed") ? "▸" : "▾";
+			const isCollapsed = hud.classList.contains("collapsed");
+			hudToggle.textContent = isCollapsed ? "▸" : "▾";
+			window.parent.postMessage({ type: 'camera-control-toggle', collapsed: isCollapsed }, '*');
 		});
 
 		if (fullscreenToggle) {
@@ -2115,12 +2119,7 @@
 			welcomeOverlay.style.display = "none";
 		};
 
-		welcomeClose.addEventListener("click", (e) => {
-			e.stopPropagation();
-			hideWelcome();
-		});
-
-		welcomeCard.addEventListener("click", (e) => e.stopPropagation());
+		welcomeCard.addEventListener("click", hideWelcome);
 		welcomeOverlay.addEventListener("click", hideWelcome);
 
 		zoomSlider.addEventListener("input", (e) => setZoom(parseFloat(e.target.value)));
@@ -2229,6 +2228,7 @@
 		document.addEventListener("visibilitychange", () => {
 			if (document.visibilityState === "visible") enforceMusicCeiling();
 		});
+		window.addEventListener("pagehide", () => fadeOutAndStopMusic());
 		window.addEventListener("message", (event) => {
 			const data = event?.data;
 			if (data && data.type === "background-music-state") {

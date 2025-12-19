@@ -91,74 +91,14 @@
         </div>
     <h1 class="title">Rabbit Wine</h1>
         <div class="features-grid">
-
-            <a href="#" class="feature-card" id="livingroomLink">
-                <span class="feature-icon">🛋️</span>
-                <h3 class="feature-title">Livingroom</h3>
-            </a>
-
-            <a href="stickers" class="feature-card">
-                <span class="feature-icon">🏷️</span>
-                <h3 class="feature-title">Stickers</h3>
-            </a>
-
-            <a href="editor" class="feature-card">
-                <span class="feature-icon">🎨</span>
-                <h3 class="feature-title">Editor</h3>
-            </a>
-
-            <a href="objects" class="feature-card">
-                <span class="feature-icon">🪨</span>
-                <h3 class="feature-title">Objects</h3>
-            </a>
-
-            <a href="scroll" class="feature-card">
-                <span class="feature-icon">📄</span>
-                <h3 class="feature-title">Scroll</h3>
-            </a>
-
-            <a href="realities" class="feature-card">
-                <span class="feature-icon">📷</span>
-                <h3 class="feature-title">Realities</h3>
-            </a>
-
-            <a href="chaos" class="feature-card">
-                <span class="feature-icon">🌀</span>
-                <h3 class="feature-title">Chaos</h3>
-            </a>
-
-<!--
-            <a href="space" class="feature-card">
-                <span class="feature-icon">🌌</span>
-                <h3 class="feature-title">Space</h3>
-            </a>
--->
-
-            <a href="jams" class="feature-card">
-                <span class="feature-icon">🎵</span>
-                <h3 class="feature-title">Jams</h3>
-            </a>
-
-            <a href="midi" class="feature-card">
-                <span class="feature-icon">🎹</span>
-                <h3 class="feature-title">Midi</h3>
-            </a>
-
-            <a href="brokennes" class="feature-card">
-                <span class="feature-icon">🕹️</span>
-                <h3 class="feature-title">BrokenNes</h3>
-            </a>
-<!--
-            <a href="ask" class="feature-card">
-                <span class="feature-icon">🍷</span>
-                <h3 class="feature-title">Ask</h3>
-            </a>
--->
+            <!-- Apps will be rendered here by apps.js -->
         </div>
 
     </div>
     </div>
 
+    <script src="apps.js"></script>
+    <script>renderApps();</script>
     <script src="stars.js"></script>
     <!-- Mini player system (moved from head for proper initialization) -->
     <script src="modals.js"></script>
@@ -266,12 +206,38 @@
                 });
             }
 
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'camera-control-toggle') {
+                    if (viewToggle) {
+                        if (event.data.collapsed) {
+                            viewToggle.classList.remove('shifted-up');
+                        } else {
+                            viewToggle.classList.add('shifted-up');
+                        }
+                    }
+                }
+            });
+
             if (livingroomLink) {
                 livingroomLink.addEventListener('click', (e) => {
                     e.preventDefault();
                     setView('livingroom');
                 });
             }
+
+            // On mobile, pressing browser back while in menu should return to Livingroom instead of leaving
+            const handlePopState = (event) => {
+                if (currentView === 'menu') {
+                    setView('livingroom');
+                    try {
+                        history.pushState({ rwMenu: true }, '', location.href);
+                    } catch (err) {}
+                }
+            };
+            try {
+                history.replaceState({ rwMenu: true }, '', location.href);
+                window.addEventListener('popstate', handlePopState);
+            } catch (err) {}
 
             document.addEventListener('backgroundMusicStateChange', (e) => {
                 sendMusicState(e?.detail || null);
@@ -364,11 +330,27 @@
     }
     @media (max-width: 820px) and (orientation: portrait) {
         .view-toggle {
-            right: 12px;
-            bottom: 88px;
-            min-width: 160px;
-            height: 48px;
-            font-size: 0.95rem;
+            left: 50%;
+            right: auto;
+            bottom: 18px;
+            transform: translateX(-50%);
+            min-width: 170px;
+            width: 200px;
+            height: 54px;
+            border-radius: 14px;
+            padding: 0 16px;
+            font-size: 0.9rem;
+            flex-direction: row;
+            gap: 10px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.32);
+        }
+        .view-toggle-logo {
+            width: 22px;
+            height: 22px;
+        }
+        .view-toggle-label {
+            font-size: 12px;
+            letter-spacing: 0.08em;
         }
     }
     @media (max-width: 600px) {
@@ -414,10 +396,10 @@
         .feature-card {
             width: 72px;
             height: 76px;
-            padding: 0.45rem 0.2rem 0.25rem 0.2rem;
+            padding: 0.5rem 0.22rem 0.3rem 0.22rem;
         }
         .feature-icon {
-            font-size: 1.65rem;
+            font-size: 1.8rem;
         }
         .feature-title {
             font-size: 0.72rem;
@@ -451,7 +433,7 @@
             padding: 0.78rem 0.3rem 0.38rem 0.3rem;
         }
         .feature-icon {
-            font-size: 2rem;
+            font-size: 2.2rem;
         }
         .feature-title {
             font-size: 0.86rem;
@@ -472,6 +454,15 @@
         line-height: 1;
         flex: 1 1 auto;
         text-align: center;
+    }
+
+    @media (min-width: 821px) {
+        .view-toggle {
+            transition: bottom 0.3s ease;
+        }
+        .view-toggle.shifted-up {
+            bottom: 220px;
+        }
     }
     </style>
 </body>
