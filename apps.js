@@ -7,9 +7,12 @@ const appsData = [
     { name: "Realities", icon: "📷", link: "realities" },
     { name: "Chaos", icon: "🌀", link: "chaos" },
     { name: "Space", icon: "🌌", link: "space", hidden: false },
+
     { name: "Jams", icon: "🎵", link: "jams" },
     { name: "Midi", icon: "🎹", link: "midi" },
     { name: "BrokenNes", icon: "🕹️", link: "brokennes" },
+    { name: "VRUN 64", icon: "🧊", link: "mz", hidden: false },	
+	
     { name: "Ask", icon: "🍷", link: "ask", hidden: true }
 ];
 

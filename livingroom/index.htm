@@ -804,7 +804,10 @@
 				const res = await fetch("default.json", { cache: "no-cache" });
 				if (!res.ok) throw new Error(`default.json fetch failed: ${res.status}`);
 				const text = await res.text();
-				if (text) importScene(text);
+				if (text) {
+					scene.objects = [];
+					importScene(text);
+				}
 			} catch (err) {
 				console.warn("Auto-import default scene failed", err);
 			}
@@ -1337,7 +1340,6 @@ const setupWebcamFxRamp = () => {
 					media = document.createElement("video");
 					media.src = obj.src;
 					media.autoplay = true;
-					media.muted = true;
 					media.loop = true;
 					media.playsInline = true;
 				} else {
