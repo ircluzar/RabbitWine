@@ -2094,16 +2094,12 @@ const setupWebcamFxRamp = () => {
 		};
 
 		const applyViewTransform = (relaxed = false) => {
-			const rect = stageFrame.getBoundingClientRect();
-			const viewportRect = viewportEl.getBoundingClientRect();
-			const styles = getComputedStyle(viewportEl);
-			const padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
-			const padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
-			const contentW = Math.max(1, viewportRect.width - padX);
-			const contentH = Math.max(1, viewportRect.height - padY);
-			const baseOverflowX = rect.width > contentW;
-			const baseOverflowY = rect.height > contentH;
-			if (currentZoom <= 1 && !baseOverflowX && !baseOverflowY) {
+			// Clamp against the actual visible window (stageScroller/stageFrame), not the full viewport.
+			// Using the viewport introduces an artificial "margin" wall when the viewport is larger than the stage frame.
+			const rect = stageScroller.getBoundingClientRect();
+			const contentW = Math.max(1, rect.width);
+			const contentH = Math.max(1, rect.height);
+			if (currentZoom <= 1) {
 				cameraOffset = { x: 0, y: 0 };
 			}
 			const baseSlack = 8; // small baseline slack to avoid zero-span clamping due to rounding
