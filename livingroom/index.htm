@@ -1822,7 +1822,16 @@ const setupWebcamFxRamp = () => {
 				baseBtn.className = "iconBtn";
 				baseBtn.textContent = obj.base ? "★" : "☆";
 				baseBtn.title = obj.base ? "Unset base" : "Set as base background";
-				baseBtn.addEventListener("click", () => toggleBase(obj.id));
+				baseBtn.addEventListener("click", () => {
+					// Setting a new base is destructive: it re-centers/locks and clears any existing base.
+					if (!obj.base) {
+						const ok = confirm(
+							"Replace the Base background with this object?\n\nThis can completely break the scene if done by accident."
+						);
+						if (!ok) return;
+					}
+					toggleBase(obj.id);
+				});
 				aliasRow.appendChild(baseBtn);
 
 				const visibilityBtn = document.createElement("button");
