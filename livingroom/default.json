@@ -13,13 +13,15 @@
       "z": 0,
       "locked": true,
       "base": true,
+      "hidden": false,
       "intrinsicWidth": 2400,
       "intrinsicHeight": 1641,
       "shadowEnabled": true,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "9bfc760f-ac7f-43f0-b2c7-e75bc6d5c88a",
@@ -39,7 +41,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "74c51c08-775f-411a-9ef4-6549a7fc7fec",
@@ -54,11 +57,13 @@
       "z": 2,
       "locked": true,
       "base": false,
+      "hidden": false,
       "shadowEnabled": false,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "a6c9f1b2-d5c3-4ceb-8499-313a68944d64",
@@ -78,7 +83,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "c3dae1c0-9b11-48c7-b135-04a14531813d",
@@ -98,7 +104,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "b82c0cb5-6cfa-46ea-a421-f03083460db4",
@@ -118,7 +125,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "a3195644-22c2-46aa-94de-4ecbeb1c5f97",
@@ -133,12 +141,13 @@
       "z": 6,
       "locked": true,
       "base": false,
-      "hidden": false,
+      "hidden": true,
       "shadowEnabled": false,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "b2b42eaa-4b19-478f-b644-93394d5c6b90",
@@ -153,11 +162,13 @@
       "z": 7,
       "locked": true,
       "base": false,
+      "hidden": false,
       "shadowEnabled": false,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "b7943b31-f5b8-41d6-89e2-a08efee4e1cc",
@@ -177,7 +188,8 @@
       "shadowSize": 520,
       "shadowOpacity": 0.36,
       "shadowOffsetX": 0,
-      "shadowOffsetY": -65
+      "shadowOffsetY": -65,
+      "warpEnabled": false
     },
     {
       "id": "ac9afea8-6dce-4038-a309-c7753ad448cc",
@@ -192,11 +204,13 @@
       "z": 9,
       "locked": true,
       "base": false,
+      "hidden": false,
       "shadowEnabled": false,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "352e9143-5ca9-4248-9072-6d6fec4acd46",
@@ -205,18 +219,19 @@
       "src": "pen.png",
       "sourceType": "file",
       "kind": "image",
-      "x": 1679.6160099094218,
-      "y": 1018.6884057971015,
+      "x": 2147.3407137880313,
+      "y": 1206.967391304348,
       "scale": 1,
       "z": 10,
       "locked": true,
       "base": false,
-      "hidden": true,
+      "hidden": false,
       "shadowEnabled": false,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "dfd9227a-2bc0-4e2d-948c-ffe0cbda0701",
@@ -225,18 +240,19 @@
       "src": "card.png",
       "sourceType": "file",
       "kind": "image",
-      "x": 1762.8551521251065,
-      "y": 1058.3260869565217,
+      "x": 1743.0363087404196,
+      "y": 1068.2355072463768,
       "scale": 1,
       "z": 11,
       "locked": true,
       "base": false,
-      "hidden": true,
+      "hidden": false,
       "shadowEnabled": false,
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "0e667c4b-9f82-4700-88a3-832d67306bb7",
@@ -245,36 +261,19 @@
       "src": "seat.png",
       "sourceType": "file",
       "kind": "image",
-      "x": 853.1702407679803,
-      "y": 1119.7644927536226,
-      "scale": 0.8101668231062723,
+      "x": 833.3513973832935,
+      "y": 1143.5471014492748,
+      "scale": 0.9098693693173234,
       "z": 12,
       "locked": true,
       "base": false,
+      "hidden": false,
       "shadowEnabled": true,
       "shadowSize": 320,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": -100
-    },
-    {
-      "id": "3b3d9080-d6b6-42e8-8b44-1a74162d6937",
-      "name": "bottle1.png",
-      "alias": "Bottle 1",
-      "src": "bottle1.png",
-      "sourceType": "file",
-      "kind": "image",
-      "x": 84.19911744213043,
-      "y": 1528.0326086956522,
-      "scale": 1,
-      "z": 13,
-      "locked": true,
-      "base": false,
-      "shadowEnabled": true,
-      "shadowSize": 420,
-      "shadowOpacity": 0.45,
-      "shadowOffsetX": 0,
-      "shadowOffsetY": -69
+      "shadowOffsetY": -100,
+      "warpEnabled": false
     },
     {
       "id": "96401be7-6ea1-4e65-a9d9-961e78f98a46",
@@ -286,14 +285,16 @@
       "x": 1312.967407292715,
       "y": 1248.586956521739,
       "scale": 0.7213895789838335,
-      "z": 14,
+      "z": 13,
       "locked": true,
       "base": false,
+      "hidden": false,
       "shadowEnabled": true,
       "shadowSize": 420,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": -89
+      "shadowOffsetY": -89,
+      "warpEnabled": false
     },
     {
       "id": "d1b4ed31-5946-4833-9f0c-5b07b8f4e48c",
@@ -305,14 +306,16 @@
       "x": 1774.7464581559188,
       "y": 1535.960144927536,
       "scale": 1.1158938384808184,
-      "z": 15,
+      "z": 14,
       "locked": true,
       "base": false,
+      "hidden": false,
       "shadowEnabled": true,
       "shadowSize": 420,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": -69
+      "shadowOffsetY": -69,
+      "warpEnabled": false
     },
     {
       "id": "d9d98570-6057-40a1-aca4-774af8b8723e",
@@ -324,7 +327,7 @@
       "x": 645.0723852287682,
       "y": 1313.9891304347825,
       "scale": 1,
-      "z": 16,
+      "z": 15,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -332,7 +335,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "d6c609e7-048c-4531-af5b-36939d874a83",
@@ -344,7 +348,7 @@
       "x": 1174.235503599907,
       "y": 1543.8876811594203,
       "scale": 1,
-      "z": 17,
+      "z": 16,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -352,7 +356,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "f18cde75-7202-45c3-a731-69e22eeb30fc",
@@ -364,7 +369,7 @@
       "x": 823.4419756909499,
       "y": 1472.5398550724638,
       "scale": 1,
-      "z": 18,
+      "z": 17,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -372,7 +377,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "8a91f24f-73aa-4a2c-b735-1418fe23c79f",
@@ -384,7 +390,7 @@
       "x": 320.04335371990385,
       "y": 1571.6340579710145,
       "scale": 1,
-      "z": 19,
+      "z": 18,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -392,7 +398,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "a4c2d0a0-5ac0-4a27-9fb2-7854769a1d81",
@@ -404,7 +411,7 @@
       "x": 1122.7065107997214,
       "y": 1157.4202898550725,
       "scale": 0.7213895789838335,
-      "z": 20,
+      "z": 19,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -412,7 +419,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "b8ebf0d6-8189-415b-a682-eb5f1b4b86ac",
@@ -424,7 +432,7 @@
       "x": 2327.692188588682,
       "y": 1510.195652173913,
       "scale": 1,
-      "z": 21,
+      "z": 20,
       "locked": true,
       "base": false,
       "hidden": true,
@@ -432,7 +440,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "d615f739-e83d-4893-ba70-3612b06b371c",
@@ -444,7 +453,7 @@
       "x": 1612.2319424014865,
       "y": 1266.4239130434785,
       "scale": 1,
-      "z": 22,
+      "z": 21,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -452,7 +461,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "df395465-c587-49d3-aa52-af3da6aa6c91",
@@ -464,7 +474,7 @@
       "x": 1495.300766431834,
       "y": 1258.4963768115942,
       "scale": 1,
-      "z": 23,
+      "z": 22,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -472,7 +482,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "f55c2b9e-7207-4efd-9d0c-d77a7e32b06d",
@@ -484,7 +495,7 @@
       "x": 1863.9312533870093,
       "y": 1430.9202898550723,
       "scale": 1,
-      "z": 24,
+      "z": 23,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -492,7 +503,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "ce549d1f-6ad1-4671-bb14-1e25d5cef6d3",
@@ -504,15 +516,16 @@
       "x": 1041.4492529225051,
       "y": 1353.626811594203,
       "scale": 4.843438456108212,
-      "z": 25,
+      "z": 24,
       "locked": true,
       "base": false,
-      "hidden": false,
+      "hidden": true,
       "shadowEnabled": true,
       "shadowSize": 120,
       "shadowOpacity": 0.29,
       "shadowOffsetX": 0,
-      "shadowOffsetY": -69
+      "shadowOffsetY": -69,
+      "warpEnabled": false
     },
     {
       "id": "77384d6c-86a6-4d4b-a66c-286c61302338",
@@ -524,15 +537,16 @@
       "x": 760.0216768599521,
       "y": 1099.945652173913,
       "scale": 1.0185744537450119,
-      "z": 26,
+      "z": 25,
       "locked": true,
       "base": false,
-      "hidden": false,
+      "hidden": true,
       "shadowEnabled": true,
       "shadowSize": 420,
       "shadowOpacity": 0.24,
       "shadowOffsetX": 0,
-      "shadowOffsetY": -60
+      "shadowOffsetY": -60,
+      "warpEnabled": false
     },
     {
       "id": "c6c13e1d-76ef-4ed6-9d42-3cba3bfa4478",
@@ -544,7 +558,7 @@
       "x": 2026.4457691414416,
       "y": 499.4347826086956,
       "scale": 1.7316764476028046,
-      "z": 27,
+      "z": 26,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -552,7 +566,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "4ac158cb-f8a5-4b7d-9844-9aeb79f1b6f0",
@@ -564,7 +579,7 @@
       "x": 1198.0181156615313,
       "y": 295.30072463768124,
       "scale": 7.5,
-      "z": 28,
+      "z": 27,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -572,7 +587,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "4326a616-5fd1-4987-9baa-2934ff23359f",
@@ -584,7 +600,7 @@
       "x": 2016.536347449098,
       "y": 1339.7536231884058,
       "scale": 1,
-      "z": 29,
+      "z": 28,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -592,7 +608,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.37,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "7d502ef2-43da-4de1-b899-fb3cd4785f42",
@@ -604,7 +621,7 @@
       "x": 2248.4168150499345,
       "y": 1107.873188405797,
       "scale": 1,
-      "z": 30,
+      "z": 29,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -612,7 +629,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "512a2553-25bb-44ab-853f-87d70b067bde",
@@ -624,7 +642,7 @@
       "x": 1419.989161570024,
       "y": 1167.3297101449275,
       "scale": 1,
-      "z": 31,
+      "z": 30,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -632,7 +650,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "b08fa5b4-7874-4fe9-ab4b-859c9a5faec8",
@@ -644,7 +663,7 @@
       "x": 92.12665479600523,
       "y": 560.8731884057971,
       "scale": 1,
-      "z": 32,
+      "z": 31,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -652,7 +671,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "783291c7-38ab-4c0b-8221-675af280068a",
@@ -664,7 +684,7 @@
       "x": 262.56870790431213,
       "y": 671.8586956521739,
       "scale": 1,
-      "z": 33,
+      "z": 32,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -672,7 +692,8 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
     },
     {
       "id": "89b4bd28-d7d9-4a4c-8d2d-3af56563de25",
@@ -684,7 +705,7 @@
       "x": 252.6592862119686,
       "y": 1050.3985507246377,
       "scale": 1,
-      "z": 34,
+      "z": 33,
       "locked": true,
       "base": false,
       "hidden": false,
@@ -692,13 +713,160 @@
       "shadowSize": 220,
       "shadowOpacity": 0.45,
       "shadowOffsetX": 0,
-      "shadowOffsetY": 0
+      "shadowOffsetY": 0,
+      "warpEnabled": false
+    },
+    {
+      "id": "12b6425e-baec-4a04-ada6-8719652247b5",
+      "name": "character_christmas_girl_violet_couch.png",
+      "alias": "character_christmas_girl_violet_couch.png",
+      "src": "character_christmas_girl_violet_couch.png",
+      "sourceType": "file",
+      "kind": "image",
+      "x": 538.0506309514593,
+      "y": 1103.9094202898552,
+      "scale": 1.6224,
+      "z": 35,
+      "locked": true,
+      "base": false,
+      "hidden": false,
+      "shadowEnabled": false,
+      "shadowSize": 220,
+      "shadowOpacity": 0.45,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": 0,
+      "warpEnabled": false
+    },
+    {
+      "id": "874b3f34-685e-4850-8e76-21a63c0621c4",
+      "name": "character_christmas_cate_couch.png",
+      "alias": "character_christmas_cate_couch.png",
+      "src": "character_christmas_cate_couch.png",
+      "sourceType": "file",
+      "kind": "image",
+      "x": 312.11581636602926,
+      "y": 1161.3840579710145,
+      "scale": 2.1349677186322276,
+      "z": 36,
+      "locked": true,
+      "base": false,
+      "hidden": false,
+      "shadowEnabled": false,
+      "shadowSize": 220,
+      "shadowOpacity": 0.45,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": 0,
+      "warpEnabled": false
+    },
+    {
+      "id": "32d64e1b-355b-4b80-8d49-140c80b5bb92",
+      "name": "character_christmas_meow_skulls_cushion.png",
+      "alias": "character_christmas_meow_skulls_cushion.png",
+      "src": "character_christmas_meow_skulls_cushion.png",
+      "sourceType": "file",
+      "kind": "image",
+      "x": 843.2608190756366,
+      "y": 1058.3260869565217,
+      "scale": 1.7491770111688705,
+      "z": 37,
+      "locked": true,
+      "base": false,
+      "hidden": false,
+      "shadowEnabled": false,
+      "shadowSize": 220,
+      "shadowOpacity": 0.45,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": 0,
+      "warpEnabled": false
+    },
+    {
+      "id": "f5debbea-7cab-443b-b100-976fce2029f1",
+      "name": "couch_cover.png",
+      "alias": "couch_cover.png",
+      "src": "couch_cover.png",
+      "sourceType": "file",
+      "kind": "image",
+      "x": 199.1484090733141,
+      "y": 1317.9528985507247,
+      "scale": 1.7865819879089508,
+      "z": 38,
+      "locked": true,
+      "base": false,
+      "hidden": false,
+      "shadowEnabled": false,
+      "shadowSize": 220,
+      "shadowOpacity": 0.45,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": 0,
+      "warpEnabled": false
+    },
+    {
+      "id": "3b3d9080-d6b6-42e8-8b44-1a74162d6937",
+      "name": "bottle1.png",
+      "alias": "Bottle 1",
+      "src": "bottle1.png",
+      "sourceType": "file",
+      "kind": "image",
+      "x": 84.19911744213043,
+      "y": 1528.0326086956522,
+      "scale": 1,
+      "z": 39,
+      "locked": true,
+      "base": false,
+      "hidden": false,
+      "shadowEnabled": true,
+      "shadowSize": 420,
+      "shadowOpacity": 0.45,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": -69,
+      "warpEnabled": false
+    },
+    {
+      "id": "41334e51-df55-4f9c-aeb5-01fa69989c05",
+      "name": "fire.mp4",
+      "alias": "fire.mp4",
+      "src": "fire.mp4",
+      "sourceType": "file",
+      "kind": "video",
+      "x": 1972.9348920027871,
+      "y": 935.4492753623188,
+      "scale": 1,
+      "z": 40,
+      "locked": true,
+      "base": false,
+      "hidden": false,
+      "intrinsicWidth": 480,
+      "intrinsicHeight": 360,
+      "shadowEnabled": false,
+      "shadowSize": 220,
+      "shadowOpacity": 0.45,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": 0,
+      "warpEnabled": true,
+      "warp": [
+        {
+          "x": 0.0061933923036213805,
+          "y": 0
+        },
+        {
+          "x": 0.9256792923565436,
+          "y": 0.0165157003233031
+        },
+        {
+          "x": 0.869938761623951,
+          "y": 1.462439609052487
+        },
+        {
+          "x": -0.012386784607242761,
+          "y": 1.0247735504849547
+        }
+      ]
     }
   ],
   "referenceSize": {
     "w": 2400,
     "h": 1641
   },
-  "subtitle": "Quiet, she might be asleep",
+  "subtitle": "Happy Holidays",
   "music": "music_sadmas.mp3"
 }

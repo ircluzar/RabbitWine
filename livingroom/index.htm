@@ -798,6 +798,11 @@
 			const alias = typeof obj.alias === "string" ? obj.alias.trim() : "";
 			obj.alias = alias || obj.name || "object";
 		};
+		const ensureKind = (obj) => {
+			if (!obj) return;
+			if (obj.kind === "video" || obj.kind === "image") return;
+			obj.kind = isVideo(obj.name || "") ? "video" : "image";
+		};
 
 		const loadAutoImportPreference = () => {
 			const stored = memory.read(NAMESPACE, AUTO_IMPORT_KEY);
@@ -1137,7 +1142,10 @@ const setupWebcamFxRamp = () => {
 				if (!data) return;
 				if (Array.isArray(data.objects)) {
 					scene.objects = data.objects;
-					scene.objects.forEach(ensureAlias);
+					scene.objects.forEach((o) => {
+						ensureAlias(o);
+						ensureKind(o);
+					});
 				}
 				if (data.referenceSize && data.referenceSize.w && data.referenceSize.h) {
 					scene.referenceSize = data.referenceSize;
@@ -1456,6 +1464,11 @@ const setupWebcamFxRamp = () => {
 					media.autoplay = true;
 					media.loop = true;
 					media.playsInline = true;
+					media.muted = true;
+					const tryPlay = () => media.play().catch(() => {});
+					media.addEventListener("loadeddata", tryPlay, { once: true });
+					media.addEventListener("canplay", tryPlay, { once: true });
+					setTimeout(tryPlay, 0);
 				} else {
 					media = document.createElement("img");
 					media.src = obj.src;
@@ -2192,6 +2205,10 @@ const setupWebcamFxRamp = () => {
 					shadowOpacity: o.shadowOpacity,
 					shadowOffsetX: o.shadowOffsetX,
 					shadowOffsetY: o.shadowOffsetY,
+					warpEnabled: !!o.warpEnabled,
+					warp: Array.isArray(o.warp)
+						? o.warp.map((pt) => ({ x: pt.x, y: pt.y }))
+						: undefined,
 				}));
 			const payload = JSON.stringify({
 				objects: exportable,
@@ -2217,6 +2234,13 @@ const setupWebcamFxRamp = () => {
 				const normalised = imported.map((o, i) => {
 					const asBase = !!o.base && !baseTaken;
 					baseTaken = baseTaken || asBase;
+					const warp = Array.isArray(o.warp) && o.warp.length === 4
+						? o.warp.map((pt) => ({
+							x: Number(pt?.x ?? 0) || 0,
+							y: Number(pt?.y ?? 0) || 0,
+						}))
+						: undefined;
+					const warpEnabled = !!o.warpEnabled && !!warp;
 					return {
 						id: o.id || nextId(),
 						name: o.name || `object-${i}`,
@@ -2238,6 +2262,8 @@ const setupWebcamFxRamp = () => {
 						shadowOpacity: o.shadowOpacity ?? 0.45,
 						shadowOffsetX: o.shadowOffsetX ?? 0,
 						shadowOffsetY: o.shadowOffsetY ?? 0,
+						warpEnabled,
+						warp,
 					};
 				});
 				scene.objects = [...existingDataObjects, ...normalised];
