@@ -392,6 +392,31 @@
 			font-weight: 600;
 			font-size: 14px;
 			color: var(--text);
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.cardHeader {
+			display: grid;
+			grid-template-columns: auto 1fr auto;
+			align-items: center;
+			gap: 10px;
+		}
+
+		.cardHeaderButtons {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			flex-wrap: nowrap;
+			white-space: nowrap;
+		}
+
+		.cardHeaderMeta {
+			font-size: 12px;
+			color: var(--muted);
+			white-space: nowrap;
 		}
 
 		.controlRow {
@@ -1665,36 +1690,25 @@ const setupWebcamFxRamp = () => {
 				card.className = `card${isCollapsed ? " collapsed" : ""}`;
 
 				const header = document.createElement("div");
-				header.className = "controlRow";
+				header.className = "cardHeader";
+
+				const headerButtons = document.createElement("div");
+				headerButtons.className = "cardHeaderButtons";
 
 				const collapseBtn = document.createElement("button");
-				collapseBtn.className = "iconBtn";
+				collapseBtn.className = "iconBtn miniIconBtn";
 				collapseBtn.textContent = isCollapsed ? "▸" : "▾";
 				collapseBtn.title = isCollapsed ? "Expand" : "Collapse";
 				collapseBtn.addEventListener("click", () => {
 					collapsedState.set(obj.id, !isCollapsed);
 					updateListUI();
 				});
-				header.appendChild(collapseBtn);
+				headerButtons.appendChild(collapseBtn);
 
 				const title = document.createElement("div");
 				title.className = "cardHeaderTitle";
 				title.textContent = obj.alias || obj.name;
 				header.appendChild(title);
-
-				const badge = document.createElement("div");
-				badge.className = "badge";
-				badge.textContent = `${obj.kind} · z${obj.z}`;
-				header.appendChild(badge);
-
-				const lockBadge = document.createElement("div");
-				lockBadge.className = "badge";
-				lockBadge.textContent = obj.base ? "Base" : obj.hidden ? "Hidden" : obj.locked ? "Locked" : "Unlocked";
-				header.appendChild(lockBadge);
-
-				const headerActions = document.createElement("div");
-				headerActions.style.display = "flex";
-				headerActions.style.gap = "6px";
 
 				const miniVisBtn = document.createElement("button");
 				miniVisBtn.className = "iconBtn miniIconBtn";
@@ -1712,7 +1726,7 @@ const setupWebcamFxRamp = () => {
 					persistScene();
 					renderObjects();
 				});
-				headerActions.appendChild(miniVisBtn);
+				headerButtons.appendChild(miniVisBtn);
 
 				const miniLockBtn = document.createElement("button");
 				miniLockBtn.className = "iconBtn miniIconBtn";
@@ -1730,7 +1744,7 @@ const setupWebcamFxRamp = () => {
 					persistScene();
 					renderObjects();
 				});
-				headerActions.appendChild(miniLockBtn);
+				headerButtons.appendChild(miniLockBtn);
 
 				const miniWarpBtn = document.createElement("button");
 				miniWarpBtn.className = "iconBtn miniIconBtn";
@@ -1754,9 +1768,15 @@ const setupWebcamFxRamp = () => {
 					persistScene();
 					renderObjects();
 				});
-				headerActions.appendChild(miniWarpBtn);
+				headerButtons.appendChild(miniWarpBtn);
 
-				header.appendChild(headerActions);
+				header.insertBefore(headerButtons, title);
+
+				const meta = document.createElement("div");
+				meta.className = "badge";
+				const kindLabel = obj.kind === "video" ? "Video" : obj.kind === "image" ? "Image" : "Object";
+				meta.textContent = `${kindLabel} -z${obj.z}`;
+				header.appendChild(meta);
 
 				card.appendChild(header);
 
